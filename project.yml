@@ -44,6 +44,14 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: com.flowmap.app.deeplink
             CFBundleURLSchemes: [flowmap]
+        # Drag and drop on the Today timeline exports this type. Declaring it
+        # here is required: `UTType(exportedAs:)` without a matching Info.plist
+        # entry logs a type-declaration error on every drag session.
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: com.flowmap.timelineitem
+            UTTypeDescription: Flowmap timeline item
+            UTTypeConformsTo: [public.data]
+            UTTypeTagSpecification: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
