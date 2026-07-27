@@ -1,0 +1,347 @@
+import Foundation
+import Observation
+import SwiftData
+
+/// What the app should tell the user after a task's time ran out.
+public struct FocusTransition: Identifiable, Sendable {
+    public let id = UUID()
+    public let finishedTaskTitle: String
+    public let requeue: RequeueOutcome?
+    public let nextTaskTitle: String?
+    /// Whether adding more time to the finished task is still possible.
+    public let canExtend: Bool
+
+    /// `Reading requeued for 20 minutes at 16:10`
+    public var bannerText: String {
+        if let requeue { return requeue.bannerText }
+        return "\(finishedTaskTitle) finished"
+    }
+}
+
+/// Drives the focus timer and the automatic hand-off between tasks.
+///
+/// All timing lives in `FocusSession` as timestamps; this type only decides
+/// *when* to act on them. That keeps the timer correct across backgrounding,
+/// sleep, relaunch and a second device.
+@Observable
+@MainActor
+public final class FocusEngine {
+    private let context: ModelContext
+    private let settings: AppSettings
+    private let calendar: Calendar
+    private let externalEvents: [ExternalCalendarEvent]
+
+    /// The session currently on screen, if any.
+    public private(set) var activeSession: FocusSession?
+    /// Set when a task's time has just run out, for the non-blocking banner.
+    public var pendingTransition: FocusTransition?
+    /// Drives the countdown redraw. Bumped by the view's timer tick.
+    public var tick: Date = Date()
+
+    public init(
+        context: ModelContext,
+        settings: AppSettings,
+        externalEvents: [ExternalCalendarEvent] = [],
+        calendar: Calendar = .current
+    ) {
+        self.context = context
+        self.settings = settings
+        self.externalEvents = externalEvents
+        self.calendar = calendar
+        self.activeSession = Self.findRunningSession(in: context)
+    }
+
+    // MARK: - Session lookup
+
+    /// The session left running by a previous launch, if there is one.
+    public static func findRunningSession(in context: ModelContext) -> FocusSession? {
+        let running = FocusOutcome.running.rawValue
+        var descriptor = FetchDescriptor<FocusSession>(
+            predicate: #Predicate { $0.outcomeRaw == running },
+            sortBy: [SortDescriptor(\.startedAt, order: .reverse)]
+        )
+        descriptor.fetchLimit = 1
+        return (try? context.fetch(descriptor))?.first
+    }
+
+    private func schedulingService() -> SchedulingService {
+        SchedulingService(
+            context: context,
+            settings: settings,
+            externalEvents: externalEvents,
+            calendar: calendar
+        )
+    }
+
+    // MARK: - Today's queue
+
+    /// Scheduled segments for `day`, earliest first — the order the wheel walks.
+    public func queue(for day: Date = Date()) -> [TaskSegment] {
+        let dayStart = calendar.startOfDay(for: day)
+        guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else { return [] }
+        let segments = (try? context.fetch(FetchDescriptor<TaskSegment>())) ?? []
+        return segments
+            .filter { $0.startDate >= dayStart && $0.startDate < dayEnd }
+            .filter { $0.state == .scheduled || $0.state == .elapsed }
+            .filter { $0.task?.status.isOpen ?? false }
+            .sorted { $0.startDate < $1.startDate }
+    }
+
+    /// The segment that should be running at `date`, else the next one due.
+    public func currentSegment(at date: Date = Date()) -> TaskSegment? {
+        let today = queue(for: date)
+        return today.first { $0.contains(date) } ?? today.first { $0.startDate >= date }
+    }
+
+    /// Upcoming segments after the active one.
+    public func upcomingSegments(after segment: TaskSegment?, at date: Date = Date()) -> [TaskSegment] {
+        let today = queue(for: date)
+        guard let segment, let index = today.firstIndex(where: { $0.id == segment.id }) else {
+            return today
+        }
+        return Array(today.dropFirst(index + 1))
+    }
+
+    // MARK: - Starting
+
+    /// Starts focus on a scheduled block, using the time it has left.
+    @discardableResult
+    public func start(segment: TaskSegment, now: Date = Date()) -> FocusSession? {
+        guard let task = segment.task else { return nil }
+        // Resume rather than restart if this block is already running.
+        if let existing = activeSession, existing.segment?.id == segment.id, existing.outcome == .running {
+            existing.resume(at: now)
+            return existing
+        }
+        finishActiveSession(outcome: .skipped, now: now)
+
+        let remaining = segment.remainingSeconds(at: now)
+        let planned = remaining > 0 ? remaining : Double(segment.durationMinutes) * 60
+        return begin(task: task, segment: segment, seconds: planned, now: now)
+    }
+
+    /// Starts focus on a task that is not on the timeline.
+    @discardableResult
+    public func start(task: FlowTask, minutes: Int? = nil, now: Date = Date()) -> FocusSession? {
+        finishActiveSession(outcome: .skipped, now: now)
+        let length = minutes ?? max(5, task.unscheduledMinutes > 0 ? task.unscheduledMinutes : task.estimatedMinutes)
+        return begin(task: task, segment: task.segment(at: now), seconds: Double(length) * 60, now: now)
+    }
+
+    /// Free focus with no task attached. Defaults to 30 minutes.
+    @discardableResult
+    public func startFreeFocus(minutes: Int? = nil, now: Date = Date()) -> FocusSession? {
+        finishActiveSession(outcome: .skipped, now: now)
+        let length = minutes ?? settings.defaultFreeFocusMinutes
+        return begin(task: nil, segment: nil, seconds: Double(length) * 60, now: now)
+    }
+
+    private func begin(task: FlowTask?, segment: TaskSegment?, seconds: Double, now: Date) -> FocusSession {
+        let session = FocusSession(
+            task: task,
+            segment: segment,
+            plannedSeconds: max(60, seconds),
+            startedAt: now
+        )
+        context.insert(session)
+        if let task, task.status.isOpen { task.status = .active }
+        try? context.save()
+        activeSession = session
+        return session
+    }
+
+    // MARK: - Controls
+
+    public func pause(now: Date = Date()) {
+        guard let session = activeSession else { return }
+        session.pause(at: now)
+        session.task?.status = .paused
+        try? context.save()
+    }
+
+    public func resume(now: Date = Date()) {
+        guard let session = activeSession else { return }
+        session.resume(at: now)
+        if let task = session.task, task.status == .paused { task.status = .active }
+        try? context.save()
+    }
+
+    public func togglePause(now: Date = Date()) {
+        guard let session = activeSession else { return }
+        session.isPaused ? resume(now: now) : pause(now: now)
+    }
+
+    /// Marks the task done and moves on.
+    public func completeCurrentTask(now: Date = Date()) {
+        guard let session = activeSession else { return }
+        let title = session.task?.title ?? "Focus"
+        session.finish(outcome: .completed, at: now)
+        _ = session.claimTransition()
+
+        if let task = session.task {
+            task.actualMinutes += session.actualMinutes
+            task.markCompleted(at: now)
+        }
+        if let segment = session.segment { segment.state = .completed }
+        try? context.save()
+
+        activeSession = nil
+        advanceToNextTask(now: now, finishedTitle: title, requeue: nil)
+    }
+
+    /// Skips the rest of this block without completing the task. The remaining
+    /// work is requeued — skipping is not the same as abandoning.
+    public func skipCurrentTask(now: Date = Date()) {
+        guard let session = activeSession else { return }
+        let title = session.task?.title ?? "Focus"
+        let remainingMinutes = Int((session.remainingSeconds(at: now) / 60).rounded())
+        session.finish(outcome: .skipped, at: now)
+        let claimed = session.claimTransition()
+
+        if let task = session.task {
+            task.actualMinutes += session.actualMinutes
+            if task.status == .active || task.status == .paused { task.status = .planned }
+        }
+        if let segment = session.segment { segment.state = .missed }
+        try? context.save()
+
+        var requeue: RequeueOutcome?
+        if claimed, let task = session.task, remainingMinutes >= SchedulingEngine.snapMinutes {
+            requeue = schedulingService().scheduleContinuation(
+                for: task, after: session.segment, minutes: remainingMinutes, now: now
+            )
+        }
+
+        activeSession = nil
+        advanceToNextTask(now: now, finishedTitle: title, requeue: requeue)
+    }
+
+    /// Adds time to the task currently on screen without restarting it.
+    public func extendCurrentTask(byMinutes minutes: Int, now: Date = Date()) {
+        guard let session = activeSession else { return }
+        session.plannedSeconds += Double(minutes) * 60
+        session.touch(now)
+        if let segment = session.segment, !segment.isLocked {
+            let service = schedulingService()
+            _ = service.resize(segment: segment, toMinutes: segment.durationMinutes + minutes)
+        }
+        try? context.save()
+    }
+
+    /// Abandons the session entirely, leaving the task where it was.
+    public func stop(now: Date = Date()) {
+        guard let session = activeSession else { return }
+        session.finish(outcome: .abandoned, at: now)
+        _ = session.claimTransition()
+        if let task = session.task {
+            task.actualMinutes += session.actualMinutes
+            if task.status == .active || task.status == .paused { task.status = .planned }
+        }
+        try? context.save()
+        activeSession = nil
+    }
+
+    private func finishActiveSession(outcome: FocusOutcome, now: Date) {
+        guard let session = activeSession, session.outcome == .running else { return }
+        session.finish(outcome: outcome, at: now)
+        _ = session.claimTransition()
+        if let task = session.task {
+            task.actualMinutes += session.actualMinutes
+            if task.status == .active || task.status == .paused { task.status = .planned }
+        }
+        activeSession = nil
+    }
+
+    // MARK: - Elapsed transition
+
+    /// Called on every tick and on app activation.
+    ///
+    /// Runs the elapsed hand-off at most once per session — `claimTransition()`
+    /// is the guard, so two activations or two devices cannot both requeue.
+    public func processElapsedSessionIfNeeded(now: Date = Date()) {
+        guard let session = activeSession, session.hasElapsed(at: now) else { return }
+
+        let title = session.task?.title ?? "Focus"
+        let task = session.task
+        let segment = session.segment
+        let plannedMinutes = Int((session.plannedSeconds / 60).rounded())
+
+        session.finish(outcome: .elapsed, at: now)
+        guard session.claimTransition() else {
+            activeSession = nil
+            return
+        }
+
+        if let task {
+            task.actualMinutes += session.actualMinutes
+        }
+        if let segment { segment.state = .elapsed }
+        try? context.save()
+
+        var requeue: RequeueOutcome?
+        if let task, task.status != .completed, task.status != .cancelled {
+            // Not finished: it needs another block rather than disappearing.
+            if task.status == .active || task.status == .paused { task.status = .planned }
+            let outstanding = max(SchedulingEngine.snapMinutes, min(plannedMinutes, task.unscheduledMinutes))
+            if task.unscheduledMinutes > 0 || task.subtaskProgressLabel != nil {
+                requeue = schedulingService().scheduleContinuation(
+                    for: task, after: segment, minutes: outstanding, now: now
+                )
+            }
+        }
+
+        activeSession = nil
+        advanceToNextTask(now: now, finishedTitle: title, requeue: requeue)
+    }
+
+    /// Rotates to the next scheduled task without asking a blocking question.
+    private func advanceToNextTask(now: Date, finishedTitle: String, requeue: RequeueOutcome?) {
+        let next = currentSegment(at: now)
+        var nextTitle: String?
+
+        if settings.autoStartNextTask, let next, let nextTask = next.task, nextTask.status.isOpen {
+            nextTitle = nextTask.title
+            _ = start(segment: next, now: now)
+        } else {
+            nextTitle = next?.task?.title
+        }
+
+        pendingTransition = FocusTransition(
+            finishedTaskTitle: finishedTitle,
+            requeue: requeue,
+            nextTaskTitle: nextTitle,
+            canExtend: requeue != nil
+        )
+    }
+
+    /// Undoes a requeue the user rejected from the banner.
+    public func undoRequeue(_ outcome: RequeueOutcome) {
+        let segments = (try? context.fetch(FetchDescriptor<TaskSegment>())) ?? []
+        let tasks = (try? context.fetch(FetchDescriptor<FlowTask>())) ?? []
+        guard let task = tasks.first(where: { $0.id == outcome.taskID }) else { return }
+
+        for segment in segments
+        where segment.task?.id == task.id
+            && segment.isContinuation
+            && segment.state == .scheduled
+            && segment.startDate == outcome.newStart {
+            context.delete(segment)
+        }
+        task.carryoverCount = max(0, task.carryoverCount - 1)
+        try? context.save()
+        pendingTransition = nil
+    }
+
+    /// Marks the finished task complete straight from the banner.
+    public func completeFromBanner(_ outcome: RequeueOutcome) {
+        let tasks = (try? context.fetch(FetchDescriptor<FlowTask>())) ?? []
+        guard let task = tasks.first(where: { $0.id == outcome.taskID }) else { return }
+        // Remove the continuation the requeue just created: the work is done.
+        for segment in task.liveSegments where segment.isContinuation && segment.state == .scheduled {
+            context.delete(segment)
+        }
+        task.markCompleted()
+        try? context.save()
+        pendingTransition = nil
+    }
+}

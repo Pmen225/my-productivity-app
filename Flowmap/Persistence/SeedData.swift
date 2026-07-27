@@ -1,0 +1,170 @@
+import Foundation
+import SwiftData
+
+/// The demo workspace, offered on first launch rather than written silently.
+public enum SeedData {
+    /// A demo task described declaratively so the seed reads like the spec.
+    private struct DemoTask {
+        let title: String
+        let minutes: Int
+        let icon: String
+        let colour: ColourToken
+        let branch: String
+        let subtasks: [String]
+    }
+
+    private static let demoTasks: [DemoTask] = [
+        DemoTask(
+            title: "Reading", minutes: 30, icon: "book", colour: .blue, branch: "Learning",
+            subtasks: ["Choose chapter", "Read 10 pages", "Highlight key points", "Summarise notes"]
+        ),
+        DemoTask(
+            title: "Exercise", minutes: 30, icon: "figure.run", colour: .green, branch: "Personal Wellbeing",
+            subtasks: ["Warm up", "Main workout", "Cool down"]
+        ),
+        DemoTask(
+            title: "Break", minutes: 15, icon: "cup.and.saucer", colour: .peach, branch: "Personal Wellbeing",
+            subtasks: ["Leave the desk", "Drink water"]
+        ),
+        DemoTask(
+            title: "Planning", minutes: 20, icon: "calendar", colour: .yellow, branch: "Focus Goals",
+            subtasks: ["Review priorities", "Plan tomorrow"]
+        ),
+        DemoTask(
+            title: "Learning", minutes: 45, icon: "graduationcap", colour: .teal, branch: "Learning",
+            subtasks: ["Open lesson", "Take notes", "Write one takeaway"]
+        ),
+        DemoTask(
+            title: "Focus", minutes: 25, icon: "target", colour: .lavender, branch: "Work Priorities",
+            subtasks: ["Choose outcome", "Work without switching"]
+        ),
+        DemoTask(
+            title: "Deep Work", minutes: 60, icon: "hammer", colour: .pink, branch: "Work Priorities",
+            subtasks: ["Define deliverable", "Build", "Review"]
+        ),
+    ]
+
+    private static let branches = [
+        "Focus Goals", "Work Priorities", "Personal Wellbeing", "Learning", "Life & Fun",
+    ]
+
+    /// Whether a demo workspace already exists, so the offer can be hidden.
+    @MainActor
+    public static func isLoaded(in context: ModelContext) -> Bool {
+        let workspaces = (try? context.fetch(FetchDescriptor<Workspace>())) ?? []
+        return workspaces.contains { $0.name == "Personal" }
+    }
+
+    /// Creates the Personal workspace, the Weekly Plan map and the seven demo tasks.
+    ///
+    /// Idempotent: calling it twice does not create a second copy.
+    @MainActor
+    @discardableResult
+    public static func load(into context: ModelContext, settings: AppSettings) -> Workspace? {
+        guard !isLoaded(in: context) else { return nil }
+
+        let workspace = Workspace(name: "Personal", iconName: "house", colourToken: ColourToken.violet.rawValue)
+        context.insert(workspace)
+
+        let inbox = TaskList(
+            name: "Personal",
+            iconName: "tray",
+            colourToken: ColourToken.violet.rawValue,
+            sortOrder: 0,
+            workspace: workspace
+        )
+        context.insert(inbox)
+
+        let map = MapDocument(title: "Weekly Plan", summary: "This week at a glance", workspace: workspace)
+        context.insert(map)
+
+        let root = MapNode(title: "Weekly Plan", colourToken: ColourToken.violet.rawValue, sortOrder: 0, map: map)
+        context.insert(root)
+
+        var branchNodes: [String: MapNode] = [:]
+        for (index, name) in branches.enumerated() {
+            let node = MapNode(
+                title: name,
+                colourToken: ColourToken.allCases[(index + 1) % ColourToken.allCases.count].rawValue,
+                sortOrder: index,
+                map: map,
+                parent: root
+            )
+            context.insert(node)
+            branchNodes[name] = node
+        }
+
+        for (index, demo) in demoTasks.enumerated() {
+            let task = FlowTask(
+                title: demo.title,
+                status: .inbox,
+                priority: index < 2 ? .high : .medium,
+                estimatedMinutes: demo.minutes,
+                colourToken: demo.colour.rawValue,
+                iconName: demo.icon,
+                sortOrder: index,
+                list: inbox,
+                workspace: workspace
+            )
+            task.isSplittable = demo.minutes >= 45
+            task.minimumChunkMinutes = 15
+            context.insert(task)
+
+            for (subIndex, title) in demo.subtasks.enumerated() {
+                let subtask = Subtask(title: title, sortOrder: subIndex, task: task)
+                context.insert(subtask)
+            }
+
+            // The idea and the task are two views of the same intent, so the demo
+            // ships them already linked.
+            let parent = branchNodes[demo.branch] ?? root
+            let node = MapNode(
+                title: demo.title,
+                iconName: demo.icon,
+                colourToken: demo.colour.rawValue,
+                sortOrder: index,
+                map: map,
+                parent: parent
+            )
+            node.isTask = true
+            node.estimatedMinutes = demo.minutes
+            node.linkedTask = task
+            context.insert(node)
+        }
+
+        let note = Note(title: "How Flowmap works", iconName: "sparkles", workspace: workspace)
+        context.insert(note)
+        let noteLines: [(NoteBlockType, String)] = [
+            (.heading2, "The loop"),
+            (.paragraph, "Capture an idea, expand it on the map, turn branches into tasks, then let Flowmap place them in your day."),
+            (.bullet, "Plan my day fills the gaps around anything fixed or locked."),
+            (.bullet, "Focus walks you through one task at a time."),
+            (.bullet, "Anything you do not finish is requeued automatically — it never just disappears."),
+        ]
+        for (index, line) in noteLines.enumerated() {
+            context.insert(NoteBlock(type: line.0, text: line.1, sortOrder: index, note: note))
+        }
+
+        settings.hasLoadedDemoData = true
+        settings.touch()
+        try? context.save()
+        return workspace
+    }
+
+    /// Removes demo content so the user can start clean.
+    @MainActor
+    public static func reset(in context: ModelContext, settings: AppSettings) {
+        let workspaces = (try? context.fetch(FetchDescriptor<Workspace>())) ?? []
+        for workspace in workspaces where workspace.name == "Personal" {
+            context.delete(workspace)
+        }
+        // Cascade covers the workspace's own children; anything orphaned by a
+        // nullify rule is cleaned up here.
+        for task in (try? context.fetch(FetchDescriptor<FlowTask>())) ?? [] where task.workspace == nil && task.list == nil {
+            context.delete(task)
+        }
+        settings.hasLoadedDemoData = false
+        settings.touch()
+        try? context.save()
+    }
+}
