@@ -4,6 +4,7 @@ import XCTest
 /// views do not yet expose. Anything that would otherwise need a fragile
 /// coordinate tap or a guessed identifier is covered by screenshot inspection
 /// instead — see TEST_PLAN.md.
+@MainActor
 final class FlowmapUITests: XCTestCase {
     override func setUp() {
         super.setUp()
@@ -55,7 +56,7 @@ final class FlowmapUITests: XCTestCase {
     func testStatePersistsAcrossRelaunch() {
         let app = launch()
         let firstLaunch = Set(
-            app.staticTexts.allElementsBoundByIndex.prefix(12).map(\.label)
+            app.staticTexts.allElementsBoundByIndex.prefix(12).map { $0.label }
         )
 
         app.terminate()
@@ -65,7 +66,7 @@ final class FlowmapUITests: XCTestCase {
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30))
 
         let secondLaunch = Set(
-            app.staticTexts.allElementsBoundByIndex.prefix(12).map(\.label)
+            app.staticTexts.allElementsBoundByIndex.prefix(12).map { $0.label }
         )
 
         XCTAssertFalse(secondLaunch.isEmpty, "The app came back empty after a relaunch")

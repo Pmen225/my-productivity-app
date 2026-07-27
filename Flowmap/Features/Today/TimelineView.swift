@@ -22,7 +22,10 @@ struct TimelineView: View {
     @State private var previewStart: Date?
     @State private var previewMinutes: Int?
 
-    private let pointsPerMinute: CGFloat = 1.3
+    /// Scaled so the shortest realistic block — 15 minutes — still clears the
+    /// height a row needs to stay readable. At a denser scale, short blocks hit
+    /// a minimum height and visibly overlap the block after them.
+    private let pointsPerMinute: CGFloat = 2.0
     private let gutterWidth: CGFloat = 50
 
     private var totalMinutes: Int {
@@ -37,8 +40,11 @@ struct TimelineView: View {
         CGFloat(date.timeIntervalSince(dayStart) / 60) * pointsPerMinute
     }
 
+    /// Proportional height, less a seam so consecutive blocks read as separate.
+    /// The floor is deliberately below the seam-adjusted height of a 15-minute
+    /// block, so a block can never be drawn taller than the time it occupies.
     private func height(forMinutes minutes: Int) -> CGFloat {
-        max(28, CGFloat(minutes) * pointsPerMinute)
+        max(12, CGFloat(minutes) * pointsPerMinute - 2)
     }
 
     var body: some View {

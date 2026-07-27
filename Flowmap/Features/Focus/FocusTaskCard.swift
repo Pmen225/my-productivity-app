@@ -38,7 +38,9 @@ struct FocusTaskCard: View {
 
     /// Rest height leaves the wheel its own space; expanded covers three fifths.
     static func restingHeight(for total: CGFloat) -> CGFloat { max(180, total * 0.28) }
-    static func expandedHeight(for total: CGFloat) -> CGFloat { max(320, total * 0.62) }
+    /// Comfortably past the three fifths of the screen the spec asks for, once
+    /// the status bar and tab bar are taken out of `total`.
+    static func expandedHeight(for total: CGFloat) -> CGFloat { max(340, total * 0.72) }
 
     var body: some View {
         GeometryReader { proxy in

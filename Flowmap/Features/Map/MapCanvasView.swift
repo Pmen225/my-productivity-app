@@ -12,6 +12,8 @@ struct MapCanvasView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var viewportSize: CGSize = .zero
+    /// Guards the one-time fit so reappearing does not throw away the user's pan.
+    @State private var hasFitted = false
     @State private var draggingNodeID: UUID?
     @State private var dragTranslation: CGSize = .zero
     @State private var renamingNodeID: UUID?
@@ -37,7 +39,22 @@ struct MapCanvasView: View {
                     )
             }
             .simultaneousGesture(pinchGesture)
-            .onAppear { viewportSize = proxy.size }
+            .onAppear {
+                viewportSize = proxy.size
+                // A map that has never been positioned opens fitted, rather than
+                // with the tree running off the edge of the canvas.
+                //
+                // Deferred by one turn of the runloop: at `onAppear` the child
+                // relationships have not always been faulted in, so fitting
+                // immediately would frame the root node alone.
+                guard !hasFitted, viewModel.map.canvasOffsetX == 0, viewModel.map.canvasOffsetY == 0
+                else { return }
+                hasFitted = true
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(120))
+                    viewModel.fitToMap(viewportSize: proxy.size)
+                }
+            }
             .onChange(of: proxy.size) { _, newValue in viewportSize = newValue }
             .overlay(alignment: .center) {
                 if viewModel.map.nodeCount == 0 { emptyState }

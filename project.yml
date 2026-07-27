@@ -41,6 +41,9 @@ targets:
         NSMicrophoneUsageDescription: Flowmap uses the microphone for voice capture of tasks and assistant messages.
         UIBackgroundModes: [remote-notification]
         UILaunchScreen: {}
+        CFBundleURLTypes:
+          - CFBundleURLName: com.flowmap.app.deeplink
+            CFBundleURLSchemes: [flowmap]
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft

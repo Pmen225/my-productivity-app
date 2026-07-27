@@ -51,14 +51,27 @@ public enum FocusWheelGeometry {
     /// How much to rotate a segment's label so it reads along the arc.
     ///
     /// The active task, sitting at the bottom, comes out perfectly horizontal.
+    /// Labels that would end up past a quarter turn are flipped by 180° so they
+    /// read left-to-right instead of upside down on the far side of the ring.
     public static func labelRotation(index: Int, visibleCount: Int) -> Double {
-        centreAngle(index: index, visibleCount: visibleCount) - bottomAngle
+        readableRotation(atAngle: centreAngle(index: index, visibleCount: visibleCount))
+    }
+
+    /// Rotation for a label sitting at `angle`, kept within a quarter turn of
+    /// upright so it always reads left-to-right.
+    public static func readableRotation(atAngle angle: Double) -> Double {
+        var normalised = (angle - bottomAngle).truncatingRemainder(dividingBy: 360)
+        if normalised > 180 { normalised -= 360 }
+        if normalised < -180 { normalised += 360 }
+        if normalised > 90 { return normalised - 180 }
+        if normalised < -90 { return normalised + 180 }
+        return normalised
     }
 
     /// Ring thickness for a given wheel diameter — thick enough to hold a label,
-    /// thin enough to leave the centre readable.
+    /// thin enough that the ring reads as a track rather than a solid disc.
     public static func ringThickness(for diameter: CGFloat) -> CGFloat {
-        max(56, min(96, diameter * 0.22))
+        max(52, min(72, diameter * 0.17))
     }
 
     /// How many tasks to draw for a visibility mode, capped by what actually exists.

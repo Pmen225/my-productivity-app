@@ -23,6 +23,12 @@ struct FlowmapApp: App {
                 .tint(environment.settings.accent.base)
                 .task {
                     UNUserNotificationCenter.current().delegate = notificationRouter
+                    // Screenshot and demo runs seed themselves so the app is
+                    // photographed with real content rather than empty states.
+                    if ProcessInfo.processInfo.arguments.contains("-flowmapSeedDemo") {
+                        SeedData.load(into: container.mainContext, settings: environment.settings)
+                        _ = environment.applyPlan(environment.planToday())
+                    }
                     environment.reconcileOnActivation()
                 }
                 .onOpenURL { url in

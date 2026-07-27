@@ -42,3 +42,68 @@ Records major decisions, verified checkpoints and genuine external blockers.
 | # | Checkpoint | Evidence |
 |---|-----------|----------|
 | 1 | Project scaffolding + full model layer compiles | `./scripts/build.sh both` → macOS BUILD SUCCEEDED, iOS BUILD SUCCEEDED |
+
+## Build phases
+
+The work ran as a foundation-then-fan-out: the model layer, scheduling engine,
+focus engine and shared services were written first and verified with unit tests,
+then feature screens were built in parallel against those frozen interfaces and
+integrated one at a time. Every integration step ended with a green build on
+both platforms before the next one started.
+
+## Visual defects found by inspecting screenshots, and fixed
+
+Screenshot inspection caught five real defects that reading the view code did not:
+
+1. **Short timeline blocks overlapped their neighbours.** A 28pt minimum height
+   exceeded the proportional height of a 15- or 20-minute block at 1.3pt/minute.
+   Fixed by scaling the timeline to 2.0pt/minute and making the drawn height
+   proportional-minus-a-seam, so a block can never be taller than the time it
+   occupies.
+2. **Wheel labels on the far side of the ring rendered upside down.**
+   `FocusWheelView` duplicated the rotation maths instead of calling the geometry
+   helper. Both now share `readableRotation(atAngle:)`, which keeps a label
+   within a quarter turn of upright.
+3. **The wheel pointer hung below the ring like a tail.** Resized to half the
+   band and anchored in its outer half, clear of the label centred in the band.
+4. **The idle countdown rendered as a broken-looking dash.** It now shows the
+   duration of the block about to start.
+5. **The Assistant orb covered the Focus card.** The orb is hidden on Focus,
+   which fills that space with its own card; the Assistant stays one tap away
+   from every other destination.
+
+Also fixed from inspection: the mind map opened with its tree running off the
+right edge. It now fits on first open, deferred one runloop turn because child
+relationships have not always been faulted in at `onAppear`.
+
+## Known rough edges
+
+- **Map fit is vertical-only in practice.** After fitting, the tree is centred
+  vertically but sits right of centre horizontally, so the third level of nodes
+  can extend past the right edge. The canvas is fully pannable and zoomable and
+  the explicit *Fit map* control works; this is the automatic first-open framing
+  being imperfect, not a functional fault.
+- **Mac screenshots are limited to the Today split view.** Capturing the other
+  Mac destinations needs UI automation permission, which macOS gates behind a
+  Touch ID or password prompt. That prompt was left unanswered rather than
+  bypassed, so only the launch screen could be photographed on macOS.
+
+## External blocker
+
+**No Apple Developer team is configured**, so all builds run with
+`CODE_SIGNING_ALLOWED=NO`. Entitlements, the CloudKit container identifier and
+the schema are all configured correctly, but **cross-device iCloud sync has not
+been observed running** and is not claimed to work. README lists the exact
+remaining steps.
+
+## Verified checkpoints
+
+| # | Checkpoint | Evidence |
+|---|-----------|----------|
+| 1 | Project scaffolding + full model layer compiles | macOS and iOS BUILD SUCCEEDED |
+| 2 | Scheduling and focus engines compile | macOS BUILD SUCCEEDED |
+| 3 | Scheduling behaviour correct | 32 unit tests passing |
+| 4 | All features integrated | macOS and iOS BUILD SUCCEEDED |
+| 5 | Full suite green | 60 unit tests passing, 0 failures |
+| 6 | App runs with real data | Demo seed writes 1 workspace, 7 tasks, 7 segments, 13 map nodes, 19 subtasks; auto-plan schedules all 7 |
+| 7 | Screens inspected and defects fixed | 11 screenshots in `Screenshots/`, six defects found and fixed |

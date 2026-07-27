@@ -82,6 +82,7 @@
 		A4C90ED06CA42F85BC0E96FC /* CalendarService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D37B6ECC0169153F5381900 /* CalendarService.swift */; };
 		A8290C73E415F4AC1D6644C5 /* SmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 456CAB4E8F890B1F08777A0F /* SmokeTests.swift */; };
 		A872981C1B9B8307BE75BACE /* MapDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD844E3158685B395C00397C /* MapDocument.swift */; };
+		A889D5F4268A5FA0ED1028A7 /* ScreenshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C09034A22F33C188C979591A /* ScreenshotTests.swift */; };
 		A931A5FB6FAB26DC4D526AFD /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FEA27D35E52E2D91D44CB52 /* RootView.swift */; };
 		AB20E1476E087BE50F8AFF70 /* FocusTaskCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8C1B63CC93A57451F9786C0 /* FocusTaskCard.swift */; };
 		AE7FD04795412577FA678429 /* SchedulingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14E268B5AA3DACFF8E93A9BF /* SchedulingService.swift */; };
@@ -231,6 +232,7 @@
 		BA761013D82B313562E967A6 /* MapNodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapNodeView.swift; sourceTree = "<group>"; };
 		BE97604132C1BFFAB3E2CA3D /* AssistantViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantViewModel.swift; sourceTree = "<group>"; };
 		BEA5043D0E2B9FA0FEFCFA2D /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
+		C09034A22F33C188C979591A /* ScreenshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotTests.swift; sourceTree = "<group>"; };
 		C0AC001236DE458368552395 /* AssistantHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantHistoryView.swift; sourceTree = "<group>"; };
 		C3F8E2F1B974A574AD0FA750 /* TimelineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineView.swift; sourceTree = "<group>"; };
 		C49E96E117B13FAE6CA4F21A /* Flowmap.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Flowmap.entitlements; sourceTree = "<group>"; };
@@ -501,6 +503,7 @@
 			isa = PBXGroup;
 			children = (
 				40BA7D92EA187980C0530783 /* LaunchUITests.swift */,
+				C09034A22F33C188C979591A /* ScreenshotTests.swift */,
 			);
 			path = UITests;
 			sourceTree = "<group>";
@@ -830,6 +833,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				E7A1FF167A20F7F770D00E97 /* LaunchUITests.swift in Sources */,
+				A889D5F4268A5FA0ED1028A7 /* ScreenshotTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

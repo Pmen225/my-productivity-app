@@ -157,7 +157,9 @@ struct FocusWheelView: View {
     ) -> some View {
         let angle = FocusWheelGeometry.centreAngle(index: index, visibleCount: visibleCount) + rotationOffset
         let position = FocusWheelGeometry.point(centre: centre, radius: radius, angle: angle)
-        let rotation = angle - FocusWheelGeometry.bottomAngle
+        // Follows the arc, but never past a quarter turn — otherwise segments on
+        // the far side of the ring render upside down.
+        let rotation = FocusWheelGeometry.readableRotation(atAngle: angle)
 
         return VStack(spacing: 1) {
             HStack(spacing: 3) {
@@ -185,17 +187,22 @@ struct FocusWheelView: View {
         )
     }
 
-    /// Fixed marker at the bottom. It never moves — the ring moves beneath it.
+    /// Fixed marker at the bottom. It never moves — the ring turns beneath it.
+    ///
+    /// Sized and centred on the ring band so it reads as a needle crossing the
+    /// track, not a tail hanging off the wheel.
     private func pointer(centre: CGPoint, outerRadius: CGFloat, thickness: CGFloat) -> some View {
-        let tip = FocusWheelGeometry.point(
+        // Sits in the outer part of the band, clear of the label centred in it.
+        let length = thickness * 0.5
+        let anchor = FocusWheelGeometry.point(
             centre: centre,
-            radius: outerRadius + 2,
+            radius: outerRadius - length / 2,
             angle: FocusWheelGeometry.bottomAngle
         )
         return Capsule()
             .fill(FlowTheme.primaryText(scheme))
-            .frame(width: 3, height: thickness + 12)
-            .position(x: tip.x, y: tip.y - (thickness + 12) / 2 + 6)
+            .frame(width: 3, height: length)
+            .position(x: anchor.x, y: anchor.y)
             .accessibilityHidden(true)
     }
 

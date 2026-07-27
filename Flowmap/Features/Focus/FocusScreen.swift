@@ -166,13 +166,17 @@ struct FocusScreen: View {
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle((activeTask?.colour ?? .violet).onSoft)
 
-            Text(session.map { DurationFormatter.countdown(seconds: $0.remainingSeconds(at: now)) } ?? "—:—")
+            // Before anything is running, show the time the next block will take
+            // rather than an empty placeholder — the number the user is about to
+            // commit to is more useful than a dash.
+            Text(countdownText)
                 .font(FlowFont.countdown)
-                .foregroundStyle(FlowTheme.primaryText(scheme))
-                .accessibilityLabel(
-                    session.map { DurationFormatter.spokenCountdown(seconds: $0.remainingSeconds(at: now)) }
-                        ?? "No task running"
+                .foregroundStyle(
+                    session == nil
+                        ? FlowTheme.secondaryText(scheme)
+                        : FlowTheme.primaryText(scheme)
                 )
+                .accessibilityLabel(countdownAccessibilityLabel)
 
             Text(activeTask?.title ?? "Ready when you are")
                 .font(FlowFont.cardTitle)
@@ -234,6 +238,28 @@ struct FocusScreen: View {
                 }
             }
         }
+    }
+
+    private var countdownText: String {
+        if let session {
+            return DurationFormatter.countdown(seconds: session.remainingSeconds(at: now))
+        }
+        if let segment = activeSegment {
+            return DurationFormatter.countdown(seconds: Double(segment.durationMinutes) * 60)
+        }
+        return DurationFormatter.countdown(
+            seconds: Double(flow?.settings.defaultFreeFocusMinutes ?? 30) * 60
+        )
+    }
+
+    private var countdownAccessibilityLabel: String {
+        if let session {
+            return DurationFormatter.spokenCountdown(seconds: session.remainingSeconds(at: now))
+        }
+        if let segment = activeSegment {
+            return "Ready to start, \(DurationFormatter.spoken(minutes: segment.durationMinutes))"
+        }
+        return "No task running"
     }
 
     private var playPauseSymbol: String {

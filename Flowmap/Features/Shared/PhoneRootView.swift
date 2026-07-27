@@ -49,7 +49,12 @@ struct PhoneRootView: View {
                 .tag(DeepLink.library)
             }
 
-            assistantOrb
+            // Focus fills the space above the tab bar with its own card, so the
+            // orb would sit on top of it. The Assistant stays one tap away from
+            // every other destination.
+            if tab != .focus {
+                assistantOrb
+            }
         }
         .sheet(isPresented: $showingAssistant) {
             NavigationStack { AssistantScreen() }
