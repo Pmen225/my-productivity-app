@@ -41,6 +41,8 @@ public struct AssistantToolResult: Codable, Sendable {
         case reopenTask(UUID)
         case revertTask(UUID, TaskFieldSnapshot)
         case stopFocusSession
+        /// Reverses the most recent plan the assistant applied.
+        case undoLastPlan
     }
 
     public struct TaskFieldSnapshot: Codable, Sendable {
@@ -171,6 +173,9 @@ public struct AssistantToolRouter {
         case .stopFocusSession:
             flow.focusEngine.stop(now: flow.now)
             return AssistantToolResult(toolName: "undo", success: true, message: "Focus session stopped.")
+        case .undoLastPlan:
+            flow.undoLastPlan()
+            return AssistantToolResult(toolName: "undo", success: true, message: "Put your schedule back the way it was.")
         }
     }
 
@@ -183,7 +188,7 @@ public struct AssistantToolRouter {
         case .completeTask: return completeTask(argumentsJSON)
         case .cancelTask: return cancelTask(argumentsJSON)
         case .scheduleTask: return scheduleTask(argumentsJSON)
-        case .rescheduleDay: return confirm(proposal(for: .rescheduleDay, argumentsJSON: argumentsJSON))
+        case .rescheduleDay: return rescheduleDay(argumentsJSON)
         case .createProject: return createProject(argumentsJSON)
         case .createMap: return createMap(argumentsJSON)
         case .addMapNode: return addMapNode(argumentsJSON)
@@ -346,6 +351,37 @@ public struct AssistantToolRouter {
     private struct RescheduleDayArgs: Codable {
         let dayISO8601: String?
         let replanExisting: Bool?
+    }
+
+    /// Applies a plan the user has already confirmed.
+    ///
+    /// Goes through `AppEnvironment.applyPlan` so the assistant commits a plan by
+    /// exactly the same path the Today screen uses — including the undo snapshot
+    /// and the notification reschedule that come with it.
+    private func rescheduleDay(_ argumentsJSON: String) -> AssistantToolResult {
+        let args = decode(RescheduleDayArgs.self, argumentsJSON)
+            ?? RescheduleDayArgs(dayISO8601: nil, replanExisting: nil)
+        let replanExisting = args.replanExisting ?? false
+
+        // Re-derive the plan at apply time: the day may have moved on since the
+        // proposal was shown, and applying a stale plan would fight the schedule.
+        let plan = flow.planToday(replanExisting: replanExisting)
+        guard !plan.isEmpty else {
+            return AssistantToolResult(
+                toolName: AssistantToolName.rescheduleDay.rawValue,
+                success: true,
+                message: "Nothing needed rescheduling — the day already looks complete."
+            )
+        }
+
+        flow.applyPlan(plan, replanExisting: replanExisting)
+
+        return AssistantToolResult(
+            toolName: AssistantToolName.rescheduleDay.rawValue,
+            success: true,
+            message: "Replanned your day. \(summarise(plan))",
+            undo: .undoLastPlan
+        )
     }
 
     private func summarise(_ proposal: PlanProposal) -> String {

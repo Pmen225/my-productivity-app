@@ -266,7 +266,23 @@ public struct SchedulingService {
             if task.status == .inbox { task.status = .planned }
         }
 
+        // Saved first so pending deletes are actually applied: until then a
+        // lifted segment still shows up in `task.liveSegments` and the sweep
+        // below would see nothing to do.
         try? context.save()
+
+        // A full replan lifts existing blocks before re-placing them. Anything
+        // that could not be re-placed must land back in the Inbox — a task left
+        // `.planned` with no segments matches neither Inbox nor Today, which is
+        // exactly the silent disappearance the product forbids.
+        var strandedAny = false
+        for task in tasksByID.values
+        where task.status == .planned && task.liveSegments.isEmpty {
+            task.status = .inbox
+            strandedAny = true
+        }
+        if strandedAny { try? context.save() }
+
         return ScheduleSnapshot(
             existing: previous,
             createdSegmentIDs: created,
@@ -494,7 +510,11 @@ public struct SchedulingService {
     ) -> Bool {
         let end = start.addingTimeInterval(Double(minutes) * 60)
         let dayKey = calendar.startOfDay(for: start)
-        let busy = busyMap(from: dayKey, dayCount: 1)[dayKey] ?? []
+        // Start a day early and take two days: a block running through midnight
+        // is bucketed under the day it started, and the candidate itself may end
+        // after midnight. Overlap is then judged on real dates, not day keys.
+        let searchStart = calendar.date(byAdding: .day, value: -1, to: dayKey) ?? dayKey
+        let busy = busyMap(from: searchStart, dayCount: 3).values.flatMap { $0 }
         return !busy.contains { interval in
             if let segmentID, interval.segmentID == segmentID { return false }
             return interval.overlaps(start: start, end: end)

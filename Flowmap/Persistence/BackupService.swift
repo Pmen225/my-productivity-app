@@ -253,6 +253,21 @@ public enum BackupService {
         return files
     }
 
+    /// True when making `parent` the parent of `child` would close a loop.
+    @MainActor
+    private static func wouldCreateCycle(child: MapNode, parent: MapNode) -> Bool {
+        if parent.id == child.id { return true }
+        var cursor: MapNode? = parent
+        var hops = 0
+        while let node = cursor {
+            if node.id == child.id { return true }
+            cursor = node.parent
+            hops += 1
+            if hops > 256 { return true } // already cyclic
+        }
+        return false
+    }
+
     // MARK: - Validate and import
 
     public static func validate(_ data: Data) throws -> Archive {
@@ -314,24 +329,25 @@ public enum BackupService {
             currentDate: (T) -> Date,
             apply: (T) -> Void,
             create: () -> T
-        ) {
+        ) -> Bool {
             if let existing {
                 guard incomingDate > currentDate(existing) else {
                     summary.skipped += 1
-                    return
+                    return false
                 }
                 apply(existing)
                 summary.updated += 1
-            } else {
-                let created = create()
-                context.insert(created)
-                apply(created)
-                summary.created += 1
+                return true
             }
+            let created = create()
+            context.insert(created)
+            apply(created)
+            summary.created += 1
+            return true
         }
 
         for dto in archive.workspaces {
-            merge(
+            _ = merge(
                 existing: workspaces[dto.id], incomingDate: dto.updatedAt,
                 currentDate: { $0.updatedAt },
                 apply: { model in
@@ -345,7 +361,7 @@ public enum BackupService {
         }
 
         for dto in archive.lists {
-            merge(
+            _ = merge(
                 existing: lists[dto.id], incomingDate: dto.updatedAt,
                 currentDate: { $0.updatedAt },
                 apply: { model in
@@ -361,7 +377,7 @@ public enum BackupService {
         }
 
         for dto in archive.projects {
-            merge(
+            _ = merge(
                 existing: projects[dto.id], incomingDate: dto.updatedAt,
                 currentDate: { $0.updatedAt },
                 apply: { model in
@@ -379,7 +395,7 @@ public enum BackupService {
         }
 
         for dto in archive.tasks {
-            merge(
+            _ = merge(
                 existing: tasks[dto.id], incomingDate: dto.updatedAt,
                 currentDate: { $0.updatedAt },
                 apply: { model in
@@ -411,7 +427,7 @@ public enum BackupService {
         }
 
         for dto in archive.segments {
-            merge(
+            _ = merge(
                 existing: segments[dto.id], incomingDate: dto.updatedAt,
                 currentDate: { $0.updatedAt },
                 apply: { model in
@@ -433,7 +449,7 @@ public enum BackupService {
         }
 
         for dto in archive.subtasks {
-            merge(
+            _ = merge(
                 existing: subtasks[dto.id], incomingDate: dto.updatedAt,
                 currentDate: { $0.updatedAt },
                 apply: { model in
@@ -448,7 +464,7 @@ public enum BackupService {
         }
 
         for dto in archive.maps {
-            merge(
+            _ = merge(
                 existing: maps[dto.id], incomingDate: dto.updatedAt,
                 currentDate: { $0.updatedAt },
                 apply: { model in
@@ -468,8 +484,9 @@ public enum BackupService {
 
         // Nodes are merged before parents are linked, so a child arriving first
         // still finds its parent in the second pass below.
+        var touchedNodeIDs: Set<UUID> = []
         for dto in archive.mapNodes {
-            merge(
+            let wrote = merge(
                 existing: mapNodes[dto.id], incomingDate: dto.updatedAt,
                 currentDate: { $0.updatedAt },
                 apply: { model in
@@ -485,14 +502,28 @@ public enum BackupService {
                 },
                 create: { MapNode(title: dto.title) }
             )
+            if wrote { touchedNodeIDs.insert(dto.id) }
         }
+
+        // Parents are linked in a second pass so a child arriving before its
+        // parent still finds it. Only nodes this import actually wrote are
+        // relinked — reparenting a record we skipped for being older would
+        // overwrite a newer local edit by the back door.
         for dto in archive.mapNodes {
-            guard let node = mapNodes[dto.id] else { continue }
-            node.parent = dto.parentID.flatMap { mapNodes[$0] }
+            guard touchedNodeIDs.contains(dto.id), let node = mapNodes[dto.id] else { continue }
+            guard let parentID = dto.parentID, let parent = mapNodes[parentID] else {
+                node.parent = nil
+                continue
+            }
+            // A corrupt or hostile archive can name a parent that is the node
+            // itself or one of its own descendants. Left unchecked that builds a
+            // cycle, and the next read of the tree recurses until the app dies.
+            guard !wouldCreateCycle(child: node, parent: parent) else { continue }
+            node.parent = parent
         }
 
         for dto in archive.notes {
-            merge(
+            _ = merge(
                 existing: notes[dto.id], incomingDate: dto.updatedAt,
                 currentDate: { $0.updatedAt },
                 apply: { model in
@@ -510,7 +541,7 @@ public enum BackupService {
         }
 
         for dto in archive.noteBlocks {
-            merge(
+            _ = merge(
                 existing: noteBlocks[dto.id], incomingDate: dto.updatedAt,
                 currentDate: { $0.updatedAt },
                 apply: { model in

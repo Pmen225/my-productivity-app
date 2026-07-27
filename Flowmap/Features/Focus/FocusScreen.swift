@@ -350,7 +350,7 @@ struct FocusScreen: View {
             .foregroundStyle(.white)
             .padding(.horizontal, FlowSpacing.l)
             .padding(.vertical, FlowSpacing.s)
-            .background(Capsule().fill(Color.black.opacity(0.7)))
+            .background(Capsule().fill(FlowTheme.popoverSurface))
             .transition(.opacity)
             .accessibilityAddTraits(.updatesFrequently)
     }

@@ -43,7 +43,7 @@ struct PhoneRootView: View {
                 .tag(DeepLink.focus)
 
                 NavigationStack {
-                    LibraryView(showingAssistant: $showingAssistant)
+                    LibraryView(showingAssistant: $showingAssistant, onSearchResult: navigate(to:))
                 }
                 .tabItem { Label("Library", systemImage: "square.stack") }
                 .tag(DeepLink.library)
@@ -109,6 +109,10 @@ struct LibraryView: View {
     @Query(sort: \TaskList.sortOrder) private var lists: [TaskList]
 
     @Binding var showingAssistant: Bool
+    /// Routes a chosen search result, so a Library search behaves like the
+    /// shell's own — selecting a result must actually go somewhere.
+    let onSearchResult: (SearchResult) -> Void
+
     @State private var showingSearch = false
     @State private var showingCapture = false
 
@@ -169,7 +173,7 @@ struct LibraryView: View {
             }
         }
         .sheet(isPresented: $showingSearch) {
-            GlobalSearchView { _ in }
+            GlobalSearchView { result in onSearchResult(result) }
         }
         .sheet(isPresented: $showingCapture) {
             QuickCaptureView().presentationDetents([.height(300)])

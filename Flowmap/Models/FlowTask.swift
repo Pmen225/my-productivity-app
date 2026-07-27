@@ -35,7 +35,7 @@ public final class FlowTask {
     public var carryoverCount: Int = 0
     public var lastCarriedAt: Date?
 
-    // MARK: Relationships
+    // MARK: - Relationships
 
     public var workspace: Workspace?
     public var list: TaskList?
@@ -56,7 +56,7 @@ public final class FlowTask {
     @Relationship(deleteRule: .cascade, inverse: \FocusSession.task)
     public var focusSessions: [FocusSession]?
 
-    // MARK: Computed enum accessors
+    // MARK: - Computed enum accessors
 
     public var status: TaskStatus {
         get { TaskStatus(rawValue: statusRaw) ?? .inbox }

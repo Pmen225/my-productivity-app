@@ -258,7 +258,11 @@ public struct SchedulingEngine {
             guard remaining > 0 else { break }
             guard let currentDay = calendar.date(byAdding: .day, value: offset, to: day) else { break }
             let dayKey = calendar.startOfDay(for: currentDay)
-            let busy = busyByDay[dayKey] ?? []
+            // Busy intervals are bucketed by the day they *start*, so a block
+            // running through midnight lives in the previous day's bucket. Both
+            // are pulled in; `freeSlots` then clips by real overlap.
+            let previousKey = calendar.date(byAdding: .day, value: -1, to: dayKey) ?? dayKey
+            let busy = (busyByDay[dayKey] ?? []) + (busyByDay[previousKey] ?? [])
             let floor = offset == 0 ? notBefore : nil
 
             for slot in freeSlots(on: currentDay, busy: busy, notBefore: floor) {

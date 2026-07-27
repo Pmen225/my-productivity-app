@@ -29,7 +29,10 @@ public final class FocusEngine {
     private let context: ModelContext
     private let settings: AppSettings
     private let calendar: Calendar
-    private let externalEvents: [ExternalCalendarEvent]
+    /// Read fresh on every use. A continuation placed by the focus timer must
+    /// respect the user's real calendar, and a snapshot taken at init would be
+    /// empty at launch and stale forever after.
+    public var externalEventsProvider: () -> [ExternalCalendarEvent] = { [] }
 
     /// The session currently on screen, if any.
     public private(set) var activeSession: FocusSession?
@@ -46,8 +49,8 @@ public final class FocusEngine {
     ) {
         self.context = context
         self.settings = settings
-        self.externalEvents = externalEvents
         self.calendar = calendar
+        self.externalEventsProvider = { externalEvents }
         self.activeSession = Self.findRunningSession(in: context)
     }
 
@@ -68,7 +71,7 @@ public final class FocusEngine {
         SchedulingService(
             context: context,
             settings: settings,
-            externalEvents: externalEvents,
+            externalEvents: externalEventsProvider(),
             calendar: calendar
         )
     }
@@ -124,7 +127,7 @@ public final class FocusEngine {
     @discardableResult
     public func start(task: FlowTask, minutes: Int? = nil, now: Date = Date()) -> FocusSession? {
         finishActiveSession(outcome: .skipped, now: now)
-        let length = minutes ?? max(5, task.unscheduledMinutes > 0 ? task.unscheduledMinutes : task.estimatedMinutes)
+        let length = minutes ?? max(SchedulingEngine.snapMinutes, task.unscheduledMinutes > 0 ? task.unscheduledMinutes : task.estimatedMinutes)
         return begin(task: task, segment: task.segment(at: now), seconds: Double(length) * 60, now: now)
     }
 

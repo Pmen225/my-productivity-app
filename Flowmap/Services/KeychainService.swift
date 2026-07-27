@@ -80,11 +80,13 @@ public enum KeychainService {
         get(account: account) != nil
     }
 
-    /// What Settings shows instead of the key. The value itself is never rendered.
+    /// What Settings shows instead of the key.
+    ///
+    /// Deliberately carries no characters of the secret at all — not even the
+    /// last few. The only thing the user needs to know here is whether a key is
+    /// present, and a trailing fragment is still part of the key.
     public static func maskedDescription(account: String) -> String {
-        guard let key = get(account: account) else { return "No key saved" }
-        let suffix = key.suffix(4)
-        return "Saved · ends in \(suffix)"
+        hasKey(account: account) ? "Saved · ••••••••" : "No key saved"
     }
 
     /// Strips anything that looks like a key from text heading for a log or an

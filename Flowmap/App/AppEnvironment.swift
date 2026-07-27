@@ -33,6 +33,12 @@ public final class AppEnvironment {
         self.notificationService = NotificationService()
         self.searchService = SearchService(context: context)
         self.focusEngine = FocusEngine(context: context, settings: settings)
+        // Wired after init so focus continuations see the same calendar the
+        // planner does, refreshed rather than snapshotted.
+        let calendarService = self.calendarService
+        self.focusEngine.externalEventsProvider = {
+            calendarService.busyEvents(in: calendarService.events)
+        }
     }
 
     /// The settings record, created on first launch.

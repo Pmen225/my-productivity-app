@@ -131,6 +131,8 @@ private struct AddEventSheet: View {
     @State private var title = ""
     @State private var start: Date
     @State private var end: Date
+    /// Shown when the chosen slot is already taken.
+    @State private var refusal: String?
 
     init(anchorDate: Date, onDismiss: @escaping () -> Void) {
         self.anchorDate = anchorDate
@@ -147,6 +149,13 @@ private struct AddEventSheet: View {
                     TextField("Title", text: $title)
                     DatePicker("Starts", selection: $start)
                     DatePicker("Ends", selection: $end, in: start...)
+                }
+                if let refusal {
+                    Section {
+                        Label(refusal, systemImage: "exclamationmark.triangle")
+                            .font(FlowFont.secondary)
+                            .foregroundStyle(FlowTheme.accent)
+                    }
                 }
             }
             .navigationTitle("Add Event")
@@ -166,7 +175,13 @@ private struct AddEventSheet: View {
     }
 
     private func save() {
-        let minutes = max(5, Int(end.timeIntervalSince(start) / 60))
+        let minutes = max(SchedulingEngine.snapMinutes, Int(end.timeIntervalSince(start) / 60))
+        // The slot has to be free. Inserting a segment directly would be a second
+        // placement path with no overlap check, which is how double-booking gets in.
+        guard let flow, flow.scheduling().canPlace(minutes: minutes, at: start) else {
+            refusal = "That time is already taken. Pick a free slot."
+            return
+        }
         let task = FlowTask(
             title: title.trimmingCharacters(in: .whitespacesAndNewlines),
             estimatedMinutes: minutes,
@@ -174,22 +189,19 @@ private struct AddEventSheet: View {
             workspace: nil
         )
         task.isLockedInSchedule = true
-        let segment = TaskSegment(
-            task: task,
-            startDate: start,
-            endDate: end,
-            isLocked: true,
-            source: .manual
-        )
         context.insert(task)
-        context.insert(segment)
-        try? context.save()
-        if let flow {
-            flow.notificationService.rescheduleAll(
-                segments: flow.upcomingSegments(from: flow.now),
-                settings: flow.settings
-            )
+        guard let segment = flow.scheduling().schedule(task: task, at: start, minutes: minutes) else {
+            context.delete(task)
+            refusal = "That time is already taken. Pick a free slot."
+            return
         }
+        // An event is a fixed commitment, so its block is locked.
+        segment.isLocked = true
+        try? context.save()
+        flow.notificationService.rescheduleAll(
+            segments: flow.upcomingSegments(from: flow.now),
+            settings: flow.settings
+        )
         onDismiss()
     }
 }
@@ -206,6 +218,8 @@ private struct AddFocusBlockSheet: View {
     @State private var title = "Focus block"
     @State private var start: Date
     @State private var minutes = 25
+    /// Shown when the chosen slot is already taken.
+    @State private var refusal: String?
 
     init(anchorDate: Date, onDismiss: @escaping () -> Void) {
         self.anchorDate = anchorDate
@@ -220,6 +234,13 @@ private struct AddFocusBlockSheet: View {
                     TextField("Title", text: $title)
                     DatePicker("Starts", selection: $start)
                     Stepper("Length: \(DurationFormatter.compact(minutes: minutes))", value: $minutes, in: 5...240, step: 5)
+                }
+                if let refusal {
+                    Section {
+                        Label(refusal, systemImage: "exclamationmark.triangle")
+                            .font(FlowFont.secondary)
+                            .foregroundStyle(FlowTheme.accent)
+                    }
                 }
             }
             .navigationTitle("Add Focus Block")
@@ -239,28 +260,27 @@ private struct AddFocusBlockSheet: View {
     }
 
     private func save() {
-        let end = start.addingTimeInterval(TimeInterval(minutes * 60))
+        guard let flow, flow.scheduling().canPlace(minutes: minutes, at: start) else {
+            refusal = "That time is already taken. Pick a free slot."
+            return
+        }
         let task = FlowTask(
             title: title.trimmingCharacters(in: .whitespacesAndNewlines),
             estimatedMinutes: minutes,
             iconName: "timer",
             workspace: nil
         )
-        let segment = TaskSegment(
-            task: task,
-            startDate: start,
-            endDate: end,
-            source: .manual
-        )
         context.insert(task)
-        context.insert(segment)
-        try? context.save()
-        if let flow {
-            flow.notificationService.rescheduleAll(
-                segments: flow.upcomingSegments(from: flow.now),
-                settings: flow.settings
-            )
+        guard flow.scheduling().schedule(task: task, at: start, minutes: minutes) != nil else {
+            context.delete(task)
+            refusal = "That time is already taken. Pick a free slot."
+            return
         }
+        try? context.save()
+        flow.notificationService.rescheduleAll(
+            segments: flow.upcomingSegments(from: flow.now),
+            settings: flow.settings
+        )
         onDismiss()
     }
 }

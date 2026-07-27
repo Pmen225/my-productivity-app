@@ -87,19 +87,31 @@ public final class MapNode {
 
     /// Self and all descendants, depth-first in display order.
     public var subtreeNodes: [MapNode] {
-        var result: [MapNode] = [self]
-        for child in orderedChildren {
-            result.append(contentsOf: child.subtreeNodes)
-        }
-        return result
+        collectSubtree(respectingCollapse: false, seen: [])
     }
 
     /// Nodes drawn when ancestors' collapse state is respected.
     public var visibleSubtreeNodes: [MapNode] {
+        collectSubtree(respectingCollapse: true, seen: [])
+    }
+
+    /// Walks the subtree while refusing to visit a node twice.
+    ///
+    /// A parent chain is meant to be acyclic, but an imported backup can carry a
+    /// corrupted `parentID`. Without this guard the first read of the tree after
+    /// such an import would recurse until the app died.
+    private func collectSubtree(respectingCollapse: Bool, seen: Set<UUID>) -> [MapNode] {
+        guard !seen.contains(id) else { return [] }
+        var visited = seen
+        visited.insert(id)
+
         var result: [MapNode] = [self]
-        guard !isCollapsed else { return result }
+        if respectingCollapse, isCollapsed { return result }
         for child in orderedChildren {
-            result.append(contentsOf: child.visibleSubtreeNodes)
+            result.append(
+                contentsOf: child.collectSubtree(respectingCollapse: respectingCollapse, seen: visited)
+            )
+            visited.formUnion(result.map(\.id))
         }
         return result
     }
