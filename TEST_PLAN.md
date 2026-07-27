@@ -2,18 +2,23 @@
 
 ## How to run
 
-```bash
-./scripts/build.sh mac test      # unit + UI tests on macOS
-./scripts/build.sh ios test      # unit + UI tests on the iOS simulator
-```
-
-Unit tests alone, which is the fast loop:
+Run the unit tests on the **iOS simulator** — that is the verified path:
 
 ```bash
 xcodebuild -project Flowmap.xcodeproj -scheme Flowmap \
-  -destination 'platform=macOS' -only-testing:FlowmapTests \
-  CODE_SIGNING_ALLOWED=NO test
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+  -only-testing:FlowmapTests CODE_SIGNING_ALLOWED=NO test
 ```
+
+Latest run: **73 tests in 14 suites, all passing** (`** TEST SUCCEEDED **`).
+
+The same suite on a macOS destination currently hangs before the test runner
+connects. This is an environment problem, not a code one: macOS gates XCTest
+behind a "trying to Enable UI Automation" prompt that needs Touch ID or the
+user's password. That prompt was deliberately left unanswered, so the macOS
+runner cannot establish its control session. Granting it once, or running
+`xcodebuild ... -destination 'platform=macOS' test` from Xcode and approving the
+prompt, unblocks macOS test runs. The macOS **build** is unaffected and green.
 
 ## Strategy
 

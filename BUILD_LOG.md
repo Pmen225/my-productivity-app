@@ -107,3 +107,22 @@ remaining steps.
 | 5 | Full suite green | 60 unit tests passing, 0 failures |
 | 6 | App runs with real data | Demo seed writes 1 workspace, 7 tasks, 7 segments, 13 map nodes, 19 subtasks; auto-plan schedules all 7 |
 | 7 | Screens inspected and defects fixed | 11 screenshots in `Screenshots/`, six defects found and fixed |
+
+## Test execution note
+
+The unit suite is verified on the **iOS simulator**: 73 tests in 14 suites, all
+passing, `** TEST SUCCEEDED **`, exit code 0.
+
+Running the identical suite against a macOS destination hangs with
+`The test runner hung before establishing connection`. The cause is
+environmental, not a defect in the app: macOS requires explicit approval of an
+"XCTest is trying to Enable UI Automation" prompt, which asks for Touch ID or
+the user's password. That prompt was left unanswered rather than bypassed, so
+the macOS test runner cannot open its control session. The macOS *build* is
+unaffected and green; approving that prompt once restores macOS test runs.
+
+Diagnosing this did surface one genuine defect, now fixed: the Today timeline
+exports the drag type `com.flowmap.timelineitem` via `UTType(exportedAs:)`
+without declaring it in `Info.plist`, which logged a type-declaration error on
+every drag session. It is now declared in `project.yml` and verified present in
+the built bundle.
