@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 /// Shared hour-grid positioning for one day, used by both the Day and Week
@@ -103,6 +104,7 @@ struct CalendarTimelineColumn: View {
 struct CalendarDayView: View {
     @Environment(\.flow) private var flow
     @Environment(\.colorScheme) private var scheme
+    @Query(sort: \TaskSegment.startDate) private var allSegments: [TaskSegment]
 
     let day: Date
 
@@ -129,8 +131,7 @@ struct CalendarDayView: View {
     }
 
     private var segments: [TaskSegment] {
-        guard let flow else { return [] }
-        return flow.scheduling().allSegments()
+        allSegments
             .filter { $0.state.occupiesTimeline }
             .filter { $0.startDate < dayInterval.end && $0.endDate > dayInterval.start }
     }
@@ -173,6 +174,7 @@ struct CalendarDayView: View {
 /// weight than Day — good for orientation, not dense editing.
 struct CalendarWeekView: View {
     @Environment(\.flow) private var flow
+    @Query(sort: \TaskSegment.startDate) private var allSegments: [TaskSegment]
 
     let anchorDate: Date
     let onSelectDay: (Date) -> Void
@@ -225,7 +227,7 @@ struct CalendarWeekView: View {
 
     private func column(for day: Date, showsHourLabels: Bool) -> some View {
         let interval = CalendarDateMath.dayInterval(containing: day, calendar: calendar)
-        let segments = (flow?.scheduling().allSegments() ?? [])
+        let segments = allSegments
             .filter { $0.state.occupiesTimeline }
             .filter { $0.startDate < interval.end && $0.endDate > interval.start }
         let events = (flow?.calendarService.events ?? [])

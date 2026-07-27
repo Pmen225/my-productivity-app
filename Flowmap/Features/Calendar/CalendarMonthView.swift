@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 /// Month view is for navigation, not dense editing: each cell shows a day
@@ -6,6 +7,7 @@ import SwiftUI
 struct CalendarMonthView: View {
     @Environment(\.flow) private var flow
     @Environment(\.colorScheme) private var scheme
+    @Query(sort: \TaskSegment.startDate) private var allSegments: [TaskSegment]
 
     let anchorDate: Date
     let onSelectDay: (Date) -> Void
@@ -97,15 +99,14 @@ struct CalendarMonthView: View {
     /// Flowmap segments plus external events overlapping the day, de-duplicated
     /// by identity so the same item can never inflate the count twice.
     private func busyCount(in interval: DateInterval) -> Int {
-        guard let flow else { return 0 }
         let segmentIDs = Set(
-            flow.scheduling().allSegments()
+            allSegments
                 .filter { $0.state.occupiesTimeline }
                 .filter { $0.startDate < interval.end && $0.endDate > interval.start }
                 .map(\.id)
         )
         let eventIDs = Set(
-            flow.calendarService.events
+            (flow?.calendarService.events ?? [])
                 .filter { $0.start < interval.end && $0.end > interval.start }
                 .map(\.id)
         )

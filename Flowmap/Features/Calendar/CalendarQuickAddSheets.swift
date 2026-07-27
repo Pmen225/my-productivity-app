@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 /// The Calendar `+` menu: deliberately exactly these three actions — never a
@@ -66,7 +67,7 @@ struct CalendarQuickAddSheetHost: View {
 /// A plain task, unscheduled by default — it lands in the Inbox and gets
 /// planned like any other task. No segment is created here.
 private struct AddTaskSheet: View {
-    @Environment(\.flow) private var flow
+    @Environment(\.modelContext) private var context
     let anchorDate: Date
     let onDismiss: () -> Void
 
@@ -106,15 +107,14 @@ private struct AddTaskSheet: View {
     }
 
     private func save() {
-        guard let flow else { onDismiss(); return }
         let task = FlowTask(
             title: title.trimmingCharacters(in: .whitespacesAndNewlines),
             estimatedMinutes: estimatedMinutes,
             dueDate: hasDueDate ? dueDate : nil,
             workspace: nil
         )
-        flow.context.insert(task)
-        try? flow.context.save()
+        context.insert(task)
+        try? context.save()
         onDismiss()
     }
 }
@@ -124,6 +124,7 @@ private struct AddTaskSheet: View {
 /// than a second "event" type, so it shows up everywhere a task does.
 private struct AddEventSheet: View {
     @Environment(\.flow) private var flow
+    @Environment(\.modelContext) private var context
     let anchorDate: Date
     let onDismiss: () -> Void
 
@@ -165,7 +166,6 @@ private struct AddEventSheet: View {
     }
 
     private func save() {
-        guard let flow else { onDismiss(); return }
         let minutes = max(5, Int(end.timeIntervalSince(start) / 60))
         let task = FlowTask(
             title: title.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -181,13 +181,15 @@ private struct AddEventSheet: View {
             isLocked: true,
             source: .manual
         )
-        flow.context.insert(task)
-        flow.context.insert(segment)
-        try? flow.context.save()
-        flow.notificationService.rescheduleAll(
-            segments: flow.upcomingSegments(from: flow.now),
-            settings: flow.settings
-        )
+        context.insert(task)
+        context.insert(segment)
+        try? context.save()
+        if let flow {
+            flow.notificationService.rescheduleAll(
+                segments: flow.upcomingSegments(from: flow.now),
+                settings: flow.settings
+            )
+        }
         onDismiss()
     }
 }
@@ -197,6 +199,7 @@ private struct AddEventSheet: View {
 /// `FocusEngine.queue(for:)`, which only offers open-status tasks.
 private struct AddFocusBlockSheet: View {
     @Environment(\.flow) private var flow
+    @Environment(\.modelContext) private var context
     let anchorDate: Date
     let onDismiss: () -> Void
 
@@ -236,7 +239,6 @@ private struct AddFocusBlockSheet: View {
     }
 
     private func save() {
-        guard let flow else { onDismiss(); return }
         let end = start.addingTimeInterval(TimeInterval(minutes * 60))
         let task = FlowTask(
             title: title.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -250,13 +252,15 @@ private struct AddFocusBlockSheet: View {
             endDate: end,
             source: .manual
         )
-        flow.context.insert(task)
-        flow.context.insert(segment)
-        try? flow.context.save()
-        flow.notificationService.rescheduleAll(
-            segments: flow.upcomingSegments(from: flow.now),
-            settings: flow.settings
-        )
+        context.insert(task)
+        context.insert(segment)
+        try? context.save()
+        if let flow {
+            flow.notificationService.rescheduleAll(
+                segments: flow.upcomingSegments(from: flow.now),
+                settings: flow.settings
+            )
+        }
         onDismiss()
     }
 }

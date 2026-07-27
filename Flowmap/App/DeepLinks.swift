@@ -12,6 +12,19 @@ public enum DeepLink: String, CaseIterable, Sendable {
 
     public static let scheme = "flowmap"
 
+    /// Menu-item and tab wording for this destination.
+    public var title: String {
+        switch self {
+        case .today: "Today"
+        case .focus: "Focus"
+        case .map: "Map"
+        case .calendar: "Calendar"
+        case .library: "Library"
+        case .inbox: "Inbox"
+        case .assistant: "Assistant"
+        }
+    }
+
     public var url: URL? { URL(string: "\(Self.scheme)://\(rawValue)") }
 
     public init?(url: URL) {

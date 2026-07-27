@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 /// Agenda: a flat, scrollable list of days grouped by date, each showing its
@@ -6,6 +7,7 @@ import SwiftUI
 struct CalendarAgendaView: View {
     @Environment(\.flow) private var flow
     @Environment(\.colorScheme) private var scheme
+    @Query(sort: \TaskSegment.startDate) private var allSegments: [TaskSegment]
 
     let anchorDate: Date
     let dayCount: Int
@@ -61,7 +63,7 @@ struct CalendarAgendaView: View {
         let interval = CalendarDateMath.dayInterval(containing: day, calendar: calendar)
         let events = (flow?.calendarService.events ?? [])
             .filter { $0.start < interval.end && $0.end > interval.start }
-        let segments = (flow?.scheduling().allSegments() ?? [])
+        let segments = allSegments
             .filter { $0.state.occupiesTimeline }
             .filter { $0.startDate < interval.end && $0.endDate > interval.start }
             .sorted { $0.startDate < $1.startDate }
