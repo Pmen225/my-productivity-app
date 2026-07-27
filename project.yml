@@ -79,6 +79,12 @@ targets:
       base:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.flowmap.app.tests
+        # The host binary sits at a different path on each platform, so the
+        # multiplatform target needs both spelled out.
+        TEST_HOST[sdk=macosx*]: "$(BUILT_PRODUCTS_DIR)/Flowmap.app/Contents/MacOS/Flowmap"
+        TEST_HOST[sdk=iphoneos*]: "$(BUILT_PRODUCTS_DIR)/Flowmap.app/Flowmap"
+        TEST_HOST[sdk=iphonesimulator*]: "$(BUILT_PRODUCTS_DIR)/Flowmap.app/Flowmap"
+        BUNDLE_LOADER: "$(TEST_HOST)"
 
   FlowmapUITests:
     type: bundle.ui-testing

@@ -38,10 +38,14 @@ public enum ModelContainerFactory {
     /// without an iCloud account.
     @MainActor
     public static func makeAppContainer() -> ModelContainer {
+        // `.automatic` reads the container from the app's iCloud entitlement.
+        // Naming the container explicitly instead would hard-fail at launch on an
+        // unsigned build, where the entitlement is not applied — the entitlement
+        // and identifier stay declared in Flowmap.entitlements either way.
         let cloudConfiguration = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: false,
-            cloudKitDatabase: .private(cloudKitContainerIdentifier)
+            cloudKitDatabase: .automatic
         )
 
         do {

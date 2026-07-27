@@ -1,0 +1,324 @@
+import SwiftData
+import SwiftUI
+
+/// Where a `TaskListScreen` gets its tasks from: a query-backed `SmartView`
+/// (Inbox, Today, Upcoming…) or a user-created `TaskList`. Both are queries
+/// over the one `FlowTask` store — neither duplicates it.
+public enum TaskListSource: Hashable {
+    case smartView(SmartView)
+    case userList(TaskList)
+
+    public var title: String {
+        switch self {
+        case .smartView(let view): return view.displayName
+        case .userList(let list): return list.name
+        }
+    }
+
+    public var symbolName: String {
+        switch self {
+        case .smartView(let view): return view.symbolName
+        case .userList(let list): return list.iconName
+        }
+    }
+
+    public var emptyMessage: String {
+        switch self {
+        case .smartView(let view): return view.emptyMessage
+        case .userList: return "Nothing here yet."
+        }
+    }
+
+    /// Only the Completed view can't sensibly receive new tasks straight in.
+    public var allowsQuickAdd: Bool {
+        if case .smartView(.completed) = self { return false }
+        return true
+    }
+}
+
+/// Renders any smart view or user list. This is the one task-list screen in
+/// the app — Today, Upcoming, Anytime and so on are the same view with a
+/// different query, never a separately built container.
+public struct TaskListScreen: View {
+    @Environment(\.flow) private var flow
+    @Environment(\.modelContext) private var context
+    @Environment(\.colorScheme) private var scheme
+    @Query(sort: [SortDescriptor(\FlowTask.sortOrder), SortDescriptor(\FlowTask.createdAt)])
+    private var allTasks: [FlowTask]
+
+    public let source: TaskListSource
+
+    @State private var isAddingTask = false
+    @State private var searchText = ""
+    @State private var filterPriority: TaskPriority?
+    @State private var showEllipsisMenu = false
+    @State private var showCreateList = false
+    @State private var showEditLists = false
+    @State private var selectedTask: FlowTask?
+
+    @SmartViewGrouping private var smartGrouping: GroupingMode
+
+    #if os(macOS)
+    @State private var macSelection: Set<UUID> = []
+    #endif
+
+    public init(source: TaskListSource) {
+        self.source = source
+        switch source {
+        case .smartView(let view):
+            _smartGrouping = SmartViewGrouping(view)
+        case .userList:
+            _smartGrouping = SmartViewGrouping(.inbox)
+        }
+    }
+
+    public var body: some View {
+        content
+            .navigationTitle(source.title)
+            .searchable(text: $searchText, placement: .automatic, prompt: "Search tasks")
+            .toolbar { toolbarContent }
+            .popover(isPresented: $showEllipsisMenu) {
+                ListEllipsisMenu(
+                    isPresented: $showEllipsisMenu,
+                    currentGrouping: currentGrouping,
+                    onSelectGrouping: setGrouping,
+                    onCreateList: { showCreateList = true },
+                    onEditLists: { showEditLists = true }
+                )
+            }
+            .sheet(isPresented: $showCreateList) { CreateListSheet() }
+            .sheet(isPresented: $showEditLists) { EditListsView() }
+            #if os(iOS)
+            .sheet(item: $selectedTask) { task in
+                NavigationStack { TaskDetailInspector(task: task) }
+            }
+            #else
+            .inspector(isPresented: singleSelectionInspectorBinding) {
+                if let task = singleSelectedTask {
+                    TaskDetailInspector(task: task)
+                }
+            }
+            #endif
+    }
+
+    // MARK: - Content
+
+    @ViewBuilder
+    private var content: some View {
+        #if os(macOS)
+        List(selection: $macSelection) {
+            headerSection
+            taskSections
+        }
+        #else
+        List {
+            headerSection
+            taskSections
+        }
+        #endif
+    }
+
+    private var headerSection: some View {
+        Section {
+            if source.allowsQuickAdd {
+                CompactSectionHeader(
+                    title: source.title,
+                    count: filteredTasks.count,
+                    addLabel: "Add task",
+                    onAdd: { withAnimation(.snappy) { isAddingTask.toggle() } }
+                )
+                .listRowSeparator(.hidden)
+
+                if isAddingTask {
+                    QuickAddTaskView(
+                        smartView: smartViewIfAny,
+                        presetList: userListIfAny,
+                        onFinished: { withAnimation(.snappy) { isAddingTask = false } }
+                    )
+                    .listRowSeparator(.hidden)
+                }
+            } else {
+                CompactSectionHeader(title: source.title, count: filteredTasks.count)
+                    .listRowSeparator(.hidden)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var taskSections: some View {
+        if filteredTasks.isEmpty {
+            FlowEmptyState(symbol: source.symbolName, title: source.title, message: source.emptyMessage)
+                .listRowSeparator(.hidden)
+        } else {
+            ForEach(groupedSections, id: \.title) { section in
+                Section {
+                    ForEach(section.tasks) { task in
+                        row(for: task)
+                    }
+                    .onMove(
+                        perform: currentGrouping == .manual
+                            ? { offsets, destination in move(section.tasks, from: offsets, to: destination) }
+                            : nil
+                    )
+                } header: {
+                    if !section.title.isEmpty {
+                        Text(section.title)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func row(for task: FlowTask) -> some View {
+        #if os(macOS)
+        TaskRowView(task: task)
+            .tag(task.id)
+        #else
+        TaskRowView(task: task)
+            .contentShape(Rectangle())
+            .onTapGesture { selectedTask = task }
+        #endif
+    }
+
+    // MARK: - Toolbar
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            Menu {
+                Button {
+                    filterPriority = nil
+                } label: {
+                    Label("All priorities", systemImage: filterPriority == nil ? "checkmark" : "line.3.horizontal.decrease")
+                }
+                ForEach(TaskPriority.allCases, id: \.self) { priority in
+                    Button {
+                        filterPriority = priority
+                    } label: {
+                        Label(priority.displayName, systemImage: filterPriority == priority ? "checkmark" : priority.symbolName)
+                    }
+                }
+            } label: {
+                Image(systemName: filterPriority == nil ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+            }
+            .accessibilityLabel("Filter by priority")
+        }
+        #if os(macOS)
+        if !macSelection.isEmpty {
+            ToolbarItem { Button("Complete", action: completeSelected) }
+            ToolbarItem { Button("Delete", role: .destructive, action: deleteSelected) }
+        }
+        #endif
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                showEllipsisMenu = true
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+            .accessibilityLabel("List options")
+        }
+    }
+
+    // MARK: - Filtering
+
+    private var filteredTasks: [FlowTask] {
+        var base: [FlowTask]
+        switch source {
+        case .smartView(let view):
+            base = view.matches(allTasks, now: flow?.now ?? Date())
+        case .userList(let list):
+            base = allTasks.filter { $0.list?.id == list.id && $0.status != .cancelled }
+        }
+        if let filterPriority {
+            base = base.filter { $0.priority == filterPriority }
+        }
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !query.isEmpty {
+            base = base.filter {
+                $0.title.localizedCaseInsensitiveContains(query)
+                    || $0.details.localizedCaseInsensitiveContains(query)
+            }
+        }
+        return base
+    }
+
+    /// `SmartView.sections(_:grouping:)` doesn't depend on which case `self`
+    /// is — only on `grouping` — so any instance groups correctly. Using it
+    /// here avoids a second copy of that sorting logic.
+    private var groupedSections: [(title: String, tasks: [FlowTask])] {
+        SmartView.allTasks.sections(filteredTasks, grouping: currentGrouping)
+    }
+
+    // MARK: - Grouping persistence
+
+    private var currentGrouping: GroupingMode {
+        switch source {
+        case .smartView: return smartGrouping
+        case .userList(let list): return list.groupingMode
+        }
+    }
+
+    private func setGrouping(_ mode: GroupingMode) {
+        switch source {
+        case .smartView: smartGrouping = mode
+        case .userList(let list):
+            list.groupingMode = mode
+            try? context.save()
+        }
+    }
+
+    // MARK: - Quick add context
+
+    private var smartViewIfAny: SmartView? {
+        if case .smartView(let view) = source { return view }
+        return nil
+    }
+
+    private var userListIfAny: TaskList? {
+        if case .userList(let list) = source { return list }
+        return nil
+    }
+
+    // MARK: - Manual reorder
+
+    private func move(_ tasks: [FlowTask], from offsets: IndexSet, to destination: Int) {
+        var reordered = tasks
+        reordered.move(fromOffsets: offsets, toOffset: destination)
+        for (index, task) in reordered.enumerated() { task.sortOrder = index }
+        try? context.save()
+    }
+
+    // MARK: - Mac multi-select
+
+    #if os(macOS)
+    private var singleSelectedTask: FlowTask? {
+        guard macSelection.count == 1, let id = macSelection.first else { return nil }
+        return allTasks.first { $0.id == id }
+    }
+
+    private var singleSelectionInspectorBinding: Binding<Bool> {
+        Binding(get: { singleSelectedTask != nil }, set: { if !$0 { macSelection = [] } })
+    }
+
+    private func completeSelected() {
+        withAnimation(.snappy) {
+            for task in allTasks where macSelection.contains(task.id) {
+                task.markCompleted()
+            }
+            try? context.save()
+            macSelection = []
+        }
+    }
+
+    private func deleteSelected() {
+        withAnimation(.snappy) {
+            for task in allTasks where macSelection.contains(task.id) {
+                context.delete(task)
+            }
+            try? context.save()
+            macSelection = []
+        }
+    }
+    #endif
+}

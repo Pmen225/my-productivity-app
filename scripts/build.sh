@@ -11,8 +11,13 @@ run() {
   local dest="$1" label="$2"
   echo "── $label ($ACTION) ──"
   local out
+  # Parallel agents each need their own build directory, or they fight over one
+  # DerivedData tree and fail for reasons unrelated to their code.
+  local derived=()
+  [ -n "$FLOWMAP_DERIVED" ] && derived=(-derivedDataPath "$FLOWMAP_DERIVED")
+
   out=$(xcodebuild -project Flowmap.xcodeproj -scheme Flowmap \
-        -destination "$dest" -configuration Debug \
+        -destination "$dest" -configuration Debug "${derived[@]}" \
         CODE_SIGNING_ALLOWED=NO "$ACTION" 2>&1)
   local code=$?
   if [ $code -eq 0 ]; then
