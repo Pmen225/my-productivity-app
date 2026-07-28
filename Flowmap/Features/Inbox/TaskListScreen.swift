@@ -54,6 +54,7 @@ public struct TaskListScreen: View {
     @State private var showEllipsisMenu = false
     @State private var showCreateList = false
     @State private var showEditLists = false
+    @State private var showDuel = false
     @State private var selectedTask: FlowTask?
 
     @SmartViewGrouping private var smartGrouping: GroupingMode
@@ -88,6 +89,7 @@ public struct TaskListScreen: View {
             }
             .sheet(isPresented: $showCreateList) { CreateListSheet() }
             .sheet(isPresented: $showEditLists) { EditListsView() }
+            .sheet(isPresented: $showDuel) { PrioritiseDuelView(tasks: filteredTasks) }
             #if os(iOS)
             .sheet(item: $selectedTask) { task in
                 NavigationStack { TaskDetailInspector(task: task) }
@@ -140,6 +142,20 @@ public struct TaskListScreen: View {
                         presetList: userListIfAny,
                         onFinished: { withAnimation(.snappy) { isAddingTask = false } }
                     )
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                }
+
+                // Hosted here rather than on a dedicated "Plan" screen, which
+                // this app does not have — the Inbox listing is the closest
+                // equivalent to the design's inbox-triage destination. See
+                // `PrioritiseDuelView`'s header comment.
+                if isDuelAvailable {
+                    SecondaryActionButton("Play the prioritise game", systemImage: "trophy") {
+                        showDuel = true
+                    }
+                    .accessibilityLabel("Play the prioritise game")
+                    .accessibilityHint("Pick which of two inbox tasks comes first, repeated for every pair, then reorder the inbox by the result")
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
                 }
@@ -290,6 +306,14 @@ public struct TaskListScreen: View {
     private var userListIfAny: TaskList? {
         if case .userList(let list) = source { return list }
         return nil
+    }
+
+    /// The prioritise duel only makes sense over the Inbox itself — Today,
+    /// Upcoming and user lists already have an order the duel would fight —
+    /// and only once there are at least two tasks to compare.
+    private var isDuelAvailable: Bool {
+        guard case .smartView(.inbox) = source else { return false }
+        return PrioritiseDuel.isAvailable(for: filteredTasks.map(\.id))
     }
 
     // MARK: - Manual reorder

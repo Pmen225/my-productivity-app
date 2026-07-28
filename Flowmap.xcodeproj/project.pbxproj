@@ -69,6 +69,7 @@
 		53844A385ED10BB0EA42BAAE /* SmartViewGroupingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD07FE51C52722CDCE4128EE /* SmartViewGroupingStore.swift */; };
 		5544F0A29E2635FB6499E158 /* WatchSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3262E8D2637654501AE38CE4 /* WatchSyncService.swift */; };
 		55E074FAF43279790C9E2B74 /* MacRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DD1471937A8A4EB83DFD666 /* MacRootView.swift */; };
+		561A9786DE4B16B112C91893 /* PrioritiseDuel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5551BB650F287F82F27DF2AB /* PrioritiseDuel.swift */; };
 		56832A79CB0A9D7204F891CA /* CalendarAccountRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CFB458CEA5ED386D8370B3E /* CalendarAccountRow.swift */; };
 		572DDAB89F87ABECE7F744C9 /* FocusAudioSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 222F426C16459359BDF8DB0F /* FocusAudioSettingsSection.swift */; };
 		576D4B7AEB1AA6DCFE184978 /* CalendarBlockViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AA2EB637D0D441F675876FF /* CalendarBlockViews.swift */; };
@@ -87,6 +88,7 @@
 		6F30178E6B9FAAEDBF61C5E5 /* GlobalSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 177E30013AEF5034640579DE /* GlobalSearchView.swift */; };
 		6F5E7DC0C48422173AC3EBBF /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEA5043D0E2B9FA0FEFCFA2D /* AppEnvironment.swift */; };
 		70A7EB2D9C4682154880F1E4 /* AssistantMessageRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06CC1F8183C75D6214F87C8A /* AssistantMessageRow.swift */; };
+		734B624565723171BB7CDE4B /* PrioritiseDuelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13DAD95BC2D214E0815A432A /* PrioritiseDuelTests.swift */; };
 		740DEF34CC2D4B4CF233D58A /* TaskListScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = B480BF47496357CFB1243A61 /* TaskListScreen.swift */; };
 		7528233C3F1BA3E8C1E5BA1E /* GoogleCalendarProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D8C21F7B1776BB9FB7C4302 /* GoogleCalendarProvider.swift */; };
 		7D304D0ADCFEB038C2954E42 /* EditListsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0B3651080E5FA47F0CB9A7A /* EditListsView.swift */; };
@@ -166,6 +168,7 @@
 		F0C7EFA91F54099ED1158577 /* MapOutlineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 027E10DFFDC2C8CACBA7AAEF /* MapOutlineView.swift */; };
 		F630617BAC04C36464319B9F /* PhoneRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1910EFCFB759F0FA0C47D492 /* PhoneRootView.swift */; };
 		F642801A24B8DD52BAAAEF5D /* FocusWheelGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 715CC141529F00C1FBEDA05B /* FocusWheelGeometry.swift */; };
+		F7E5DEDB705ED0D55157C8D0 /* PrioritiseDuelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46BCE57A53DEE94104E33F53 /* PrioritiseDuelView.swift */; };
 		F8A362602AF27CF1F4526B64 /* FlowmapWatchWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 4C48AC66A1C7F254B5B76F8B /* FlowmapWatchWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		FEF3C7C4C0269559555D04D7 /* WatchSyncPayloads.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E1CD4B33B95F97E8D052535 /* WatchSyncPayloads.swift */; };
 /* End PBXBuildFile section */
@@ -224,6 +227,7 @@
 		0E981EB10C62939C283ED05E /* CloudSyncStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncStatus.swift; sourceTree = "<group>"; };
 		12FB6F47260BEE53320D9F3C /* FlowChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowChrome.swift; sourceTree = "<group>"; };
 		1304A4AE2E3B366C873179AD /* NotificationSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSettingsSection.swift; sourceTree = "<group>"; };
+		13DAD95BC2D214E0815A432A /* PrioritiseDuelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrioritiseDuelTests.swift; sourceTree = "<group>"; };
 		14B4AE3AC055511103EDA15F /* TestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestSupport.swift; sourceTree = "<group>"; };
 		14D1F57BF06C28FA627A1C51 /* TimelineDragDrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineDragDrop.swift; sourceTree = "<group>"; };
 		14E268B5AA3DACFF8E93A9BF /* SchedulingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchedulingService.swift; sourceTree = "<group>"; };
@@ -261,10 +265,12 @@
 		42C7ACDC2383B2070CAE3863 /* QuickCommandParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickCommandParser.swift; sourceTree = "<group>"; };
 		44C495F40A7DD9C21174FB03 /* NoteBlock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteBlock.swift; sourceTree = "<group>"; };
 		456CAB4E8F890B1F08777A0F /* SmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmokeTests.swift; sourceTree = "<group>"; };
+		46BCE57A53DEE94104E33F53 /* PrioritiseDuelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrioritiseDuelView.swift; sourceTree = "<group>"; };
 		46EF00399F4D077E3B24DEF5 /* WatchRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRootView.swift; sourceTree = "<group>"; };
 		480665FD0AF4CF77A77B6D1E /* Spacing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Spacing.swift; sourceTree = "<group>"; };
 		4C48AC66A1C7F254B5B76F8B /* FlowmapWatchWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FlowmapWatchWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		501B9417F2666EAC5CF81025 /* Subtask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Subtask.swift; sourceTree = "<group>"; };
+		5551BB650F287F82F27DF2AB /* PrioritiseDuel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrioritiseDuel.swift; sourceTree = "<group>"; };
 		56CC30784A6DA0DA4A5838CB /* Flowmap.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Flowmap.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		57ABF4D658B9AFD07818B8CE /* SupportingEnums.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportingEnums.swift; sourceTree = "<group>"; };
 		5AEA5461D33FCC592DE802C6 /* FlowmapWatchWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowmapWatchWidget.swift; sourceTree = "<group>"; };
@@ -381,6 +387,7 @@
 				290204222CE5B358AD68E8F6 /* FocusVoiceScheduleTests.swift */,
 				2BEA6662C9F357223242197D /* GamificationTests.swift */,
 				06EE1F6A498560488D7AEFCE /* GoogleCalendarTests.swift */,
+				13DAD95BC2D214E0815A432A /* PrioritiseDuelTests.swift */,
 				86304997C9D32819EBDD206F /* ReviewRegressionTests.swift */,
 				2E31B3506918265E9FD29EFE /* SchedulingTests.swift */,
 				456CAB4E8F890B1F08777A0F /* SmokeTests.swift */,
@@ -521,6 +528,7 @@
 				20C468ABBC0E19C9A93FF318 /* CreateListSheet.swift */,
 				D0B3651080E5FA47F0CB9A7A /* EditListsView.swift */,
 				C6D1AFCE558D64E00D5AE795 /* ListEllipsisMenu.swift */,
+				46BCE57A53DEE94104E33F53 /* PrioritiseDuelView.swift */,
 				F457237C24E590647BD4DDF6 /* QuickAddTaskView.swift */,
 				CD07FE51C52722CDCE4128EE /* SmartViewGroupingStore.swift */,
 				8388A9C91062B2AA6C520547 /* TaskDetailInspector.swift */,
@@ -682,6 +690,7 @@
 				85B4135C8F542311B9A1D8BD /* GamificationService.swift */,
 				8C8CE9EB8CFBF49AF06A0E61 /* KeychainService.swift */,
 				2C81E91657B6D3F353AD5A11 /* NotificationService.swift */,
+				5551BB650F287F82F27DF2AB /* PrioritiseDuel.swift */,
 				B3323B2927957B2BF88DC714 /* SchedulingEngine.swift */,
 				14E268B5AA3DACFF8E93A9BF /* SchedulingService.swift */,
 				F36E263C9B2DD3C99296B67B /* SearchService.swift */,
@@ -912,6 +921,7 @@
 				0D0D9FFADCE4678DE5728CC9 /* FocusVoiceScheduleTests.swift in Sources */,
 				8CE47926BF9263C2B664A769 /* GamificationTests.swift in Sources */,
 				3487C3868E483B785EFDBDBE /* GoogleCalendarTests.swift in Sources */,
+				734B624565723171BB7CDE4B /* PrioritiseDuelTests.swift in Sources */,
 				86DE4BEBE5C4EAE1FD26C314 /* ReviewRegressionTests.swift in Sources */,
 				DBCA770ED3DF5E69935F5826 /* SchedulingTests.swift in Sources */,
 				A8290C73E415F4AC1D6644C5 /* SmokeTests.swift in Sources */,
@@ -1012,6 +1022,8 @@
 				5123FBCC089C3A6577B29097 /* NotificationSettingsSection.swift in Sources */,
 				F630617BAC04C36464319B9F /* PhoneRootView.swift in Sources */,
 				CD093F50EB7E73FD22A11941 /* PlanPreviewView.swift in Sources */,
+				561A9786DE4B16B112C91893 /* PrioritiseDuel.swift in Sources */,
+				F7E5DEDB705ED0D55157C8D0 /* PrioritiseDuelView.swift in Sources */,
 				0A6E48CBEC6945A5D8CBB59A /* ProgressMetrics.swift in Sources */,
 				DA8FF8A374E1D0FEC8E61E62 /* ProgressProjectRow.swift in Sources */,
 				1989127C1FE38561E11DC241 /* ProgressScreen.swift in Sources */,

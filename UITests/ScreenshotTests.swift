@@ -184,6 +184,87 @@ final class ScreenshotTests: XCTestCase {
         }
     }
 
+    /// Adds one quick task from the Inbox screen's own "Add task" control, so
+    /// the prioritise duel screenshot never depends on how many demo tasks
+    /// the auto-plan at launch happened to leave sitting in the Inbox.
+    private func addQuickTask(_ app: XCUIApplication, title: String) {
+        let addButton = app.buttons["Add task"].firstMatch
+        guard addButton.waitForExistence(timeout: 5) else {
+            XCTFail("Add task button not found")
+            return
+        }
+        addButton.tap()
+        Thread.sleep(forTimeInterval: 0.5)
+        let field = app.textFields["Task name…"].firstMatch
+        guard field.waitForExistence(timeout: 5) else {
+            XCTFail("Quick-add title field not found")
+            return
+        }
+        field.tap()
+        // The quick-add field keeps whatever the previous add left in it, so
+        // typing straight in concatenates the two titles — the duel reveal
+        // once showed a task literally named "Duel candidate ADuel candidate B".
+        if let existing = field.value as? String, !existing.isEmpty {
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: existing.count))
+        }
+        field.typeText(title)
+        field.typeText("\n")
+        Thread.sleep(forTimeInterval: 0.8)
+    }
+
+    /// The prioritise duel: reached from the Inbox listing (Library → Inbox),
+    /// not a dedicated Plan screen — see `PrioritiseDuelView`'s header
+    /// comment for why. Answers every duel by always taking the first
+    /// offered choice, then captures the medal-ranked reveal.
+    func testCapturePrioritiseDuel() {
+        let app = launch()
+        guard tapTab(app, "Library") else { return }
+
+        let inboxRow = app.buttons["Inbox"].firstMatch
+        guard inboxRow.waitForExistence(timeout: 8) else {
+            XCTFail("Inbox row not found in Library")
+            return
+        }
+        inboxRow.tap()
+        Thread.sleep(forTimeInterval: 2)
+
+        // The demo's auto-plan at launch can leave the Inbox with fewer than
+        // two tasks, which hides the duel entry entirely — top up with two
+        // fresh ones so the entry point is guaranteed regardless.
+        addQuickTask(app, title: "Duel candidate A")
+        addQuickTask(app, title: "Duel candidate B")
+
+        let playButton = app.buttons["Play the prioritise game"].firstMatch
+        guard playButton.waitForExistence(timeout: 8) else {
+            XCTFail("Prioritise duel entry not found — inbox may hold fewer than two tasks")
+            return
+        }
+        playButton.tap()
+        Thread.sleep(forTimeInterval: 1.5)
+        capture(app, named: "iphone-prioritise-duel")
+
+        // Every choice button's accessibility label starts "Put … ahead of
+        // …"; always taking the first one offered clears every pair without
+        // needing to know the demo's exact task count in advance.
+        let choicePredicate = NSPredicate(format: "label BEGINSWITH 'Put '")
+        var remainingTaps = 30
+        while remainingTaps > 0 {
+            let choice = app.buttons.matching(choicePredicate).firstMatch
+            guard choice.waitForExistence(timeout: 3) else { break }
+            choice.tap()
+            Thread.sleep(forTimeInterval: 0.3)
+            remainingTaps -= 1
+        }
+
+        Thread.sleep(forTimeInterval: 1.5)
+        capture(app, named: "iphone-prioritise-duel-reveal")
+
+        let keepOrder = app.buttons["Keep order, plan later"].firstMatch
+        if keepOrder.waitForExistence(timeout: 5) {
+            keepOrder.tap()
+        }
+    }
+
     /// Dark-scheme passes of the two signature screens, via the legacy
     /// interface-style launch override (the in-app Appearance control is a
     /// scroll-wheel the test cannot reliably drive).

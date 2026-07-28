@@ -196,6 +196,13 @@ public enum FlowTheme {
     /// neutral, same in both colour schemes.
     public static let accentShadow = accent.opacity(0.4)
 
+    /// Medal colours for the prioritise duel reveal's top three. Fixed across
+    /// both colour schemes, like `accent` — a medal has to read as
+    /// gold/silver/bronze regardless of theme, not shift with it.
+    public static let medalGold = Color(hex: 0xC9A227)
+    public static let medalSilver = Color(hex: 0x9AA1A9)
+    public static let medalBronze = Color(hex: 0xB08050)
+
     /// Fill for the map's root pill. The root is the one node that is always
     /// the inverse of the surrounding scheme — darker than paper in light
     /// mode, lighter than paper in dark — so the tree's anchor reads as a
