@@ -167,14 +167,17 @@ struct FocusWheelView: View {
             let span = FocusWheelGeometry.bowlSegmentSpan(start: item.startMinutes, duration: Double(item.minutes), nowMinutes: nowMinutes)
 
             if FocusWheelGeometry.bowlSegmentIsVisible(span: span, window: window) {
-                let wedgeThickness = item.isActive ? thickness * 1.3 : thickness
-
+                // Every wedge shares one ring thickness (`focus-wheel-spec.md`
+                // §2: "the ring is always 136px thick... regardless of view").
+                // An earlier task inflated the active wedge by 1.3x with no
+                // basis in the design; that's what read as an oversized slab
+                // instead of the design's shallow, uniform band — removed.
                 ZStack {
                     BowlWedgeShape(
                         startAngle: span.start + gap,
                         endAngle: span.end - gap,
                         radius: radius,
-                        thickness: wedgeThickness,
+                        thickness: thickness,
                         centreX: centreX,
                         pointerY: pointerY
                     )
@@ -184,7 +187,7 @@ struct FocusWheelView: View {
                             startAngle: span.start + gap,
                             endAngle: span.end - gap,
                             radius: radius,
-                            thickness: wedgeThickness,
+                            thickness: thickness,
                             centreX: centreX,
                             pointerY: pointerY
                         )
@@ -193,9 +196,9 @@ struct FocusWheelView: View {
                     .animation(.easeInOut(duration: 0.3), value: item.id)
 
                     if item.isActive {
-                        activeTitle(item: item, span: span, centre: centre, radius: radius)
+                        activeTitle(item: item, span: span, centre: centre, radius: radius, thickness: thickness)
                     } else {
-                        neighbourLabel(item: item, span: span, centre: centre, radius: radius, thickness: wedgeThickness)
+                        neighbourLabel(item: item, span: span, centre: centre, radius: radius, thickness: thickness)
                     }
                 }
             }
@@ -205,9 +208,15 @@ struct FocusWheelView: View {
     /// The active wedge's title, drawn horizontally rather than arc-rotated —
     /// it sits directly under the fixed pointer, so it never needs to lean
     /// the way an off-centre neighbour label does to stay readable.
-    private func activeTitle(item: WheelItem, span: (start: Double, end: Double), centre: CGPoint, radius: CGFloat) -> some View {
+    ///
+    /// Positioned at the same mid-band radius every other wedge label uses
+    /// (`neighbourLabel`, the `FREE` label below) — `radius` on its own is
+    /// the wedge's *outer* edge, immediately next to the fixed pointer, which
+    /// is why this used to render sitting on top of the pointer instead of
+    /// inside the band.
+    private func activeTitle(item: WheelItem, span: (start: Double, end: Double), centre: CGPoint, radius: CGFloat, thickness: CGFloat) -> some View {
         let midAngle = (span.start + span.end) / 2
-        let position = FocusWheelGeometry.point(centre: centre, radius: radius, angle: midAngle)
+        let position = FocusWheelGeometry.point(centre: centre, radius: radius - thickness / 2, angle: midAngle)
 
         return Text(item.title)
             .font(FlowFont.wheelSegment)
@@ -289,7 +298,14 @@ struct FocusWheelView: View {
     private func ruler(centre: CGPoint, radius: CGFloat, thickness: CGFloat, halfAngle: Double) -> some View {
         let totalMinutes = min(180, max(1, items.first?.minutes ?? 30))
         let majorStep = totalMinutes <= 30 ? 5 : (totalMinutes <= 60 ? 10 : 15)
-        let outer = radius + thickness * 1.3 / 2
+        // `radius` is the wedge's own OUTER edge, right where the fixed
+        // pointer sits — anchoring the ruler beyond it (as this used to) put
+        // every tick and number past the pointer, outside the visible wedge
+        // entirely. Anchoring just inside it instead, with ticks and their
+        // numbers both reaching further inward (smaller radius, away from
+        // the pointer) from there, keeps the whole ruler inside the active
+        // segment, matching the design (`focus-wheel-spec.md` §4).
+        let outer = radius - thickness * 0.12
 
         return ZStack {
             ForEach(Array(stride(from: 0, through: totalMinutes, by: 1)), id: \.self) { minute in
@@ -302,7 +318,10 @@ struct FocusWheelView: View {
                 tick(angle: angle, centre: centre, outer: outer, isMajor: isMajor)
 
                 if isMajor {
-                    let labelPoint = FocusWheelGeometry.point(centre: centre, radius: outer + 13, angle: angle)
+                    // Further in than the tick itself (smaller radius), so
+                    // the number reads above its tick toward mid-band rather
+                    // than past the wedge's outer edge.
+                    let labelPoint = FocusWheelGeometry.point(centre: centre, radius: outer - 13, angle: angle)
                     Text("\(remaining)")
                         // Explicit 11pt: the smallest size the HIG allows,
                         // chosen deliberately rather than let the ruler shrink further.
@@ -317,8 +336,10 @@ struct FocusWheelView: View {
 
     private func tick(angle: Double, centre: CGPoint, outer: CGFloat, isMajor: Bool) -> some View {
         let length: CGFloat = isMajor ? 7 : 3
+        // Drawn inward (decreasing radius, away from the pointer) from
+        // `outer`, not outward past it — the tick has to stay on the wedge.
         let from = FocusWheelGeometry.point(centre: centre, radius: outer, angle: angle)
-        let to = FocusWheelGeometry.point(centre: centre, radius: outer + length, angle: angle)
+        let to = FocusWheelGeometry.point(centre: centre, radius: outer - length, angle: angle)
         return Path { path in
             path.move(to: from)
             path.addLine(to: to)
