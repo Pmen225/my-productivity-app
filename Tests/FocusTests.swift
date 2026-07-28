@@ -507,6 +507,28 @@ struct FocusWheelGeometryTests {
         #expect(FocusWheelGeometry.bowlGapShowsFreeLabel(span: wideGap, window: window) == true)
     }
 
+    @Test("The FREE label is placed inside the window, not at the gap's raw midpoint")
+    func gapFreeLabelSitsInsideWindow() {
+        let width: CGFloat = 375
+        let radius = FocusWheelGeometry.bowlTargetRadius(forWidth: width, visibility: .two)
+        let window = FocusWheelGeometry.bowlVisibleWindow(radius: radius, width: width)
+        // The demo day's real gap: 08:00 until the plan starts, here 15:00. It
+        // qualifies for a label on the few degrees still on screen, but its raw
+        // midpoint is three and a half hours back — far outside the window.
+        let morning = FocusWheelGeometry.bowlSegmentSpan(start: 480, duration: 420, nowMinutes: 900)
+        #expect(FocusWheelGeometry.bowlGapShowsFreeLabel(span: morning, window: window) == true)
+        #expect((morning.start + morning.end) / 2 > window.max)
+
+        let angle = FocusWheelGeometry.bowlGapLabelAngle(span: morning, window: window)
+        #expect(angle > window.min && angle < window.max)
+
+        // A gap straddling the pointer is unaffected: clipping cannot move a
+        // midpoint that was already on screen.
+        let straddling = FocusWheelGeometry.bowlSegmentSpan(start: 540, duration: 120, nowMinutes: 600)
+        let straddlingAngle = FocusWheelGeometry.bowlGapLabelAngle(span: straddling, window: window)
+        #expect(abs(straddlingAngle - (straddling.start + straddling.end) / 2) < 0.001)
+    }
+
     @Test("5M's radius dwarfs view 1's, so it reads as an almost-flat horizon")
     func fiveMinuteRadiusFarExceedsViewOne() {
         let width: CGFloat = 375

@@ -208,9 +208,26 @@ public enum FocusWheelGeometry {
     /// bare ring showing through (`focus-wheel-spec.md` §2's 9° threshold).
     /// The gap itself is never filled — this only decides the label.
     public static func bowlGapShowsFreeLabel(span: (start: Double, end: Double), window: (min: Double, max: Double)) -> Bool {
-        let clippedEnd = min(span.end, window.max - 2)
-        let clippedStart = max(span.start, window.min + 2)
-        return clippedEnd - clippedStart > 9
+        let clipped = bowlGapClipped(span: span, window: window)
+        return clipped.end - clipped.start > 9
+    }
+
+    /// Where the `FREE` label sits: the middle of the gap's VISIBLE stretch, not
+    /// of the gap itself.
+    ///
+    /// The two only agree for a gap straddling the pointer. The demo day's real
+    /// gap is the whole morning before the plan starts, which qualifies on its
+    /// last few degrees while its raw midpoint is most of a turn away — drawn,
+    /// but off screen, which is why the label had never been photographed.
+    public static func bowlGapLabelAngle(span: (start: Double, end: Double), window: (min: Double, max: Double)) -> Double {
+        let clipped = bowlGapClipped(span: span, window: window)
+        return (clipped.start + clipped.end) / 2
+    }
+
+    /// The gap's span cropped to the window, held 2° inside each edge so a label
+    /// is never crowded against it.
+    private static func bowlGapClipped(span: (start: Double, end: Double), window: (min: Double, max: Double)) -> (start: Double, end: Double) {
+        (start: max(span.start, window.min + 2), end: min(span.end, window.max - 2))
     }
 
     /// Fraction of the visible window the active wedge's ruler overlay

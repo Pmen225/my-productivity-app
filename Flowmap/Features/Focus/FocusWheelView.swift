@@ -275,7 +275,7 @@ struct FocusWheelView: View {
             let span = FocusWheelGeometry.bowlSegmentSpan(start: gapItem.start, duration: gapItem.duration, nowMinutes: nowMinutes)
 
             if FocusWheelGeometry.bowlGapShowsFreeLabel(span: span, window: window) {
-                let midAngle = (span.start + span.end) / 2
+                let midAngle = FocusWheelGeometry.bowlGapLabelAngle(span: span, window: window)
                 let position = FocusWheelGeometry.point(centre: centre, radius: radius - thickness / 2, angle: midAngle)
 
                 // The existing eyebrow treatment (`FlowFont.eyebrow`, 1.5pt
