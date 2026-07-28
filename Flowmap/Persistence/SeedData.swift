@@ -58,10 +58,36 @@ public enum SeedData {
     /// Creates the Personal workspace, the Weekly Plan map and the seven demo tasks.
     ///
     /// Idempotent: calling it twice does not create a second copy.
+    /// Demo runs pin the appearance so screenshot passes are deterministic:
+    /// dark when launched with `-flowmapDemoDark`, light otherwise.
+    private static var demoAppearance: AppearanceMode {
+        ProcessInfo.processInfo.arguments.contains("-flowmapDemoDark") ? .dark : .light
+    }
+
     @MainActor
     @discardableResult
     public static func load(into context: ModelContext, settings: AppSettings) -> Workspace? {
-        guard !isLoaded(in: context) else { return nil }
+        guard !isLoaded(in: context) else {
+            // Re-seeding on a device that already holds the demo day: restore
+            // the design's clay chrome and forget any persisted pan/zoom so
+            // the map always reopens fitted — a stale offset from an older
+            // layout frames empty canvas.
+            settings.accentToken = ColourToken.clay.rawValue
+            settings.appearance = demoAppearance
+            settings.touch()
+            if let maps = try? context.fetch(FetchDescriptor<MapDocument>()) {
+                for map in maps {
+                    map.canvasOffsetX = 0
+                    map.canvasOffsetY = 0
+                    map.canvasZoom = 1
+                    for node in map.allNodes {
+                        node.setManualPosition(nil)
+                    }
+                }
+                try? context.save()
+            }
+            return nil
+        }
 
         let workspace = Workspace(name: "Personal", iconName: "house", colourToken: ColourToken.violet.rawValue)
         context.insert(workspace)
@@ -85,7 +111,7 @@ public enum SeedData {
         for (index, name) in branches.enumerated() {
             let node = MapNode(
                 title: name,
-                colourToken: ColourToken.allCases[(index + 1) % ColourToken.allCases.count].rawValue,
+                colourToken: ColourToken.taskTokens[(index + 1) % ColourToken.taskTokens.count].rawValue,
                 sortOrder: index,
                 map: map,
                 parent: root
@@ -146,6 +172,10 @@ public enum SeedData {
         }
 
         settings.hasLoadedDemoData = true
+        // The demo day always photographs with the design's clay chrome, even
+        // on a simulator that persisted an older accent choice.
+        settings.accentToken = ColourToken.clay.rawValue
+        settings.appearance = demoAppearance
         settings.touch()
         try? context.save()
         return workspace

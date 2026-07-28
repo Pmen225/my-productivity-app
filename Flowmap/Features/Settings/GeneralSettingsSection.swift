@@ -10,7 +10,7 @@ struct GeneralSettingsSection: View {
     var body: some View {
         FlowCard {
             VStack(alignment: .leading, spacing: FlowSpacing.l) {
-                CompactSectionHeader(title: "General")
+                FlowEyebrow("General")
 
                 if let flow {
                     appearanceRow(flow)

@@ -22,11 +22,19 @@ struct TimelineView: View {
     @State private var previewStart: Date?
     @State private var previewMinutes: Int?
 
-    /// Scaled so the shortest realistic block — 15 minutes — still clears the
-    /// height a row needs to stay readable. At a denser scale, short blocks hit
-    /// a minimum height and visibly overlap the block after them.
-    private let pointsPerMinute: CGFloat = 2.0
+    /// The mock's density: roughly a minute to a point, so an hour reads as
+    /// about 56pt. `TimelineBlockView` degrades its own detail level as blocks
+    /// get shorter, rather than this view compensating with extra height.
+    private let pointsPerMinute: CGFloat = 56.0 / 60.0
     private let gutterWidth: CGFloat = 50
+
+    /// The mock's gutter reads "8:00", not "08:00" — a fixed pattern, because
+    /// the reference design is locale-pinned to that shape.
+    static let gutterFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "H:mm"
+        return formatter
+    }()
 
     private var totalMinutes: Int {
         max(1, Int(dayEnd.timeIntervalSince(dayStart) / 60))
@@ -53,10 +61,11 @@ struct TimelineView: View {
             dropSurface
 
             ForEach(blocks) { block in
-                TimelineBlockView(block: block, showsTimeRange: block.minutes >= 30)
+                let blockHeight = height(forMinutes: block.minutes)
+                TimelineBlockView(block: block, height: blockHeight, now: now)
                     .padding(.leading, gutterWidth + FlowSpacing.s)
                     .padding(.trailing, FlowSpacing.xs)
-                    .frame(height: height(forMinutes: block.minutes), alignment: .top)
+                    .frame(height: blockHeight, alignment: .top)
                     .offset(y: yOffset(for: block.start))
                     .draggableTimelineBlock(block)
             }
@@ -64,6 +73,8 @@ struct TimelineView: View {
             if let previewStart {
                 insertionPreview(at: previewStart, minutes: previewMinutes ?? SchedulingEngine.snapMinutes)
             }
+
+            nowLine
 
             // Anchor only — the current-time scroll target on iPhone.
             Color.clear
@@ -92,15 +103,45 @@ struct TimelineView: View {
     private var hourGrid: some View {
         ForEach(hourMarks, id: \.self) { mark in
             HStack(alignment: .top, spacing: FlowSpacing.xs) {
-                Text(DurationFormatter.time(mark))
-                    .font(.system(size: 11, design: .rounded))
-                    .foregroundStyle(FlowTheme.secondaryText(scheme))
+                Text(Self.gutterFormatter.string(from: mark))
+                    .font(.system(size: 11, weight: .regular, design: .rounded))
+                    .foregroundStyle(FlowTheme.tertiaryText(scheme))
                     .frame(width: gutterWidth, alignment: .trailing)
                 Rectangle()
                     .fill(FlowTheme.separator(scheme))
                     .frame(height: 1)
             }
             .offset(y: yOffset(for: mark) - 6)
+        }
+    }
+
+    /// The live-time marker. Only drawn while `now` actually falls inside the
+    /// rendered day — off the end of a short workday it would just float
+    /// past the last hour mark.
+    @ViewBuilder
+    private var nowLine: some View {
+        if now >= dayStart, now <= dayEnd {
+            HStack(spacing: 0) {
+                Text(Self.gutterFormatter.string(from: now))
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, FlowSpacing.xs)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(FlowTheme.accent))
+                Circle()
+                    .fill(FlowTheme.accent)
+                    .frame(width: 7, height: 7)
+                    .padding(.leading, FlowSpacing.xs)
+                Rectangle()
+                    .fill(FlowTheme.accent)
+                    .frame(height: 2)
+            }
+            .padding(.leading, FlowSpacing.xs)
+            .padding(.trailing, FlowSpacing.xs)
+            .offset(y: yOffset(for: now) - 6)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
         }
     }
 
@@ -133,9 +174,10 @@ struct TimelineView: View {
     }
 
     private func insertionPreview(at start: Date, minutes: Int) -> some View {
-        RoundedRectangle(cornerRadius: FlowRadius.small, style: .continuous)
+        let previewHeight = height(forMinutes: minutes)
+        return RoundedRectangle(cornerRadius: min(FlowRadius.small, previewHeight / 2), style: .continuous)
             .strokeBorder(FlowTheme.accent, style: StrokeStyle(lineWidth: 2, dash: [5, 3]))
-            .frame(height: height(forMinutes: minutes))
+            .frame(height: previewHeight)
             .padding(.leading, gutterWidth + FlowSpacing.s)
             .padding(.trailing, FlowSpacing.xs)
             .offset(y: yOffset(for: start))

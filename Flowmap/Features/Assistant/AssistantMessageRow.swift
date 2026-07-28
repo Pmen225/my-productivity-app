@@ -12,7 +12,7 @@ struct AssistantMessageRow: View {
         case .user:
             bubble(trailing: true, background: FlowTheme.accent, foreground: .white)
         case .assistant:
-            bubble(trailing: false, background: FlowTheme.surface(scheme), foreground: FlowTheme.primaryText(scheme))
+            bubble(trailing: false, background: FlowTheme.surface(scheme), foreground: FlowTheme.primaryText(scheme), showsBorder: true)
         case .tool:
             auditRow
         case .system:
@@ -20,8 +20,21 @@ struct AssistantMessageRow: View {
         }
     }
 
+    /// The corner nearest the sender's edge is pinched to `FlowRadius.small`
+    /// so the bubble reads a tail without a literal pointer shape.
+    private func bubbleShape(trailing: Bool) -> UnevenRoundedRectangle {
+        UnevenRoundedRectangle(
+            topLeadingRadius: FlowRadius.medium,
+            bottomLeadingRadius: trailing ? FlowRadius.medium : FlowRadius.small,
+            bottomTrailingRadius: trailing ? FlowRadius.small : FlowRadius.medium,
+            topTrailingRadius: FlowRadius.medium,
+            style: .continuous
+        )
+    }
+
     @ViewBuilder
-    private func bubble(trailing: Bool, background: Color, foreground: Color) -> some View {
+    private func bubble(trailing: Bool, background: Color, foreground: Color, showsBorder: Bool = false) -> some View {
+        let shape = bubbleShape(trailing: trailing)
         HStack {
             if trailing { Spacer(minLength: 40) }
             Text(message.text)
@@ -29,7 +42,12 @@ struct AssistantMessageRow: View {
                 .foregroundStyle(foreground)
                 .padding(.horizontal, FlowSpacing.m)
                 .padding(.vertical, FlowSpacing.s)
-                .background(RoundedRectangle(cornerRadius: FlowRadius.medium, style: .continuous).fill(background))
+                .background(shape.fill(background))
+                .overlay {
+                    if showsBorder {
+                        shape.strokeBorder(FlowTheme.separator(scheme), lineWidth: 1)
+                    }
+                }
             if !trailing { Spacer(minLength: 40) }
         }
     }
@@ -124,6 +142,10 @@ struct AssistantStreamingRow: View {
             .padding(.horizontal, FlowSpacing.m)
             .padding(.vertical, FlowSpacing.s)
             .background(RoundedRectangle(cornerRadius: FlowRadius.medium, style: .continuous).fill(FlowTheme.surface(scheme)))
+            .overlay(
+                RoundedRectangle(cornerRadius: FlowRadius.medium, style: .continuous)
+                    .strokeBorder(FlowTheme.separator(scheme), lineWidth: 1)
+            )
             Spacer(minLength: 40)
         }
     }
@@ -158,11 +180,11 @@ struct AssistantEmptyStateView: View {
                     } label: {
                         Text(example)
                             .font(FlowFont.secondary)
-                            .foregroundStyle(FlowTheme.primaryText(scheme))
+                            .foregroundStyle(FlowTheme.secondaryText(scheme))
                             .padding(.horizontal, FlowSpacing.m)
                             .padding(.vertical, FlowSpacing.s)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(RoundedRectangle(cornerRadius: FlowRadius.small, style: .continuous).fill(FlowTheme.surface(scheme)))
+                            .overlay(Capsule().strokeBorder(FlowTheme.separatorStrong(scheme), lineWidth: 1))
                     }
                     .buttonStyle(.plain)
                 }

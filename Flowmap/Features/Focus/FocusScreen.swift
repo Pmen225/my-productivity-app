@@ -42,7 +42,9 @@ struct FocusScreen: View {
         .onReceive(ticker) { date in
             flow?.tick(date)
         }
+        #if os(macOS)
         .toolbar { toolbarContent }
+        #endif
         .sheet(isPresented: $showingDurationPicker) {
             FocusDurationPicker { minutes, task in
                 _ = task.map { flow?.focusEngine.start(task: $0, minutes: minutes) }
@@ -50,9 +52,10 @@ struct FocusScreen: View {
                 showingDurationPicker = false
             }
         }
-        .navigationTitle("Focus")
+        // The mock's screen title is a small centred word inside the content,
+        // not the system navigation bar — this tab keeps no back button to lose.
         #if !os(macOS)
-        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .navigationBar)
         #endif
     }
 
@@ -117,31 +120,140 @@ struct FocusScreen: View {
     /// plus a spacing constant is reserved, so the two can never touch at rest.
     private func wheelLayer(in size: CGSize) -> some View {
         let reserved = FocusTaskCard.restingHeight(for: size.height) + FlowSpacing.wheelCardGap
-        let available = max(160, size.height - reserved - FlowSpacing.xxl)
-        let diameter = min(available, size.width - FlowSpacing.screen * 2)
+        // The title bar and the centre readout now sit above the dial rather
+        // than inside it, so both need their own reserve alongside the card's.
+        let chromeReserve = FlowSpacing.xxxl * 2 + FlowSpacing.xl
+        let dialWidth = size.width - FlowSpacing.screen * 2
+        let dialHeight = max(120, min(190, size.height - reserved - chromeReserve))
 
-        return VStack(spacing: 0) {
-            ZStack {
-                FocusWheelView(
-                    items: wheelItems,
-                    progress: progress,
-                    activeID: wheelItems.first?.id
-                )
-                .frame(width: diameter, height: diameter)
+        return VStack(spacing: FlowSpacing.m) {
+            titleBar
+            centreContent
 
-                centreContent
-                    .frame(width: diameter * 0.52)
-            }
-            .frame(width: diameter, height: diameter)
-            .padding(.top, FlowSpacing.l)
+            FocusWheelView(
+                items: wheelItems,
+                progress: progress,
+                activeID: wheelItems.first?.id
+            )
+            .frame(width: dialWidth, height: dialHeight)
 
             Spacer(minLength: FlowSpacing.wheelCardGap)
         }
+        .padding(.top, FlowSpacing.s)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         #if !os(macOS)
         .gesture(pinchGesture)
         #endif
     }
+
+    /// The mock's top row — a menu button, a quiet zoom hint, and an
+    /// appearance button — with the "View" pill directly beneath it.
+    private var titleBar: some View {
+        VStack(spacing: FlowSpacing.m) {
+            #if !os(macOS)
+            HStack {
+                cornerButton(systemImage: "line.3.horizontal", label: "Open focus options") {
+                    showingDurationPicker = true
+                }
+                Spacer(minLength: FlowSpacing.s)
+                Text("Pinch to zoom")
+                    // Explicit 12pt: small but never below the HIG's 11pt floor.
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                Spacer(minLength: FlowSpacing.s)
+                cornerButton(systemImage: appearanceSymbol, label: "Change appearance, currently \(flow?.settings.appearance.displayName ?? "System")") {
+                    cycleAppearance()
+                }
+            }
+
+            visibilityPill
+            #endif
+        }
+    }
+
+    #if !os(macOS)
+    /// A single white pill reading "View: 1 2 3 | All", the selected number
+    /// sitting inside a filled clay circle — not a segmented control.
+    private var visibilityPill: some View {
+        HStack(spacing: 2) {
+            Text("View:")
+                .font(FlowFont.chromeLabel)
+                .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                .padding(.leading, FlowSpacing.s)
+
+            ForEach(Array(WheelVisibility.allCases.enumerated()), id: \.element) { index, mode in
+                if mode == .all {
+                    Rectangle()
+                        .fill(FlowTheme.separator(scheme))
+                        .frame(width: 1, height: 14)
+                        .padding(.horizontal, 2)
+                        .accessibilityHidden(true)
+                }
+                visibilityOption(mode)
+            }
+        }
+        .padding(.vertical, FlowSpacing.xxs)
+        .padding(.trailing, FlowSpacing.xs)
+        .background(Capsule().fill(FlowTheme.surface(scheme)))
+        .overlay(Capsule().strokeBorder(FlowTheme.separator(scheme), lineWidth: 1))
+        .accessibilityElement(children: .contain)
+    }
+
+    private func visibilityOption(_ mode: WheelVisibility) -> some View {
+        let isSelected = mode == visibility
+        return Button {
+            setVisibility(mode)
+        } label: {
+            Text(mode.displayName)
+                .font(FlowFont.chromeLabel)
+                .foregroundStyle(isSelected ? .white : FlowTheme.secondaryText(scheme))
+                .frame(width: 26, height: 26)
+                .background(isSelected ? AnyView(Circle().fill(FlowTheme.accentFill)) : AnyView(Color.clear))
+        }
+        .buttonStyle(.plain)
+        // The visible chip is smaller than the HIG's 44pt minimum, so the tap
+        // target is grown around it rather than the artwork scaled up.
+        .frame(minWidth: 44, minHeight: 44)
+        .contentShape(Rectangle())
+        .accessibilityLabel("\(mode.displayName) tasks visible")
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+
+    private var appearanceSymbol: String {
+        switch flow?.settings.appearance ?? .system {
+        case .system: "circle.lefthalf.filled"
+        case .light: "sun.max"
+        case .dark: "moon"
+        }
+    }
+
+    /// Cycles the existing appearance setting rather than adding a new one —
+    /// the mock's corner button gets a home, no new behaviour is invented.
+    private func cycleAppearance() {
+        guard let flow else { return }
+        let modes = AppearanceMode.allCases
+        let index = modes.firstIndex(of: flow.settings.appearance) ?? 0
+        flow.settings.appearance = modes[(index + 1) % modes.count]
+        try? context.save()
+    }
+
+    /// The mock draws these small; the tap target is grown to 44pt around
+    /// the artwork instead of scaling the artwork up.
+    private func cornerButton(systemImage: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(FlowTheme.primaryText(scheme))
+                .frame(width: 34, height: 34)
+                .background(Circle().fill(FlowTheme.surface(scheme)))
+                .overlay(Circle().strokeBorder(FlowTheme.separatorStrong(scheme), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .frame(minWidth: 44, minHeight: 44)
+        .contentShape(Rectangle())
+        .accessibilityLabel(label)
+    }
+    #endif
 
     private func cardLayer(in size: CGSize) -> some View {
         FocusTaskCard(
@@ -160,96 +272,117 @@ struct FocusScreen: View {
 
     // MARK: - Centre
 
+    /// Icon and task name on one line, remaining minutes in clay beneath it —
+    /// the mock's centre readout, still reading the live remaining time, just
+    /// in whole minutes rather than a running clock.
     private var centreContent: some View {
-        VStack(spacing: FlowSpacing.xs) {
-            Image(systemName: activeTask?.iconName ?? "timer")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle((activeTask?.colour ?? .violet).onSoft)
-
-            // Before anything is running, show the time the next block will take
-            // rather than an empty placeholder — the number the user is about to
-            // commit to is more useful than a dash.
-            Text(countdownText)
-                .font(FlowFont.countdown)
-                .foregroundStyle(
-                    session == nil
-                        ? FlowTheme.secondaryText(scheme)
-                        : FlowTheme.primaryText(scheme)
-                )
-                .accessibilityLabel(countdownAccessibilityLabel)
-
-            Text(activeTask?.title ?? "Ready when you are")
-                .font(FlowFont.cardTitle)
-                .foregroundStyle(FlowTheme.primaryText(scheme))
-                .lineLimit(2)
-                .multilineTextAlignment(.center)
-
-            if let segment = activeSegment {
-                Text(DurationFormatter.timeRange(from: segment.startDate, to: segment.endDate))
-                    .font(FlowFont.caption)
-                    .foregroundStyle(FlowTheme.secondaryText(scheme))
+        VStack(spacing: FlowSpacing.s) {
+            HStack(spacing: FlowSpacing.xs) {
+                Image(systemName: activeTask?.iconName ?? "timer")
+                    .font(.system(size: 17, weight: .regular))
+                Text(activeTask?.title ?? "Ready when you are")
+                    .font(.system(size: 19, weight: .regular, design: .rounded))
+                    .lineLimit(1)
             }
+            .foregroundStyle(FlowTheme.primaryText(scheme))
 
-            controls.padding(.top, FlowSpacing.s)
+            (
+                Text(countdownMinutesText).font(.system(size: 22, weight: .bold, design: .rounded))
+                    + Text(" min").font(.system(size: 13, weight: .semibold, design: .rounded))
+            )
+            .foregroundStyle(FlowTheme.accentText(scheme))
+            .accessibilityLabel(countdownAccessibilityLabel)
+
+            controls.padding(.top, FlowSpacing.xs)
         }
     }
 
     private var controls: some View {
-        VStack(spacing: FlowSpacing.s) {
-            Button {
-                if session == nil {
-                    startBestAvailable()
-                } else {
-                    engine?.togglePause(now: now)
-                }
-            } label: {
-                Image(systemName: playPauseSymbol)
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 58, height: 58)
-                    .background(Circle().fill(FlowTheme.accent))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(playPauseLabel)
+        VStack(spacing: FlowSpacing.m) {
+            // Decorative badge, not a button: the task name right above it
+            // already reaches VoiceOver, so this stays out of its way.
+            Image(systemName: activeTask?.iconName ?? "book.closed")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(FlowTheme.primaryText(scheme))
+                .frame(width: FlowControlSize.utility, height: FlowControlSize.utility)
+                .background(neumorphicDisc())
+                .accessibilityHidden(true)
 
-            if session != nil {
-                HStack(spacing: FlowSpacing.l) {
-                    Button {
-                        engine?.completeCurrentTask(now: now)
-                    } label: {
-                        Label("Done", systemImage: "checkmark")
-                            .font(FlowFont.caption.weight(.semibold))
-                            .labelStyle(.titleAndIcon)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(FlowTheme.secondaryText(scheme))
-                    .accessibilityLabel("Complete this task")
-
-                    Button {
+            HStack(spacing: FlowSpacing.l) {
+                if session != nil {
+                    circularControlButton(systemImage: "forward.end", label: "Skip this task and requeue the rest") {
                         engine?.skipCurrentTask(now: now)
-                    } label: {
-                        Label("Skip", systemImage: "forward.end")
-                            .font(FlowFont.caption.weight(.semibold))
-                            .labelStyle(.titleAndIcon)
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(FlowTheme.secondaryText(scheme))
-                    .accessibilityLabel("Skip this task and requeue the rest")
+                }
+
+                Button {
+                    if session == nil {
+                        startBestAvailable()
+                    } else {
+                        engine?.togglePause(now: now)
+                    }
+                } label: {
+                    Image(systemName: playPauseSymbol)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(FlowTheme.accentText(scheme))
+                        .frame(width: FlowControlSize.hero, height: FlowControlSize.hero)
+                        .background(neumorphicDisc())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(playPauseLabel)
+
+                if session != nil {
+                    circularControlButton(systemImage: "checkmark", label: "Complete this task") {
+                        engine?.completeCurrentTask(now: now)
+                    }
                 }
             }
         }
     }
 
-    private var countdownText: String {
+    /// The mock's near-neumorphic control: a warm shadow cast below, a light
+    /// highlight caught above, on a plain white disc rather than a flat fill.
+    private func neumorphicDisc() -> some View {
+        Circle()
+            .fill(FlowTheme.surface(scheme))
+            .shadow(color: FlowTheme.shadow(scheme), radius: 6, x: 0, y: 4)
+            .shadow(color: FlowTheme.raisedHighlight(scheme), radius: 4, x: 0, y: -3)
+    }
+
+    /// Skip/complete on either side of the play/pause button — the same
+    /// neumorphic disc, a size down.
+    private func circularControlButton(
+        systemImage: String,
+        label: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(FlowTheme.primaryText(scheme))
+                .frame(width: FlowControlSize.secondary, height: FlowControlSize.secondary)
+                .background(neumorphicDisc())
+        }
+        .buttonStyle(.plain)
+        // FlowControlSize.secondary (42pt) draws under the HIG's 44pt floor;
+        // the tap target is grown around the disc rather than the disc scaled up.
+        .frame(minWidth: 44, minHeight: 44)
+        .contentShape(Rectangle())
+        .accessibilityLabel(label)
+    }
+
+    /// Remaining time in whole minutes, rounded up so it still reads "1 min"
+    /// with seconds left rather than dropping to zero early.
+    private var countdownMinutesText: String {
+        let seconds: Double
         if let session {
-            return DurationFormatter.countdown(seconds: session.remainingSeconds(at: now))
+            seconds = session.remainingSeconds(at: now)
+        } else if let segment = activeSegment {
+            seconds = Double(segment.durationMinutes) * 60
+        } else {
+            seconds = Double(flow?.settings.defaultFreeFocusMinutes ?? 30) * 60
         }
-        if let segment = activeSegment {
-            return DurationFormatter.countdown(seconds: Double(segment.durationMinutes) * 60)
-        }
-        return DurationFormatter.countdown(
-            seconds: Double(flow?.settings.defaultFreeFocusMinutes ?? 30) * 60
-        )
+        return "\(Int((seconds / 60).rounded(.up)))"
     }
 
     private var countdownAccessibilityLabel: String {
@@ -384,9 +517,11 @@ struct FocusScreen: View {
     }
     #endif
 
+    // iPhone shows the same picker as the glass chip row under the title
+    // (see `visibilityChips`); this toolbar exists only for macOS's window chrome.
+    #if os(macOS)
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        #if os(macOS)
         ToolbarItem(placement: .primaryAction) {
             Picker("Visible tasks", selection: Binding(
                 get: { visibility },
@@ -400,24 +535,8 @@ struct FocusScreen: View {
             .frame(width: 180)
             .help("How many tasks the wheel shows at once")
         }
-        #else
-        ToolbarItem(placement: .topBarTrailing) {
-            Menu {
-                Picker("Visible tasks", selection: Binding(
-                    get: { visibility },
-                    set: { setVisibility($0) }
-                )) {
-                    ForEach(WheelVisibility.allCases, id: \.self) { mode in
-                        Text(mode.displayName).tag(mode)
-                    }
-                }
-            } label: {
-                Image(systemName: "circle.dashed")
-            }
-            .accessibilityLabel("Visible tasks")
-        }
-        #endif
     }
+    #endif
 }
 
 /// Duration chooser for a focus session with no task attached.

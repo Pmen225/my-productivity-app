@@ -15,7 +15,7 @@ struct NoteDetailsPanel: View {
 
     var body: some View {
         Form {
-            Section("Links") {
+            Section {
                 Picker("Project", selection: projectBinding) {
                     Text("None").tag(Optional<Project>.none)
                     ForEach(allProjects) { project in
@@ -34,10 +34,12 @@ struct NoteDetailsPanel: View {
                         Text(node.title).tag(Optional(node))
                     }
                 }
+            } header: {
+                FlowEyebrow("Links")
             }
 
             if !backlinkedNotes.isEmpty {
-                Section("Backlinks") {
+                Section {
                     ForEach(backlinkedNotes) { linked in
                         NavigationLink(value: linked) {
                             VStack(alignment: .leading, spacing: 2) {
@@ -49,10 +51,13 @@ struct NoteDetailsPanel: View {
                             }
                         }
                     }
+                } header: {
+                    FlowEyebrow("Backlinks")
                 }
             }
         }
         .navigationTitle("Details")
+        .presentationCornerRadius(FlowRadius.large)
     }
 
     // MARK: - Bindings

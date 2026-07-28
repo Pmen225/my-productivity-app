@@ -12,7 +12,7 @@ struct FocusWheelSettingsSection: View {
     var body: some View {
         FlowCard {
             VStack(alignment: .leading, spacing: FlowSpacing.l) {
-                CompactSectionHeader(title: "Focus Wheel")
+                FlowEyebrow("Focus Wheel")
 
                 if let flow {
                     visibleTasksRow(flow)
@@ -25,6 +25,7 @@ struct FocusWheelSettingsSection: View {
             }
             .font(FlowFont.body)
             .foregroundStyle(FlowTheme.primaryText(scheme))
+            .tint(FlowTheme.accent)
         }
     }
 
@@ -53,7 +54,7 @@ struct FocusWheelSettingsSection: View {
             Toggle("Prefer later today over tomorrow", isOn: binding(flow, \.requeuePrefersLaterToday))
             Text("Unfinished work always gets requeued automatically — this only chooses where it goes first.")
                 .font(FlowFont.caption)
-                .foregroundStyle(FlowTheme.secondaryText(scheme))
+                .foregroundStyle(FlowTheme.tertiaryText(scheme))
         }
     }
 
@@ -69,7 +70,7 @@ struct FocusWheelSettingsSection: View {
         .overlay(alignment: .bottom) {
             Text("Follows your system setting — change it in Accessibility settings.")
                 .font(FlowFont.caption)
-                .foregroundStyle(FlowTheme.secondaryText(scheme))
+                .foregroundStyle(FlowTheme.tertiaryText(scheme))
                 .offset(y: FlowSpacing.l)
         }
         .padding(.bottom, FlowSpacing.l)

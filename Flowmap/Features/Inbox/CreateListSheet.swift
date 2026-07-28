@@ -18,14 +18,20 @@ public struct CreateListSheet: View {
     public var body: some View {
         NavigationStack {
             Form {
-                Section("Name") {
+                Section {
                     TextField("List name", text: $name)
+                } header: {
+                    FlowEyebrow("Name")
                 }
-                Section("Icon") {
+                Section {
                     iconPicker
+                } header: {
+                    FlowEyebrow("Icon")
                 }
-                Section("Colour") {
+                Section {
                     colourPicker
+                } header: {
+                    FlowEyebrow("Colour")
                 }
             }
             .navigationTitle("New List")
@@ -42,6 +48,7 @@ public struct CreateListSheet: View {
                 }
             }
         }
+        .presentationCornerRadius(FlowRadius.large)
     }
 
     private var iconPicker: some View {
@@ -70,7 +77,7 @@ public struct CreateListSheet: View {
     private var colourPicker: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: FlowSpacing.s) {
-                ForEach(ColourToken.allCases, id: \.self) { token in
+                ForEach(ColourToken.taskTokens, id: \.self) { token in
                     Button {
                         colourToken = token
                     } label: {

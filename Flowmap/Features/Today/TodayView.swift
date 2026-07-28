@@ -67,16 +67,16 @@ struct TodayView: View {
             .reduce(0) { $0 + Int(($1.remainingSeconds(at: now) / 60).rounded()) }
     }
 
-    private var completedCount: Int {
-        todaySegments.count { $0.state == .completed }
-    }
-
     private var primaryAction: TodayPrimaryAction {
         if let segment = flow?.focusEngine.currentSegment(at: now) {
             return .startCurrentTask(segment: segment)
         }
         return .planDay
     }
+
+    /// Only a session that is actually running counts as "live" — a merely
+    /// scheduled segment belongs in the timeline, not the strip.
+    private var liveSession: FocusSession? { flow?.focusEngine.activeSession }
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -126,6 +126,7 @@ struct TodayView: View {
     private var stacked: some View {
         VStack(alignment: .leading, spacing: FlowSpacing.xl) {
             header
+            nowStrip
             timelineView
             TodayInboxSection(tasks: inboxTasks)
         }
@@ -135,6 +136,7 @@ struct TodayView: View {
         HStack(alignment: .top, spacing: FlowSpacing.xl) {
             VStack(alignment: .leading, spacing: FlowSpacing.l) {
                 header
+                nowStrip
                 timelineView
             }
             .frame(maxWidth: .infinity)
@@ -149,11 +151,30 @@ struct TodayView: View {
             date: now,
             plannedMinutes: plannedMinutes,
             remainingMinutes: remainingMinutes,
-            completedCount: completedCount,
-            totalCount: todaySegments.count,
+            inboxCount: inboxTasks.count,
             action: primaryAction,
             onPrimaryAction: performPrimaryAction
         )
+    }
+
+    /// The running task, surfaced above the timeline — wired to the same
+    /// `FocusEngine` calls `FocusScreen` uses, so pausing or completing here
+    /// is the same action, not a second implementation.
+    @ViewBuilder
+    private var nowStrip: some View {
+        if let session = liveSession, let segment = session.segment {
+            NowStrip(
+                title: segment.task?.title ?? "Focus",
+                countdown: session.countdownLabel(at: now),
+                endsLabel: "Ends \(DurationFormatter.time(segment.endDate))",
+                progress: session.progress(at: now),
+                tint: segment.task?.colour ?? .violet,
+                isPaused: session.isPaused,
+                onTogglePause: { flow?.focusEngine.togglePause(now: now) },
+                onComplete: { flow?.focusEngine.completeCurrentTask(now: now) },
+                onOpen: nil
+            )
+        }
     }
 
     private var timelineView: some View {

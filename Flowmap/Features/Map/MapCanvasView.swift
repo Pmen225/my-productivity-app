@@ -14,6 +14,8 @@ struct MapCanvasView: View {
     @State private var viewportSize: CGSize = .zero
     /// Guards the one-time fit so reappearing does not throw away the user's pan.
     @State private var hasFitted = false
+    /// Once the user pans or zooms by hand, automatic re-fitting stops.
+    @State private var userAdjustedCanvas = false
     @State private var draggingNodeID: UUID?
     @State private var dragTranslation: CGSize = .zero
     @State private var renamingNodeID: UUID?
@@ -53,9 +55,21 @@ struct MapCanvasView: View {
                 Task { @MainActor in
                     try? await Task.sleep(for: .milliseconds(120))
                     viewModel.fitToMap(viewportSize: proxy.size)
+                    // Second pass after SwiftData has had time to fault in the
+                    // whole tree — the first fit often sees root + branches only.
+                    try? await Task.sleep(for: .milliseconds(600))
+                    guard !userAdjustedCanvas else { return }
+                    viewModel.fitToMap(viewportSize: proxy.size)
                 }
             }
             .onChange(of: proxy.size) { _, newValue in viewportSize = newValue }
+            // SwiftData faults child relationships in lazily, so the node set
+            // can keep growing for a few runloop turns after the deferred fit —
+            // each growth re-fits until the user takes the canvas over.
+            .onChange(of: viewModel.map.nodeCount) { _, _ in
+                guard hasFitted, !userAdjustedCanvas else { return }
+                viewModel.fitToMap(viewportSize: proxy.size)
+            }
             .overlay(alignment: .center) {
                 if viewModel.map.nodeCount == 0 { emptyState }
             }
@@ -85,8 +99,13 @@ struct MapCanvasView: View {
         return merged
     }
 
+    /// Every visible node's real pill size, keyed by id — read alongside
+    /// `positionMap` so bounds, connectors and node bubbles never disagree
+    /// about how much room a node actually takes up.
+    private var sizeMap: [UUID: CGSize] { viewModel.layoutSizes }
+
     private var contentBounds: CGRect {
-        MapLayout.bounds(of: positionMap, metrics: metrics)
+        MapLayout.bounds(of: positionMap, sizes: sizeMap, metrics: metrics)
     }
 
     /// Shifts every point so the whole tree — including anything dragged
@@ -107,8 +126,11 @@ struct MapCanvasView: View {
     @ViewBuilder
     private var canvasContent: some View {
         let positions = positionMap
+        let sizes = sizeMap
         let shift = originShift
         let size = contentSize
+        let orientation = viewModel.layoutOrientation
+        let fallbackSize = CGSize(width: metrics.minPillWidth, height: metrics.nodeHeight)
 
         ZStack(alignment: .topLeading) {
             Canvas { context, _ in
@@ -119,7 +141,13 @@ struct MapCanvasView: View {
                     drawConnector(
                         from: CGPoint(x: parentPoint.x + shift.x, y: parentPoint.y + shift.y),
                         to: CGPoint(x: childPoint.x + shift.x, y: childPoint.y + shift.y),
-                        colour: parent.colour.base,
+                        startSize: sizes[parent.id] ?? fallbackSize,
+                        endSize: sizes[node.id] ?? fallbackSize,
+                        orientation: orientation,
+                        // The CHILD's own tint, not the parent's — each branch
+                        // reads as one coloured thread from its pill back to
+                        // its parent, matching the reference mock.
+                        colour: node.colour.base,
                         dimmed: viewModel.isDimmed(node.id) || viewModel.isDimmed(parent.id),
                         in: context
                     )
@@ -129,38 +157,59 @@ struct MapCanvasView: View {
 
             ForEach(viewModel.visibleNodes, id: \.id) { node in
                 let raw = positions[node.id] ?? .zero
-                nodeBubble(for: node, at: CGPoint(x: raw.x + shift.x, y: raw.y + shift.y))
+                let nodeSize = sizes[node.id] ?? fallbackSize
+                nodeBubble(for: node, at: CGPoint(x: raw.x + shift.x, y: raw.y + shift.y), size: nodeSize)
             }
         }
         .frame(width: size.width, height: size.height, alignment: .topLeading)
     }
 
+    /// Draws the parent-tinted curved stroke joining a node to its parent —
+    /// horizontal (right edge to left edge) in "Left to right", vertical
+    /// (bottom edge to top edge) in "Top down (org chart)". Anchors from each
+    /// node's own real size rather than a fixed width, so the stroke always
+    /// starts and ends exactly at the pill's edge.
     private func drawConnector(
         from start: CGPoint,
         to end: CGPoint,
+        startSize: CGSize,
+        endSize: CGSize,
+        orientation: MapLayoutOrientation,
         colour: Color,
         dimmed: Bool,
         in context: GraphicsContext
     ) {
-        let halfWidth = metrics.nodeWidth / 2
-        let origin = CGPoint(x: start.x + halfWidth, y: start.y)
-        let destination = CGPoint(x: end.x - halfWidth, y: end.y)
-        let controlOffset = max(40, (destination.x - origin.x) / 2)
-
         var path = Path()
-        path.move(to: origin)
-        path.addCurve(
-            to: destination,
-            control1: CGPoint(x: origin.x + controlOffset, y: origin.y),
-            control2: CGPoint(x: destination.x - controlOffset, y: destination.y)
-        )
-        context.stroke(path, with: .color(colour.opacity(dimmed ? 0.12 : 0.5)), lineWidth: 2)
+        switch orientation {
+        case .leftToRight:
+            let origin = CGPoint(x: start.x + startSize.width / 2, y: start.y)
+            let destination = CGPoint(x: end.x - endSize.width / 2, y: end.y)
+            let controlOffset = max(40, (destination.x - origin.x) / 2)
+            path.move(to: origin)
+            path.addCurve(
+                to: destination,
+                control1: CGPoint(x: origin.x + controlOffset, y: origin.y),
+                control2: CGPoint(x: destination.x - controlOffset, y: destination.y)
+            )
+        case .topDown:
+            let origin = CGPoint(x: start.x, y: start.y + startSize.height / 2)
+            let destination = CGPoint(x: end.x, y: end.y - endSize.height / 2)
+            let controlOffset = max(30, (destination.y - origin.y) / 2)
+            path.move(to: origin)
+            path.addCurve(
+                to: destination,
+                control1: CGPoint(x: origin.x, y: origin.y + controlOffset),
+                control2: CGPoint(x: destination.x, y: destination.y - controlOffset)
+            )
+        }
+        context.stroke(path, with: .color(colour.opacity(dimmed ? 0.12 : 0.55)), lineWidth: 2)
     }
 
     @ViewBuilder
-    private func nodeBubble(for node: MapNode, at point: CGPoint) -> some View {
+    private func nodeBubble(for node: MapNode, at point: CGPoint, size: CGSize) -> some View {
         MapNodeView(
             node: node,
+            size: size,
             isSelected: viewModel.selectedNodeID == node.id,
             isDimmed: viewModel.isDimmed(node.id),
             isCompact: viewModel.isCompact,
@@ -206,6 +255,7 @@ struct MapCanvasView: View {
             }
             .onEnded { value in
                 guard draggingNodeID == nil else { return }
+                userAdjustedCanvas = true
                 viewModel.panOffset.width += value.translation.width
                 viewModel.panOffset.height += value.translation.height
                 viewModel.persistCanvasState()
@@ -216,6 +266,7 @@ struct MapCanvasView: View {
         MagnificationGesture()
             .updating($pinchDelta) { value, state, _ in state = value }
             .onEnded { value in
+                userAdjustedCanvas = true
                 viewModel.zoom = min(max(viewModel.zoom * value, 0.25), 3)
                 viewModel.persistCanvasState()
             }
@@ -228,6 +279,14 @@ struct MapCanvasView: View {
         Button("Add child", systemImage: "plus.circle") { _ = viewModel.addChild(to: node) }
         Button("Add sibling", systemImage: "plus.square.on.square") { _ = viewModel.addSibling(to: node) }
         Button("Rename", systemImage: "pencil") { renamingNodeID = node.id }
+        if node.hasChildren {
+            Button(
+                node.isCollapsed ? "Expand branch" : "Collapse branch",
+                systemImage: node.isCollapsed ? "chevron.down.circle" : "chevron.up.circle"
+            ) {
+                viewModel.toggleCollapse(node)
+            }
+        }
         Button(viewModel.focusBranchID == node.id ? "Exit Focus Branch" : "Focus Branch", systemImage: "eye") {
             viewModel.toggleFocusBranch(on: node)
         }
@@ -259,11 +318,13 @@ struct MapCanvasView: View {
         VStack(spacing: FlowSpacing.s) {
             Button(action: { isSearchPresented.toggle() }) {
                 Image(systemName: "magnifyingglass")
+                    .mapMinimumHitTarget()
             }
             .accessibilityLabel("Search ideas")
 
             Button(action: { viewModel.isCompact.toggle() }) {
                 Image(systemName: viewModel.isCompact ? "rectangle.expand.vertical" : "rectangle.compress.vertical")
+                    .mapMinimumHitTarget()
             }
             .accessibilityLabel(viewModel.isCompact ? "Turn off compact mode" : "Turn on compact mode")
 
@@ -274,6 +335,7 @@ struct MapCanvasView: View {
                 viewModel.persistCanvasState()
             }) {
                 Image(systemName: "plus.magnifyingglass")
+                    .mapMinimumHitTarget()
             }
             .accessibilityLabel("Zoom in")
 
@@ -282,16 +344,19 @@ struct MapCanvasView: View {
                 viewModel.persistCanvasState()
             }) {
                 Image(systemName: "minus.magnifyingglass")
+                    .mapMinimumHitTarget()
             }
             .accessibilityLabel("Zoom out")
 
             Button(action: { viewModel.fitToMap(viewportSize: viewportSize) }) {
                 Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    .mapMinimumHitTarget()
             }
             .accessibilityLabel("Fit map")
 
             Button(action: { viewModel.centreOnSelection(viewportSize: viewportSize) }) {
                 Image(systemName: "scope")
+                    .mapMinimumHitTarget()
             }
             .disabled(viewModel.selectedNode == nil)
             .accessibilityLabel("Centre selection")

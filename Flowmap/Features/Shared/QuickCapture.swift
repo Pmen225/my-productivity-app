@@ -147,80 +147,66 @@ public enum CaptureParser {
     }
 }
 
-/// One field plus optional voice input. Capture is never blocked by a long form.
+/// The floating create button's sheet: the mock's "New" bottom sheet, wired
+/// to the same task-creation call `QuickCaptureView` always made — a title, a
+/// duration and an optional project, saved straight to the Inbox. Voice
+/// dictation and the natural-language date/duration parser (`CaptureParser`,
+/// still used by anything that scans a typed line for "tomorrow at 9") are
+/// unused here now that duration and project are picked explicitly instead of
+/// guessed from text; `CaptureParser` stays for other callers.
 struct QuickCaptureView: View {
     @Environment(\.flow) private var flow
     @Environment(\.modelContext) private var context
-    @Environment(\.colorScheme) private var scheme
     @Environment(\.dismiss) private var dismiss
+    @Query(sort: \Project.sortOrder) private var projects: [Project]
 
-    @State private var text = ""
-    @FocusState private var isFieldFocused: Bool
+    @State private var kind: FlowCreateKind = .task
+    @State private var title = ""
+    @State private var minutes = 30
+    @State private var projectID: UUID?
 
-    private var parsed: ParsedCapture {
-        CaptureParser.parse(text, now: flow?.now ?? Date())
+    private var projectOptions: [FlowCreateProjectOption] {
+        projects.map { FlowCreateProjectOption(id: $0.id, title: $0.title, colour: $0.colour) }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: FlowSpacing.l) {
-            Text("Quick capture")
-                .font(FlowFont.sectionTitle)
-                .foregroundStyle(FlowTheme.primaryText(scheme))
-
-            HStack(spacing: FlowSpacing.s) {
-                TextField("Add gym tomorrow at 9 for 1 hour", text: $text)
-                    .textFieldStyle(.plain)
-                    .font(FlowFont.body)
-                    .focused($isFieldFocused)
-                    .onSubmit(capture)
-
-                DictationButton { transcript in
-                    text = transcript.isEmpty ? text : transcript
-                }
-            }
-            .padding(FlowSpacing.m)
-            .background(
-                RoundedRectangle(cornerRadius: FlowRadius.small, style: .continuous)
-                    .fill(FlowTheme.surfaceSunken(scheme))
-            )
-
-            if let summary = parsed.summary {
-                Label(summary, systemImage: "wand.and.stars")
-                    .font(FlowFont.caption)
-                    .foregroundStyle(FlowTheme.secondaryText(scheme))
-            }
-
-            PrimaryActionButton("Add to Inbox", systemImage: "tray.and.arrow.down", action: capture)
-
-            Text("Anything Flowmap can't read stays in the title. You can add details later.")
-                .font(FlowFont.caption)
-                .foregroundStyle(FlowTheme.secondaryText(scheme))
-        }
-        .padding(FlowSpacing.screen)
-        .frame(minWidth: 340)
-        .background(FlowTheme.background(scheme))
-        .onAppear { isFieldFocused = true }
+        FlowCreateSheet(
+            kind: $kind,
+            title: $title,
+            minutes: $minutes,
+            projectID: $projectID,
+            projects: projectOptions,
+            showsDurationAndProject: kind == .task || kind == .initiative,
+            onClose: { dismiss() },
+            onCreate: capture
+        )
+        .onAppear { minutes = flow?.settings.defaultTaskMinutes ?? 30 }
     }
 
+    /// `.project` makes a `Project`; `.task` and `.initiative` both make a
+    /// `FlowTask` — the model layer has no separate "initiative" entity yet,
+    /// so that segment shares the task path until one exists.
     private func capture() {
-        let result = parsed
-        guard !result.title.isEmpty else { return }
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
 
-        let task = FlowTask(
-            title: result.title,
-            status: .inbox,
-            estimatedMinutes: result.minutes ?? flow?.settings.defaultTaskMinutes ?? 30,
-            dueDate: result.date
-        )
-        context.insert(task)
+        switch kind {
+        case .task, .initiative:
+            let project = projects.first { $0.id == projectID }
+            let task = FlowTask(
+                title: trimmed,
+                status: .inbox,
+                estimatedMinutes: minutes,
+                project: project
+            )
+            context.insert(task)
+        case .project:
+            let project = Project(title: trimmed, sortOrder: projects.count)
+            context.insert(project)
+        }
         try? context.save()
 
-        // A captured time is an intention to do it then, so honour it if free.
-        if let date = result.date, let flow, date > flow.now {
-            _ = flow.scheduling().schedule(task: task, at: date)
-        }
-
-        text = ""
+        title = ""
         dismiss()
     }
 }

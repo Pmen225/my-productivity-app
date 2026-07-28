@@ -15,7 +15,7 @@ struct AboutSettingsSection: View {
     var body: some View {
         FlowCard {
             VStack(alignment: .leading, spacing: FlowSpacing.m) {
-                CompactSectionHeader(title: "About")
+                FlowEyebrow("About")
 
                 Text("Flowmap \(version) (\(build))")
                     .font(FlowFont.secondary)
@@ -25,7 +25,7 @@ struct AboutSettingsSection: View {
                     "Your data stays in your private iCloud database. Nothing leaves your devices except the content you explicitly send to your chosen AI provider when using the Assistant."
                 )
                 .font(FlowFont.caption)
-                .foregroundStyle(FlowTheme.secondaryText(scheme))
+                .foregroundStyle(FlowTheme.tertiaryText(scheme))
                 .fixedSize(horizontal: false, vertical: true)
             }
         }

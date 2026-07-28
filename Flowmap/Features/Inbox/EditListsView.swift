@@ -63,6 +63,7 @@ public struct EditListsView: View {
                 Text("Tasks inside stay in Flowmap and move to Inbox.")
             }
         }
+        .presentationCornerRadius(FlowRadius.large)
     }
 
     private func move(from offsets: IndexSet, to destination: Int) {

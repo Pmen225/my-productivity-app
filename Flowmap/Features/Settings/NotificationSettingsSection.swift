@@ -9,7 +9,7 @@ struct NotificationSettingsSection: View {
     var body: some View {
         FlowCard {
             VStack(alignment: .leading, spacing: FlowSpacing.l) {
-                CompactSectionHeader(title: "Notifications")
+                FlowEyebrow("Notifications")
 
                 if let flow {
                     permissionRow(flow)
@@ -21,6 +21,7 @@ struct NotificationSettingsSection: View {
             }
             .font(FlowFont.body)
             .foregroundStyle(FlowTheme.primaryText(scheme))
+            .tint(FlowTheme.accent)
         }
     }
 

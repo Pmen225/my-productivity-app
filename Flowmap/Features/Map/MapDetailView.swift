@@ -9,10 +9,12 @@ import SwiftUI
 /// presented as a sheet.
 public struct MapDetailView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.colorScheme) private var scheme
     let map: MapDocument
 
     @State private var viewModel: MapViewModel?
     @State private var isInspectorPresented = false
+    @State private var isLayoutMenuPresented = false
 
     public init(map: MapDocument) {
         self.map = map
@@ -92,17 +94,7 @@ public struct MapDetailView: View {
     @ToolbarContentBuilder
     private func toolbarContent(_ viewModel: MapViewModel) -> some ToolbarContent {
         ToolbarItem(placement: .principal) {
-            Picker(
-                "View",
-                selection: Binding(get: { viewModel.viewMode }, set: { viewModel.viewMode = $0 })
-            ) {
-                ForEach(MapViewMode.allCases, id: \.self) { mode in
-                    Label(mode.displayName, systemImage: mode.symbolName).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
+            mapControlChip(viewModel)
         }
 
         ToolbarItemGroup(placement: .primaryAction) {
@@ -151,5 +143,71 @@ public struct MapDetailView: View {
             get: { viewModel.pendingDeletion != nil },
             set: { if !$0 { viewModel.cancelDelete() } }
         )
+    }
+
+    // MARK: - Control chip
+
+    /// The mock's centre chip: Map/Outline segments in a glass pill, with the
+    /// layout menu behind a trailing ellipsis — the dark popover from the
+    /// canvas reference, so it reuses `FlowPopoverMenu(.dark)`.
+    private func mapControlChip(_ viewModel: MapViewModel) -> some View {
+        HStack(spacing: 2) {
+            controlSegment("Map", isActive: viewModel.viewMode == .map) {
+                viewModel.viewMode = .map
+            }
+            controlSegment("Outline", isActive: viewModel.viewMode == .outline) {
+                viewModel.viewMode = .outline
+            }
+            Button {
+                isLayoutMenuPresented = true
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(FlowTheme.secondaryText(scheme))
+                    .frame(width: 26, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Layout options")
+            .popover(isPresented: $isLayoutMenuPresented, arrowEdge: .top) {
+                FlowPopoverMenu(
+                    style: .dark,
+                    options: MapLayoutOrientation.allCases.map {
+                        FlowPopoverOption(id: $0, title: $0.displayName)
+                    },
+                    selection: viewModel.layoutOrientation
+                ) { choice in
+                    viewModel.layoutOrientation = choice
+                    isLayoutMenuPresented = false
+                }
+                .presentationCompactAdaptation(.popover)
+            }
+        }
+        .padding(3)
+        .fixedSize()
+        .flowGlass(radius: FlowRadius.chrome)
+    }
+
+    private func controlSegment(
+        _ title: String, isActive: Bool, action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(FlowFont.caption.weight(isActive ? .bold : .semibold))
+                .foregroundStyle(
+                    isActive ? FlowTheme.primaryText(scheme) : FlowTheme.secondaryText(scheme)
+                )
+                .padding(.horizontal, FlowSpacing.s)
+                .frame(minHeight: 28)
+                .background(
+                    Capsule().fill(isActive ? FlowTheme.surface(scheme) : .clear)
+                        .shadow(
+                            color: isActive ? FlowTheme.shadow(scheme) : .clear,
+                            radius: 3, y: 1
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isActive ? [.isButton, .isSelected] : .isButton)
     }
 }

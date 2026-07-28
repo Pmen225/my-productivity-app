@@ -5,6 +5,7 @@ import SwiftUI
 /// a compact `+` — never a permanent full-width "Add a map" row.
 public struct MapListView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.colorScheme) private var scheme
     @Query(sort: \MapDocument.title) private var maps: [MapDocument]
 
     @State private var isAddingMap = false
@@ -24,10 +25,12 @@ public struct MapListView: View {
                     onAdd: { withAnimation(.snappy) { isAddingMap.toggle() } }
                 )
                 .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
 
                 if isAddingMap {
                     NewMapView(onFinished: { withAnimation(.snappy) { isAddingMap = false } })
                         .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
                 }
             }
 
@@ -38,11 +41,14 @@ public struct MapListView: View {
                     message: "Start a mind map to turn a loose idea into a plan."
                 )
                 .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
             } else {
                 ForEach(filteredMaps) { map in
                     NavigationLink(value: map) {
                         MapRow(map: map)
                     }
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
                     .swipeActions(edge: .trailing) {
                         Button {
                             renameDraft = map.title
@@ -50,12 +56,14 @@ public struct MapListView: View {
                         } label: {
                             Label("Rename", systemImage: "pencil")
                         }
-                        .tint(.blue)
+                        .tint(FlowTheme.accent)
                     }
                 }
                 .onDelete(perform: deleteMaps)
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(FlowTheme.background(scheme).ignoresSafeArea())
         .navigationTitle("Maps")
         .searchable(text: $searchText, placement: .automatic, prompt: "Search maps")
         .navigationDestination(for: MapDocument.self) { map in
@@ -115,12 +123,24 @@ private struct MapRow: View {
                     .foregroundStyle(FlowTheme.primaryText(scheme))
                 Text("\(map.nodeCount) idea\(map.nodeCount == 1 ? "" : "s")")
                     .font(FlowFont.caption)
-                    .foregroundStyle(FlowTheme.secondaryText(scheme))
+                    .foregroundStyle(FlowTheme.tertiaryText(scheme))
             }
 
             Spacer(minLength: FlowSpacing.s)
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(FlowTheme.tertiaryText(scheme))
         }
-        .padding(.vertical, FlowSpacing.xs)
+        .padding(FlowSpacing.m)
+        .background(
+            RoundedRectangle(cornerRadius: FlowRadius.medium, style: .continuous)
+                .fill(FlowTheme.surface(scheme))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: FlowRadius.medium, style: .continuous)
+                .strokeBorder(FlowTheme.separator(scheme), lineWidth: 1)
+        )
         .accessibilityElement(children: .combine)
     }
 }
@@ -170,7 +190,7 @@ private struct NewMapView: View {
 
     private var colourControl: some View {
         Menu {
-            ForEach(ColourToken.allCases, id: \.self) { token in
+            ForEach(ColourToken.taskTokens, id: \.self) { token in
                 Button(token.displayName) { themeToken = token }
             }
         } label: {

@@ -35,26 +35,32 @@ struct PlanPreviewView: View {
                 } else {
                     List {
                         if !changedBlocks.isEmpty {
-                            Section("New and moved blocks") {
+                            Section {
                                 ForEach(Array(changedBlocks.enumerated()), id: \.offset) { _, block in
                                     planRow(for: block)
                                 }
+                            } header: {
+                                FlowEyebrow("New and moved blocks")
                             }
                         }
                         if !deferredTasks.isEmpty {
-                            Section("Moved to a later day") {
+                            Section {
                                 ForEach(deferredTasks) { task in
                                     Text(task.title).font(FlowFont.secondary)
                                 }
+                            } header: {
+                                FlowEyebrow("Moved to a later day")
                             }
                         }
                         if !proposal.unplaceable.isEmpty {
-                            Section("Could not be placed") {
+                            Section {
                                 ForEach(Array(proposal.unplaceable.values), id: \.self) { reason in
                                     Text(reason)
                                         .font(FlowFont.secondary)
                                         .foregroundStyle(FlowTheme.secondaryText(scheme))
                                 }
+                            } header: {
+                                FlowEyebrow("Could not be placed")
                             }
                         }
                     }

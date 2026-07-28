@@ -20,7 +20,7 @@ public struct ProjectOverviewTab: View {
 
             FlowCard {
                 VStack(alignment: .leading, spacing: FlowSpacing.m) {
-                    Text("Summary").font(FlowFont.sectionTitle)
+                    FlowEyebrow("Summary")
                     TextEditor(text: $project.summary)
                         .frame(minHeight: 80)
                 }
@@ -41,7 +41,7 @@ public struct ProjectOverviewTab: View {
 
             FlowCard {
                 VStack(alignment: .leading, spacing: FlowSpacing.m) {
-                    Text("Timeline").font(FlowFont.sectionTitle)
+                    FlowEyebrow("Timeline")
                     optionalDateRow(title: "Start date", date: startDateBinding)
                     optionalDateRow(title: "Due date", date: dueDateBinding)
                 }
@@ -56,7 +56,7 @@ public struct ProjectOverviewTab: View {
         FlowCard {
             HStack(spacing: FlowSpacing.l) {
                 VStack(alignment: .leading, spacing: FlowSpacing.xxs) {
-                    Text("Progress").font(FlowFont.sectionTitle)
+                    FlowEyebrow("Progress")
                     Text("\(project.completedTaskCount) of \(project.actionableTasks.count) tasks complete")
                         .font(FlowFont.secondary)
                         .foregroundStyle(FlowTheme.secondaryText(scheme))
@@ -82,9 +82,9 @@ public struct ProjectOverviewTab: View {
     private var colourRow: some View {
         FlowCard {
             HStack {
-                Text("Colour").font(FlowFont.sectionTitle)
+                FlowEyebrow("Colour")
                 Spacer()
-                ForEach(ColourToken.allCases, id: \.self) { token in
+                ForEach(ColourToken.taskTokens, id: \.self) { token in
                     Button {
                         project.colourToken = token.rawValue
                         project.touch()

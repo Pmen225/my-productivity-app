@@ -170,6 +170,61 @@ Conflict handling rests on stable UUIDs and `updatedAt` timestamps. Completion
 and timer transitions are idempotent, so the same event arriving twice is
 absorbed rather than doubled.
 
+## Watch edition
+
+The watch is a **remote control, not a second brain**. `FocusEngine` and
+`SchedulingService` stay on the phone; the watch renders what it is handed and
+sends commands back to those same methods.
+
+```
+FlowmapWatch (watchOS target)          Flowmap (iOS)
+  WatchStore ── WatchSyncService ⇄ WatchSyncService ── AppEnvironment
+                     WatchSnapshot →        (snapshotProvider)
+                     ← WatchCommand         (commandHandler → FocusEngine)
+```
+
+- `Flowmap/Services/WatchSyncPayloads.swift` — the wire format, compiled into
+  both targets. Foundation only: no SwiftData, no SwiftUI.
+- `Flowmap/Services/WatchSyncService.swift` — one `WCSession` wrapper used by
+  both sides, so the two halves cannot disagree about encoding. Snapshots go out
+  as application context (latest-only, survives being out of range); commands go
+  as messages, falling back to `transferUserInfo` when the phone is unreachable.
+- The countdown never streams. A snapshot carries `activeEndsAt`, and the watch
+  counts down locally; a paused session carries a fixed `pausedRemaining`
+  instead, so pausing cannot drift.
+- `FlowmapWatchWidget` renders the complication from the last snapshot, which the
+  watch app mirrors into the `group.com.flowmap.app` container.
+
+The watch target compiles a hand-listed subset of shared files (see
+`project.yml`): the payloads, the sync service, the design tokens and
+`DurationFormatter`. Anything not listed is deliberately absent.
+
+## Calendar integration
+
+Two accounts, one notion of busy time.
+
+```
+CalendarHub
+ ├── AppleCalendarProvider  → CalendarService (EventKit, synchronous, local)
+ └── GoogleCalendarProvider → Calendar API v3 over HTTPS, OAuth 2.0 PKCE
+```
+
+- `CalendarProvider` is the boundary. Account-specific concerns — permission
+  prompts, OAuth, refresh tokens — stop there; everything above sees
+  `ExternalCalendarEvent`.
+- `CalendarHub` merges and de-duplicates (the same meeting mirrored into two
+  accounts is one wall of busy time, not two) and keeps a per-account cache,
+  because Apple returns synchronously and Google is a network round trip.
+- `AppEnvironment.externalBusyEvents` is what the planner reads. Apple is loaded
+  synchronously before reconciliation plans; Google refreshes behind it and is
+  served from cache until it lands, so planning never blocks on the network.
+- Google tokens live in the Keychain only. The client id is stored in settings
+  because the installed-app PKCE flow has no client secret.
+
+The whole layer is drivable by an assistant: see `docs/llm-calendar-api.md` for
+the tool names, and `Flowmap/Intents/CalendarIntents.swift` for the App Intents
+that expose the same operations outside the app.
+
 ## Privacy
 
 - No analytics SDK, no advertising SDK, no account server

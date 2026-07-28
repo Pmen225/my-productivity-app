@@ -33,7 +33,7 @@ public struct TaskRowView: View {
                     .strikethrough(task.status == .completed)
                     .foregroundStyle(
                         task.status == .completed
-                            ? FlowTheme.secondaryText(scheme)
+                            ? FlowTheme.tertiaryText(scheme)
                             : FlowTheme.primaryText(scheme)
                     )
                     .lineLimit(2)
@@ -42,7 +42,15 @@ public struct TaskRowView: View {
             Spacer(minLength: FlowSpacing.s)
             DurationChip(minutes: task.estimatedMinutes, tint: task.colour)
         }
-        .padding(.vertical, FlowSpacing.xs)
+        .padding(FlowSpacing.m)
+        .background(
+            RoundedRectangle(cornerRadius: FlowRadius.medium, style: .continuous)
+                .fill(FlowTheme.surface(scheme))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: FlowRadius.medium, style: .continuous)
+                .strokeBorder(FlowTheme.separator(scheme), lineWidth: 1)
+        )
         .contentShape(Rectangle())
         #if os(iOS)
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
@@ -104,7 +112,7 @@ public struct TaskRowView: View {
         Button(action: toggleComplete) {
             Image(systemName: task.status == .completed ? "checkmark.circle.fill" : "circle")
                 .font(.system(size: 20))
-                .foregroundStyle(task.status == .completed ? task.colour.base : FlowTheme.secondaryText(scheme))
+                .foregroundStyle(task.colour.base.opacity(task.status == .completed ? 1 : 0.5))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(task.status == .completed ? "Completed" : "Mark complete")

@@ -67,8 +67,29 @@ public final class MapViewModel {
         return nodeByID(selectedNodeID)
     }
 
+    private var metrics: MapLayout.Metrics { .shared }
+
     public var layoutPositions: [UUID: CGPoint] {
-        MapLayout.positions(forMap: map)
+        MapLayout.positions(forMap: map, orientation: map.layoutOrientation, isCompact: isCompact, metrics: metrics)
+    }
+
+    /// Every visible node's real pill size — the one measurement the canvas,
+    /// the connectors and `fitToMap` all read, so a pill is never drawn a
+    /// different size than it was laid out at.
+    public var layoutSizes: [UUID: CGSize] {
+        MapLayout.sizes(for: visibleNodes, isCompact: isCompact, metrics: metrics)
+    }
+
+    /// Which way the tree fans out. Persisted on the map itself so reopening
+    /// it keeps the chosen shape; every node's position is recomputed from
+    /// this the moment it changes.
+    public var layoutOrientation: MapLayoutOrientation {
+        get { map.layoutOrientation }
+        set {
+            guard newValue != map.layoutOrientation else { return }
+            map.layoutOrientation = newValue
+            try? context.save()
+        }
     }
 
     /// The position both a node bubble and its connectors must read: automatic
@@ -411,8 +432,19 @@ public final class MapViewModel {
     }
 
     /// Zooms and pans so every visible node fits inside `viewportSize`.
-    public func fitToMap(viewportSize: CGSize) {
-        let box = MapLayout.bounds(of: layoutPositions)
+    ///
+    /// The canvas renders content SHIFTED so the tree's bounding box starts at
+    /// `margin` (see `MapCanvasView.originShift`) — offsets must be computed in
+    /// that rendered space, not raw layout space, or fitting frames nothing.
+    public func fitToMap(viewportSize: CGSize, margin: CGFloat = 160) {
+        // Manual placements override automatic layout in rendering, so the
+        // fitted bounds must include them too or a hand-moved node sits
+        // outside the frame.
+        var fitPositions = layoutPositions
+        for node in visibleNodes {
+            if let manual = node.manualPosition { fitPositions[node.id] = manual }
+        }
+        let box = MapLayout.bounds(of: fitPositions, sizes: layoutSizes, metrics: metrics)
         guard box.width > 0, box.height > 0, viewportSize.width > 0, viewportSize.height > 0 else {
             zoom = 1
             panOffset = .zero
@@ -423,21 +455,21 @@ public final class MapViewModel {
         let scaleX = (viewportSize.width - padding) / box.width
         let scaleY = (viewportSize.height - padding) / box.height
         zoom = min(max(min(scaleX, scaleY), 0.25), 1.5)
-        let centre = CGPoint(x: box.midX, y: box.midY)
         panOffset = CGSize(
-            width: viewportSize.width / 2 - centre.x * zoom,
-            height: viewportSize.height / 2 - centre.y * zoom
+            width: viewportSize.width / 2 - (margin + box.width / 2) * zoom,
+            height: viewportSize.height / 2 - (margin + box.height / 2) * zoom
         )
         persistCanvasState()
     }
 
     /// Pans, at the current zoom, so the selected node sits at the viewport's centre.
-    public func centreOnSelection(viewportSize: CGSize) {
+    public func centreOnSelection(viewportSize: CGSize, margin: CGFloat = 160) {
         guard let node = selectedNode else { return }
+        let box = MapLayout.bounds(of: layoutPositions, sizes: layoutSizes, metrics: metrics)
         let point = position(of: node, in: layoutPositions)
         panOffset = CGSize(
-            width: viewportSize.width / 2 - point.x * zoom,
-            height: viewportSize.height / 2 - point.y * zoom
+            width: viewportSize.width / 2 - (point.x - box.minX + margin) * zoom,
+            height: viewportSize.height / 2 - (point.y - box.minY + margin) * zoom
         )
         persistCanvasState()
     }

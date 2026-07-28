@@ -61,6 +61,7 @@ public struct CompactSectionHeader: View {
                         .font(.system(size: 13, weight: .semibold))
                         .frame(width: 26, height: 26)
                         .background(Circle().fill(FlowTheme.separator(scheme).opacity(0.7)))
+                        .flowHitTarget()
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(addLabel ?? "Add \(title)")
@@ -132,7 +133,7 @@ public struct PrimaryActionButton: View {
             .padding(.vertical, 14)
             .background(
                 RoundedRectangle(cornerRadius: FlowRadius.small, style: .continuous)
-                    .fill(FlowTheme.accent.opacity(isEnabled ? 1 : 0.4))
+                    .fill(FlowTheme.accentFill.opacity(isEnabled ? 1 : 0.4))
             )
             .foregroundStyle(.white)
         }
@@ -292,7 +293,10 @@ public struct FlowBanner: View {
                         Button(action.title, action: action.handler)
                             .font(FlowFont.caption.weight(.semibold))
                             .buttonStyle(.plain)
-                            .foregroundStyle(FlowTheme.accent)
+                            // Clay AS text needs the deeper value: the fill clay
+                            // reads at only 3.66:1 on a light card.
+                            .foregroundStyle(FlowTheme.accentText(scheme))
+                            .flowHitTarget()
                     }
                 }
             }

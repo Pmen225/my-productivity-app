@@ -509,6 +509,25 @@ public enum BackupService {
         // parent still finds it. Only nodes this import actually wrote are
         // relinked — reparenting a record we skipped for being older would
         // overwrite a newer local edit by the back door.
+        // Loops are judged on the archive's own parent map rather than on the
+        // half-linked live objects. Judging them live made the outcome depend on
+        // the order records happened to arrive in: the same corrupt archive could
+        // import clean or leave a bad link, one run to the next.
+        var parentByID: [UUID: UUID] = [:]
+        for dto in archive.mapNodes {
+            if let parentID = dto.parentID { parentByID[dto.id] = parentID }
+        }
+        func loopsInArchive(from id: UUID) -> Bool {
+            var seen: Set<UUID> = [id]
+            var cursor = parentByID[id]
+            while let next = cursor {
+                if !seen.insert(next).inserted { return true }
+                cursor = parentByID[next]
+                if seen.count > 256 { return true }
+            }
+            return false
+        }
+
         for dto in archive.mapNodes {
             guard touchedNodeIDs.contains(dto.id), let node = mapNodes[dto.id] else { continue }
             guard let parentID = dto.parentID, let parent = mapNodes[parentID] else {
@@ -518,6 +537,13 @@ public enum BackupService {
             // A corrupt or hostile archive can name a parent that is the node
             // itself or one of its own descendants. Left unchecked that builds a
             // cycle, and the next read of the tree recurses until the app dies.
+            // Every node in the loop loses its parent — the data is already
+            // wrong, and picking a survivor would just re-introduce the ordering
+            // dependency this check exists to remove.
+            guard !loopsInArchive(from: dto.id) else {
+                node.parent = nil
+                continue
+            }
             guard !wouldCreateCycle(child: node, parent: parent) else { continue }
             node.parent = parent
         }

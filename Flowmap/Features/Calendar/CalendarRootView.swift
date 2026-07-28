@@ -26,10 +26,23 @@ enum CalendarMode: String, CaseIterable, Identifiable {
 struct CalendarRootView: View {
     @Environment(\.flow) private var flow
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var mode: CalendarMode = .day
     @State private var anchorDate: Date = Date()
     @State private var quickAddSheet: CalendarQuickAddSheet?
+
+    /// Switching Day/Week/Month/Agenda is the bigger jump — a spring settle.
+    /// Reduce Motion drops straight to a plain cross-fade.
+    private var viewSwitchAnimation: Animation? {
+        reduceMotion ? .linear(duration: 0.12) : .spring(response: 0.32, dampingFraction: 0.86)
+    }
+
+    /// Stepping to another day/week/month within the same view is lighter —
+    /// a quiet opacity settle rather than a spring.
+    private var scopeChangeAnimation: Animation? {
+        reduceMotion ? .linear(duration: 0.12) : .smooth
+    }
 
     private var calendar: Calendar {
         CalendarDateMath.calendar(firstWeekday: flow?.settings.firstWeekday ?? 2)
@@ -63,14 +76,6 @@ struct CalendarRootView: View {
     private var header: some View {
         VStack(spacing: FlowSpacing.s) {
             HStack {
-                Text(titleLabel)
-                    .font(FlowFont.screenTitle)
-                    .foregroundStyle(FlowTheme.primaryText(scheme))
-                Spacer()
-                CalendarQuickAddMenu(activeSheet: $quickAddSheet)
-            }
-
-            HStack(spacing: FlowSpacing.s) {
                 Picker("View", selection: $mode) {
                     ForEach(CalendarMode.allCases) { mode in
                         Text(mode.displayName).tag(mode)
@@ -80,17 +85,43 @@ struct CalendarRootView: View {
 
                 Spacer(minLength: FlowSpacing.s)
 
+                CalendarQuickAddMenu(activeSheet: $quickAddSheet)
+            }
+
+            HStack(spacing: FlowSpacing.s) {
                 Button { step(-1) } label: {
                     Image(systemName: "chevron.left")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(FlowTheme.tertiaryText(scheme))
                 }
+                .flowHitTarget()
+                .accessibilityLabel("Previous")
+
+                Spacer(minLength: 0)
+
+                Text(titleLabel)
+                    .font(.system(size: 17, weight: .heavy))
+                    .foregroundStyle(FlowTheme.primaryText(scheme))
+
+                Spacer(minLength: 0)
+
                 Button("Today") {
                     anchorDate = Date()
                 }
                 .font(FlowFont.caption.weight(.semibold))
+                .foregroundStyle(FlowTheme.accentText(scheme))
+
                 Button { step(1) } label: {
                     Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(FlowTheme.tertiaryText(scheme))
                 }
+                .flowHitTarget()
+                .accessibilityLabel("Next")
             }
+            .padding(.horizontal, FlowSpacing.m)
+            .padding(.vertical, FlowSpacing.s)
+            .flowGlass(radius: FlowRadius.pill)
         }
         .padding(.horizontal, FlowSpacing.screen)
         .padding(.vertical, FlowSpacing.s)
@@ -98,25 +129,31 @@ struct CalendarRootView: View {
 
     @ViewBuilder
     private var content: some View {
-        switch mode {
-        case .day:
-            CalendarDayView(day: anchorDate)
-        case .week:
-            CalendarWeekView(anchorDate: anchorDate) { day in
-                anchorDate = day
-                mode = .day
-            }
-        case .month:
-            CalendarMonthView(anchorDate: anchorDate) { day in
-                anchorDate = day
-                mode = .day
-            }
-        case .agenda:
-            CalendarAgendaView(anchorDate: anchorDate, dayCount: 21) { day in
-                anchorDate = day
-                mode = .day
+        Group {
+            switch mode {
+            case .day:
+                CalendarDayView(day: anchorDate)
+            case .week:
+                CalendarWeekView(anchorDate: anchorDate) { day in
+                    anchorDate = day
+                    mode = .day
+                }
+            case .month:
+                CalendarMonthView(anchorDate: anchorDate) { day in
+                    anchorDate = day
+                    mode = .day
+                }
+            case .agenda:
+                CalendarAgendaView(anchorDate: anchorDate, dayCount: 21) { day in
+                    anchorDate = day
+                    mode = .day
+                }
             }
         }
+        .id(mode)
+        .transition(.opacity.combined(with: .offset(y: reduceMotion ? 0 : 6)))
+        .animation(viewSwitchAnimation, value: mode)
+        .animation(scopeChangeAnimation, value: anchorDate)
     }
 
     private var titleLabel: String {

@@ -15,6 +15,19 @@ public final class AppEnvironment {
     public let calendarService: CalendarService
     public let notificationService: NotificationService
     public let searchService: SearchService
+    /// Every calendar account, merged. The planner reads busy time from here so
+    /// it cannot end up with one rule for Apple and another for Google.
+    public let calendarHub: CalendarHub
+    private let appleCalendarProvider: AppleCalendarProvider
+    #if os(iOS) || os(macOS)
+    private let googleCalendarProvider: GoogleCalendarProvider
+    #endif
+
+    #if os(iOS)
+    /// The link to the watch. Nil-safe: with no watch paired it simply never
+    /// sends anything.
+    public let watchLink = WatchSyncService()
+    #endif
 
     /// Rebuilt whenever the timer ticks so views observing it redraw.
     public var now: Date = Date()
@@ -33,12 +46,49 @@ public final class AppEnvironment {
         self.notificationService = NotificationService()
         self.searchService = SearchService(context: context)
         self.focusEngine = FocusEngine(context: context, settings: settings)
+
+        let settings = self.settings
+        let appleProvider = AppleCalendarProvider(
+            service: self.calendarService,
+            isEnabled: settings.calendarIntegrationEnabled,
+            selectedIdentifiers: settings.selectedCalendarIdentifiers
+        )
+        self.appleCalendarProvider = appleProvider
+
+        #if os(iOS) || os(macOS)
+        let googleProvider = GoogleCalendarProvider(
+            isEnabled: settings.googleCalendarEnabled,
+            selectedIdentifiers: settings.selectedGoogleCalendarIdentifiers,
+            clientID: settings.googleOAuthClientID,
+            accountLabel: settings.googleAccountLabel
+        )
+        self.googleCalendarProvider = googleProvider
+        self.calendarHub = CalendarHub(providers: [appleProvider, googleProvider])
+        #else
+        self.calendarHub = CalendarHub(providers: [appleProvider])
+        #endif
+
         // Wired after init so focus continuations see the same calendar the
         // planner does, refreshed rather than snapshotted.
         let calendarService = self.calendarService
+        let hub = self.calendarHub
         self.focusEngine.externalEventsProvider = {
-            calendarService.busyEvents(in: calendarService.events)
+            let apple = calendarService.busyEvents(in: calendarService.events)
+            let remote = hub.busyEvents(in: hub.eventsByKind[.google] ?? [])
+            return apple + remote
         }
+    }
+
+    /// Busy time from every connected account.
+    ///
+    /// Apple is read synchronously from the local store; Google arrives on the
+    /// network and is served from the hub's cache, so a plan made in the first
+    /// second after launch uses whatever Google had last returned rather than
+    /// blocking on it.
+    public var externalBusyEvents: [ExternalCalendarEvent] {
+        let apple = calendarService.busyEvents(in: calendarService.events)
+        let remote = calendarHub.busyEvents(in: calendarHub.eventsByKind[.google] ?? [])
+        return (apple + remote).sorted { $0.start < $1.start }
     }
 
     /// The settings record, created on first launch.
@@ -62,7 +112,7 @@ public final class AppEnvironment {
         SchedulingService(
             context: context,
             settings: settings,
-            externalEvents: calendarService.busyEvents(in: calendarService.events)
+            externalEvents: externalBusyEvents
         )
     }
 
@@ -103,18 +153,51 @@ public final class AppEnvironment {
         now = date
         focusEngine.tick = date
         focusEngine.processElapsedSessionIfNeeded(now: date)
+        #if os(iOS)
+        // Cheap: the link drops a snapshot identical to the last one.
+        watchLink.publishCurrent()
+        #endif
     }
 
     public func refreshCalendarWindow(around date: Date) {
         let calendar = Calendar.current
         let start = calendar.startOfDay(for: date)
         let end = calendar.date(byAdding: .day, value: SchedulingService.lookaheadDays, to: start) ?? start
+
+        // Apple stays synchronous: reconciliation plans on the very next line and
+        // must not plan over a meeting that has not arrived yet.
         calendarService.loadEvents(
             from: start,
             to: end,
             selectedIdentifiers: settings.selectedCalendarIdentifiers,
             enabled: settings.calendarIntegrationEnabled
         )
+        appleCalendarProvider.update(
+            isEnabled: settings.calendarIntegrationEnabled,
+            selectedIdentifiers: settings.selectedCalendarIdentifiers
+        )
+        #if os(iOS) || os(macOS)
+        googleCalendarProvider.update(
+            isEnabled: settings.googleCalendarEnabled,
+            selectedIdentifiers: settings.selectedGoogleCalendarIdentifiers,
+            clientID: settings.googleOAuthClientID,
+            accountLabel: settings.googleAccountLabel
+        )
+        #endif
+
+        // Remote accounts are a network round trip, so they refresh behind the
+        // scenes and are served from cache until they land.
+        let hub = calendarHub
+        let selection = calendarSelection
+        Task { await hub.loadEvents(from: start, to: end, selection: selection) }
+    }
+
+    /// Which calendars each account is allowed to read, from settings.
+    public var calendarSelection: [CalendarAccountKind: [String]] {
+        [
+            .apple: settings.selectedCalendarIdentifiers,
+            .google: settings.selectedGoogleCalendarIdentifiers
+        ]
     }
 
     public func upcomingSegments(from date: Date) -> [TaskSegment] {
@@ -148,6 +231,103 @@ public final class AppEnvironment {
             settings: settings
         )
     }
+
+    #if os(iOS)
+    // MARK: - Watch
+
+    /// Starts publishing to the watch. Called once, at launch.
+    ///
+    /// The watch is a remote control, not a second brain: it receives what the
+    /// phone already computed and sends back commands that land on the very same
+    /// `FocusEngine` calls the phone's own buttons use.
+    public func activateWatchLink() {
+        watchLink.snapshotProvider = { [weak self] in
+            self?.watchSnapshot() ?? WatchSnapshot()
+        }
+        watchLink.commandHandler = { [weak self] command in
+            self?.handleWatchCommand(command)
+        }
+        watchLink.activate()
+    }
+
+    public func watchSnapshot() -> WatchSnapshot {
+        let moment = now
+        let queue = focusEngine.queue(for: moment)
+        let session = focusEngine.activeSession
+        let activeSegmentID = session?.segment?.id
+
+        let items = queue.map { segment in
+            WatchSnapshot.Item(
+                id: segment.id,
+                title: segment.task?.title ?? "Focus",
+                colourToken: (segment.task?.colour ?? .violet).rawValue,
+                start: segment.startDate,
+                end: segment.endDate,
+                isDone: segment.state == .completed,
+                isActive: segment.id == activeSegmentID,
+                isExternal: segment.externalEventIdentifier != nil
+            )
+        }
+
+        let remaining = queue
+            .filter { $0.state == .scheduled && $0.endDate > moment }
+            .reduce(0) { $0 + $1.durationMinutes }
+
+        return WatchSnapshot(
+            generatedAt: moment,
+            activeTitle: session.map { $0.task?.title ?? "Focus" },
+            activeColourToken: session?.task?.colour.rawValue,
+            // Only one of these two is ever set: a running block counts down to a
+            // date, a paused one holds a fixed remainder.
+            activeEndsAt: session.flatMap { $0.isPaused ? nil : moment.addingTimeInterval($0.remainingSeconds(at: moment)) },
+            pausedRemaining: session.flatMap { $0.isPaused ? $0.remainingSeconds(at: moment) : nil },
+            activeTotalSeconds: session?.plannedSeconds,
+            isPaused: session?.isPaused ?? false,
+            items: items,
+            plannedMinutes: queue.reduce(0) { $0 + $1.durationMinutes },
+            remainingMinutes: remaining,
+            completedCount: queue.filter { $0.state == .completed }.count,
+            totalCount: queue.count
+        )
+    }
+
+    public func handleWatchCommand(_ command: WatchCommand) {
+        switch command {
+        case .togglePause:
+            focusEngine.togglePause(now: Date())
+        case .complete:
+            focusEngine.completeCurrentTask(now: Date())
+        case .skip:
+            focusEngine.skipCurrentTask(now: Date())
+        case .startNext:
+            let moment = Date()
+            guard focusEngine.activeSession == nil else { return }
+            let next = focusEngine.currentSegment(at: moment)
+                ?? focusEngine.queue(for: moment).first { $0.state == .scheduled && $0.endDate > moment }
+            if let next { _ = focusEngine.start(segment: next, now: moment) }
+        case .capture(let text):
+            captureFromWatch(text)
+        case .requestSnapshot:
+            watchLink.publishCurrent(force: true)
+        }
+        try? context.save()
+        watchLink.publishCurrent(force: true)
+    }
+
+    /// Dictated text becomes an inbox task through the assistant's own tool, so
+    /// there is one creation path rather than a watch-shaped copy of it.
+    private func captureFromWatch(_ text: String) {
+        let title = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return }
+        let arguments: [String: String] = ["title": title]
+        guard let data = try? JSONSerialization.data(withJSONObject: arguments),
+              let json = String(data: data, encoding: .utf8) else { return }
+        _ = AssistantToolRouter(flow: self).handle(
+            toolName: AssistantToolName.createTask.rawValue,
+            argumentsJSON: json
+        )
+    }
+    #endif
 }
 
 // MARK: - Environment plumbing

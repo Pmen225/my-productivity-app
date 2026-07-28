@@ -43,6 +43,45 @@ The script prints only the failure lines when something breaks. Set
 `FLOWMAP_DERIVED` to use a separate build directory, and `FLOWMAP_SIM` to pick a
 different simulator (default: `iPhone 17 Pro`).
 
+### Apple Watch
+
+The watch edition is its own target and its own scheme:
+
+```bash
+xcodebuild -project Flowmap.xcodeproj -scheme FlowmapWatch \
+  -destination 'generic/platform=watchOS Simulator' \
+  -configuration Debug CODE_SIGNING_ALLOWED=NO build
+```
+
+It shows the running block with its countdown, the day's timeline, and a
+dictation capture that lands in the phone's inbox — plus a complication with the
+time left. It never plans or times anything itself: every control sends a command
+to the phone, which runs it through `FocusEngine` exactly as the phone's own
+buttons do. With no phone in range the watch shows the last snapshot it received
+rather than an empty screen.
+
+## Calendars
+
+Apple Calendar works out of the box through EventKit — turn it on in
+**Settings → Calendar** and pick the calendars to read.
+
+Google Calendar needs one thing from you, because the app ships without an Apple
+Developer team or a Google Cloud project:
+
+1. Create an OAuth client of type **iOS** in the Google Cloud console, with the
+   Calendar API enabled and the `calendar.events` / `calendar.readonly` scopes on
+   the consent screen.
+2. Paste the client id into **Settings → Calendar → Google**.
+3. Tap **Connect** and sign in.
+
+There is no client secret: the app uses the installed-app PKCE flow. The refresh
+token is stored in the Keychain and nowhere else.
+
+Both accounts merge into one busy-time source, so the planner treats a Google
+meeting exactly as it treats an Apple one. An assistant can drive all of this —
+connect, disconnect, choose calendars, read and write blocks — through the tools
+documented in `docs/llm-calendar-api.md`.
+
 ## Signing and CloudKit — the remaining manual step
 
 **This build is unsigned.** No Apple Developer team was available in the

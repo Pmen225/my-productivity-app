@@ -126,3 +126,22 @@ exports the drag type `com.flowmap.timelineitem` via `UTType(exportedAs:)`
 without declaring it in `Info.plist`, which logged a type-declaration error on
 every drag session. It is now declared in `project.yml` and verified present in
 the built bundle.
+
+## Checkpoint 8 — design-mock parity pass (28 Jul 2026)
+
+Tasks 51–56 (Task Master) done, each screenshot-verified against the claude.ai
+design mock (`~/Downloads/Design directions_…/verification/`):
+
+| Area | Result |
+|---|---|
+| Timeline | single-line blocks with "10:10 · 30M" meta, text in thin blocks, "8:00" gutter, dotted now-line |
+| Map canvas | fitted tree, dark XP root, bordered leaf pills + durations, +N SUBTASKS, child-tinted connectors; fit bug was a coordinate-space mismatch between `fitToMap` (raw layout space) and the canvas's shifted render space, compounded by persisted manual node positions |
+| New sheet | FAB opens the mock's New sheet; inline quick-add row restyled to match (chips, pill grid, subtasks, note, clay CTA) |
+| Calendar | month grid, clay selected day, AGENDA rows |
+| Chrome | clay accent everywhere (new `clay` ColourToken, default + demo-seeded; task palette stays the 8 pastels) |
+| Secondary | Stats XP card, warm Library menu + Maps list, Assistant status pill/composer, muted queue-row meta |
+| Dark mode | `-flowmapDemoDark` launch arg pins demo appearance; Today + Focus dark verified |
+
+Evidence: `Screenshots/` (14 canonical PNGs), suite green: 96 unit tests,
+screenshot UI tests `** TEST SUCCEEDED **`. `scripts/screenshots.sh` added —
+regenerates and canonically renames all captures.

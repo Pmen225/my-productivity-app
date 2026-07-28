@@ -73,7 +73,7 @@ public struct NewProjectView: View {
 
     private var colourControl: some View {
         Menu {
-            ForEach(ColourToken.allCases, id: \.self) { token in
+            ForEach(ColourToken.taskTokens, id: \.self) { token in
                 Button(token.displayName) { colourToken = token }
             }
         } label: {

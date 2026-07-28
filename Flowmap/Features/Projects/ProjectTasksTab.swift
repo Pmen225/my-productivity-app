@@ -56,6 +56,8 @@ public struct ProjectTasksTab: View {
                     TaskRowView(task: task)
                         .contentShape(Rectangle())
                         .onTapGesture { selectedTask = task }
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
                 }
             }
         }

@@ -14,6 +14,15 @@ enum FocusCardPage: Int, CaseIterable, Identifiable {
         case .subtasks: "Subtasks"
         }
     }
+
+    /// The eyebrow shown above the page on iPhone — the mock's "Today's
+    /// queue" / "Subtasks" wording, distinct from the terser Mac tab title.
+    var eyebrowTitle: String {
+        switch self {
+        case .today: "Today's queue"
+        case .subtasks: "Subtasks"
+        }
+    }
 }
 
 /// The card beneath the wheel: today's queue on one page, the active task's
@@ -24,6 +33,7 @@ enum FocusCardPage: Int, CaseIterable, Identifiable {
 struct FocusTaskCard: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.modelContext) private var context
+    @Environment(\.flow) private var flow
 
     let queue: [TaskSegment]
     let activeTask: FlowTask?
@@ -35,6 +45,10 @@ struct FocusTaskCard: View {
     @Binding var expansion: Double
 
     @State private var dragOffset: CGFloat = 0
+
+    /// Ticks with the same clock `FocusScreen` uses, so the active row's
+    /// remaining time counts down without a timer of its own.
+    private var now: Date { flow?.now ?? Date() }
 
     /// Rest height leaves the wheel its own space; expanded covers three fifths.
     static func restingHeight(for total: CGFloat) -> CGFloat { max(180, total * 0.28) }
@@ -73,10 +87,12 @@ struct FocusTaskCard: View {
         .frame(maxWidth: .infinity)
         .frame(height: height, alignment: .top)
         .background(
+            // The mock's hand-held shape: tighter top corners, a deep flare at
+            // the bottom rather than a plain rectangle.
             UnevenRoundedRectangle(
                 topLeadingRadius: FlowRadius.large,
-                bottomLeadingRadius: 0,
-                bottomTrailingRadius: 0,
+                bottomLeadingRadius: FlowRadius.deep,
+                bottomTrailingRadius: FlowRadius.deep,
                 topTrailingRadius: FlowRadius.large,
                 style: .continuous
             )
@@ -90,8 +106,8 @@ struct FocusTaskCard: View {
 
     private var grabber: some View {
         Capsule()
-            .fill(FlowTheme.separator(scheme))
-            .frame(width: 38, height: 5)
+            .fill(FlowTheme.separatorStrong(scheme))
+            .frame(width: 42, height: 5)
             .accessibilityLabel("Drag to expand the task card")
             .accessibilityAddTraits(.isButton)
             .accessibilityAction {
@@ -112,9 +128,7 @@ struct FocusTaskCard: View {
             .labelsHidden()
             .frame(maxWidth: 240)
             #else
-            Text(page.title)
-                .font(FlowFont.sectionTitle)
-                .foregroundStyle(FlowTheme.primaryText(scheme))
+            FlowEyebrow(page.eyebrowTitle)
             Spacer()
             pageDots
             #endif
@@ -184,26 +198,21 @@ struct FocusTaskCard: View {
 
     private func queueRow(_ segment: TaskSegment) -> some View {
         let task = segment.task
+        let colour = task?.colour ?? .violet
         let isActive = segment.id == activeSegmentID
         return Button {
             onSelect(segment)
         } label: {
             HStack(spacing: FlowSpacing.m) {
-                Image(systemName: task?.iconName ?? "circle")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle((task?.colour ?? .violet).onSoft)
-                    .frame(width: 30, height: 30)
-                    .background(Circle().fill((task?.colour ?? .violet).soft))
+                Circle()
+                    .fill(colour.onSoft)
+                    .frame(width: 8, height: 8)
+                    .accessibilityHidden(true)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(task?.title ?? "Task")
-                        .font(FlowFont.body)
-                        .foregroundStyle(FlowTheme.primaryText(scheme))
-                        .lineLimit(1)
-                    Text(DurationFormatter.timeRange(from: segment.startDate, to: segment.endDate))
-                        .font(FlowFont.caption)
-                        .foregroundStyle(FlowTheme.secondaryText(scheme))
-                }
+                Text(task?.title ?? "Task")
+                    .font(FlowFont.body)
+                    .foregroundStyle(FlowTheme.primaryText(scheme))
+                    .lineLimit(1)
 
                 Spacer(minLength: FlowSpacing.s)
 
@@ -213,13 +222,24 @@ struct FocusTaskCard: View {
                         .foregroundStyle(FlowTheme.secondaryText(scheme))
                         .accessibilityLabel("Locked")
                 }
-                DurationChip(minutes: segment.durationMinutes, tint: task?.colour)
+
+                if isActive {
+                    // The row that is actually running reads its remaining
+                    // time, not the fixed slot it was scheduled into.
+                    Text(DurationFormatter.countdown(seconds: segment.remainingSeconds(at: now)))
+                        .font(FlowFont.caption.weight(.heavy).monospacedDigit())
+                        .foregroundStyle(FlowTheme.accentDeep)
+                } else {
+                    Text("\(DurationFormatter.time(segment.startDate)) · \(DurationFormatter.compact(minutes: segment.durationMinutes))")
+                        .font(.system(size: 12, design: .rounded).monospacedDigit())
+                        .foregroundStyle(FlowTheme.secondaryText(scheme))
+                }
             }
-            .padding(.vertical, FlowSpacing.s)
             .padding(.horizontal, FlowSpacing.m)
+            .flowHitTarget(44)
             .background(
                 RoundedRectangle(cornerRadius: FlowRadius.small, style: .continuous)
-                    .fill(isActive ? (task?.colour ?? .violet).soft : Color.clear)
+                    .fill(isActive ? colour.soft : Color.clear)
             )
         }
         .buttonStyle(.plain)

@@ -42,6 +42,8 @@ public struct ProjectsScreen: View {
                     NavigationLink(value: project) {
                         ProjectRow(project: project)
                     }
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
                 }
                 .onDelete(perform: deleteProjects)
             }

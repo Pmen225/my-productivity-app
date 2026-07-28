@@ -98,7 +98,7 @@ public struct NodeInspectorView: View {
     private var colourSection: some View {
         Section("Colour") {
             HStack(spacing: FlowSpacing.s) {
-                ForEach(ColourToken.allCases, id: \.self) { token in
+                ForEach(ColourToken.taskTokens, id: \.self) { token in
                     Button(action: {
                         node.colourToken = token.rawValue
                         node.touch()

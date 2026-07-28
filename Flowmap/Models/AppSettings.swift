@@ -9,7 +9,7 @@ public final class AppSettings {
 
     // Appearance
     public var appearanceRaw: String = AppearanceMode.system.rawValue
-    public var accentToken: String = ColourToken.violet.rawValue
+    public var accentToken: String = ColourToken.clay.rawValue
     /// 1 = Sunday, 2 = Monday, matching `Calendar.firstWeekday`.
     public var firstWeekday: Int = 2
 
@@ -44,6 +44,18 @@ public final class AppSettings {
     public var selectedCalendarIdentifiers: [String] = []
     public var writeBackCalendarIdentifier: String?
     public var writesFocusBlocksToCalendar: Bool = false
+
+    // Google Calendar
+    public var googleCalendarEnabled: Bool = false
+    /// Google calendar ids the user opted into showing.
+    public var selectedGoogleCalendarIdentifiers: [String] = []
+    /// The signed-in account, shown in Settings so it is obvious whose calendar
+    /// is being read. Never a credential — tokens live in the Keychain only.
+    public var googleAccountLabel: String?
+    /// OAuth client id for the installed-app flow. Public by design (the flow is
+    /// PKCE, so there is no client secret), and per-install because each build
+    /// signs in with its own Google Cloud project.
+    public var googleOAuthClientID: String?
 
     // Assistant
     public var assistantProviderRaw: String = AssistantProvider.anthropic.rawValue

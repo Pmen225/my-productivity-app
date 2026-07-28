@@ -110,7 +110,97 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.flowmap.app.uitests
         TEST_TARGET_NAME: Flowmap
 
+  # The watch edition is a separate target rather than a shared destination:
+  # the phone owns FocusEngine and SchedulingService, and the watch only ever
+  # renders a snapshot and sends commands back, so it needs none of that code.
+  FlowmapWatch:
+    type: application
+    platform: watchOS
+    deploymentTarget: "11.0"
+    sources:
+      - path: FlowmapWatch
+        excludes:
+          - "**/.DS_Store"
+      # Shared with the phone, file by file. Anything not listed here is
+      # deliberately absent from the watch build.
+      - path: Flowmap/Services/WatchSyncPayloads.swift
+      - path: Flowmap/Services/WatchSyncService.swift
+      - path: Flowmap/DesignSystem/FlowTheme.swift
+      - path: Flowmap/DesignSystem/Typography.swift
+      - path: Flowmap/DesignSystem/Spacing.swift
+      - path: Flowmap/Models/DurationFormatter.swift
+    info:
+      path: FlowmapWatch/Info.plist
+      properties:
+        CFBundleDisplayName: Flowmap
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        WKApplication: true
+        WKRunsIndependentlyOfCompanionApp: true
+        # Not watch-only: the phone owns the data, so watchOS wants the companion
+        # named here. Without it the app will not even install.
+        WKCompanionAppBundleIdentifier: com.flowmap.app
+        NSSpeechRecognitionUsageDescription: Flowmap turns what you dictate into a task on your phone.
+        NSMicrophoneUsageDescription: Flowmap records your dictated captures.
+    entitlements:
+      path: FlowmapWatch/FlowmapWatch.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.flowmap.app
+    dependencies:
+      - target: FlowmapWatchWidget
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.flowmap.app.watchkitapp
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ENABLE_PREVIEWS: YES
+        SWIFT_EMIT_LOC_STRINGS: YES
+
+  # The complication. Reads the same snapshot the watch app last received, from
+  # the shared app group, so a glance is never a different truth to the app.
+  FlowmapWatchWidget:
+    type: app-extension
+    platform: watchOS
+    deploymentTarget: "11.0"
+    sources:
+      - path: FlowmapWatchWidget
+        excludes:
+          - "**/.DS_Store"
+      - path: Flowmap/Services/WatchSyncPayloads.swift
+      - path: Flowmap/DesignSystem/FlowTheme.swift
+      - path: Flowmap/DesignSystem/Typography.swift
+      - path: Flowmap/DesignSystem/Spacing.swift
+      - path: Flowmap/Models/DurationFormatter.swift
+    info:
+      path: FlowmapWatchWidget/Info.plist
+      properties:
+        CFBundleDisplayName: Flowmap
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: FlowmapWatchWidget/FlowmapWatchWidget.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.flowmap.app
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.flowmap.app.watchkitapp.complication
+        GENERATE_INFOPLIST_FILE: NO
+        SKIP_INSTALL: YES
+
 schemes:
+  FlowmapWatch:
+    build:
+      targets:
+        FlowmapWatch: all
+    run:
+      config: Debug
+
   Flowmap:
     build:
       targets:

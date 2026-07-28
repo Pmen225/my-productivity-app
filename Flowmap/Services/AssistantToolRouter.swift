@@ -21,9 +21,28 @@ public enum AssistantToolName: String, CaseIterable, Sendable {
     case summariseToday
     case startFocus
 
-    /// The only tool that can touch many segments at once — it always comes
-    /// back as a preview the user must confirm before anything is written.
-    public var requiresConfirmation: Bool { self == .rescheduleDay }
+    // Calendar control API — see `CalendarControlAPI`.
+    case listCalendarAccounts
+    case connectCalendarAccount
+    case disconnectCalendarAccount
+    case setCalendarSelection
+    case setCalendarConfiguration
+    case listCalendarEvents
+    case createCalendarEvent
+    case moveCalendarEvent
+    case deleteCalendarEvent
+
+    /// Anything that touches many segments at once, disconnects an account, or
+    /// writes/moves/deletes a calendar event always comes back as a preview
+    /// the user must confirm before anything happens.
+    public var requiresConfirmation: Bool {
+        switch self {
+        case .rescheduleDay, .disconnectCalendarAccount, .createCalendarEvent, .moveCalendarEvent, .deleteCalendarEvent:
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 /// What a tool call did. Rendered directly — the assistant's own prose is
@@ -198,8 +217,19 @@ public struct AssistantToolRouter {
         case .searchAppContent: return searchAppContent(argumentsJSON)
         case .summariseToday: return summariseToday()
         case .startFocus: return startFocus(argumentsJSON)
+        case .listCalendarAccounts: return calendarAPI.listAccounts()
+        case .connectCalendarAccount: return calendarAPI.connect(argumentsJSON)
+        case .disconnectCalendarAccount: return calendarAPI.disconnect(argumentsJSON)
+        case .setCalendarSelection: return calendarAPI.setSelection(argumentsJSON)
+        case .setCalendarConfiguration: return calendarAPI.setConfiguration(argumentsJSON)
+        case .listCalendarEvents: return calendarAPI.listEvents(argumentsJSON)
+        case .createCalendarEvent: return calendarAPI.createEvent(argumentsJSON)
+        case .moveCalendarEvent: return calendarAPI.moveEvent(argumentsJSON)
+        case .deleteCalendarEvent: return calendarAPI.deleteEvent(argumentsJSON)
         }
     }
+
+    private var calendarAPI: CalendarControlAPI { CalendarControlAPI(flow: flow) }
 
     private func proposal(for tool: AssistantToolName, argumentsJSON: String) -> AssistantToolProposal {
         switch tool {
@@ -213,6 +243,38 @@ public struct AssistantToolRouter {
                 title: replanExisting ? "Replan the whole day" : "Plan today",
                 summary: summarise(proposal),
                 argumentsJSON: encode(RescheduleDayArgs(dayISO8601: ISO8601DateFormatter().string(from: day), replanExisting: replanExisting))
+            )
+        case .disconnectCalendarAccount:
+            let account = decode(CalendarControlAPI.AccountArgs.self, argumentsJSON)
+            let name = account.flatMap { CalendarAccountKind(rawValue: $0.account) }?.displayName ?? "that account"
+            return AssistantToolProposal(
+                toolName: tool.rawValue,
+                title: "Disconnect \(name)",
+                summary: "Turns off \(name) and clears its selected calendars.",
+                argumentsJSON: argumentsJSON
+            )
+        case .createCalendarEvent:
+            let args = decode(CalendarControlAPI.CreateEventArgs.self, argumentsJSON)
+            let title = args?.title ?? "this event"
+            return AssistantToolProposal(
+                toolName: tool.rawValue,
+                title: "Create \"\(title)\"",
+                summary: "Adds \"\(title)\" to your calendar.",
+                argumentsJSON: argumentsJSON
+            )
+        case .moveCalendarEvent:
+            return AssistantToolProposal(
+                toolName: tool.rawValue,
+                title: "Move calendar event",
+                summary: "Moves the event to a new time.",
+                argumentsJSON: argumentsJSON
+            )
+        case .deleteCalendarEvent:
+            return AssistantToolProposal(
+                toolName: tool.rawValue,
+                title: "Delete calendar event",
+                summary: "Removes the event from your calendar. This can't be undone.",
+                argumentsJSON: argumentsJSON
             )
         default:
             return AssistantToolProposal(toolName: tool.rawValue, title: tool.rawValue, summary: "", argumentsJSON: argumentsJSON)
@@ -883,6 +945,103 @@ public struct AssistantToolRouter {
               "taskQuery":{"type":"string","description":"Text to find the task by title; omit for free focus."},
               "minutes":{"type":"integer"}
             }}
+            """
+        ),
+
+        // MARK: Calendar control API
+
+        AssistantToolDefinition(
+            name: AssistantToolName.listCalendarAccounts.rawValue,
+            description: "List every calendar account (Apple, Google), whether it's connected, its calendars, which are selected, and its last error. Read-only.",
+            parametersSchemaJSON: """
+            {"type":"object","properties":{}}
+            """
+        ),
+        AssistantToolDefinition(
+            name: AssistantToolName.connectCalendarAccount.rawValue,
+            description: "Start connecting a calendar account. Returns immediately; the sign-in sheet (if any) appears in the app.",
+            parametersSchemaJSON: """
+            {"type":"object","properties":{
+              "account":{"type":"string","enum":["apple","google"]}
+            },"required":["account"]}
+            """
+        ),
+        AssistantToolDefinition(
+            name: AssistantToolName.disconnectCalendarAccount.rawValue,
+            description: "Disconnect a calendar account and clear its selected calendars. Destructive — always confirmed first.",
+            parametersSchemaJSON: """
+            {"type":"object","properties":{
+              "account":{"type":"string","enum":["apple","google"]}
+            },"required":["account"]}
+            """
+        ),
+        AssistantToolDefinition(
+            name: AssistantToolName.setCalendarSelection.rawValue,
+            description: "Choose which of an account's calendars are read for busy time.",
+            parametersSchemaJSON: """
+            {"type":"object","properties":{
+              "account":{"type":"string","enum":["apple","google"]},
+              "calendarIds":{"type":"array","items":{"type":"string"}}
+            },"required":["account","calendarIds"]}
+            """
+        ),
+        AssistantToolDefinition(
+            name: AssistantToolName.setCalendarConfiguration.rawValue,
+            description: "Change calendar configuration: whether an account is enabled, the Google OAuth client id, the write-back calendar, or whether focus blocks are written back. Never accepts or returns a secret.",
+            parametersSchemaJSON: """
+            {"type":"object","properties":{
+              "account":{"type":"string","enum":["apple","google"]},
+              "enabled":{"type":"boolean"},
+              "googleClientId":{"type":"string"},
+              "writeBackCalendarId":{"type":"string"},
+              "writesFocusBlocks":{"type":"boolean"}
+            },"required":["account"]}
+            """
+        ),
+        AssistantToolDefinition(
+            name: AssistantToolName.listCalendarEvents.rawValue,
+            description: "List merged busy calendar events in a date range, across one or all accounts. Read-only.",
+            parametersSchemaJSON: """
+            {"type":"object","properties":{
+              "startISO8601":{"type":"string"},
+              "endISO8601":{"type":"string"},
+              "account":{"type":"string","enum":["apple","google"]}
+            },"required":["startISO8601","endISO8601"]}
+            """
+        ),
+        AssistantToolDefinition(
+            name: AssistantToolName.createCalendarEvent.rawValue,
+            description: "Create an event on a calendar. Destructive — always confirmed first.",
+            parametersSchemaJSON: """
+            {"type":"object","properties":{
+              "account":{"type":"string","enum":["apple","google"]},
+              "calendarId":{"type":"string"},
+              "title":{"type":"string"},
+              "startISO8601":{"type":"string"},
+              "endISO8601":{"type":"string"}
+            },"required":["account","calendarId","title","startISO8601","endISO8601"]}
+            """
+        ),
+        AssistantToolDefinition(
+            name: AssistantToolName.moveCalendarEvent.rawValue,
+            description: "Move an existing calendar event to a new start and end time. Destructive — always confirmed first.",
+            parametersSchemaJSON: """
+            {"type":"object","properties":{
+              "account":{"type":"string","enum":["apple","google"]},
+              "eventId":{"type":"string"},
+              "startISO8601":{"type":"string"},
+              "endISO8601":{"type":"string"}
+            },"required":["account","eventId","startISO8601","endISO8601"]}
+            """
+        ),
+        AssistantToolDefinition(
+            name: AssistantToolName.deleteCalendarEvent.rawValue,
+            description: "Delete a calendar event. Destructive — always confirmed first, and cannot be undone.",
+            parametersSchemaJSON: """
+            {"type":"object","properties":{
+              "account":{"type":"string","enum":["apple","google"]},
+              "eventId":{"type":"string"}
+            },"required":["account","eventId"]}
             """
         ),
     ]

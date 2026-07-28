@@ -1,12 +1,15 @@
 import SwiftUI
 
-/// One arc of the ring.
-struct WheelSegmentShape: Shape {
+/// One wedge of the bottom-arc dial — an arc-shaped slice of a ring cut from a
+/// much larger circle than is ever fully visible.
+struct WheelWedgeShape: Shape {
     var startAngle: Double
     var endAngle: Double
-    var thickness: CGFloat
+    let thickness: CGFloat
+    let radius: CGFloat
+    let centre: CGPoint
 
-    /// Lets the whole ring animate as one rigid body during a task change.
+    /// Lets a wedge's own span animate when the task it represents changes.
     var animatableData: AnimatablePair<Double, Double> {
         get { AnimatablePair(startAngle, endAngle) }
         set {
@@ -16,25 +19,22 @@ struct WheelSegmentShape: Shape {
     }
 
     func path(in rect: CGRect) -> Path {
-        let centre = CGPoint(x: rect.midX, y: rect.midY)
-        let outer = min(rect.width, rect.height) / 2
-        let inner = max(0, outer - thickness)
-
+        let inner = max(0, radius - thickness)
         var path = Path()
-        path.addArc(
-            center: centre,
-            radius: outer,
-            startAngle: .degrees(startAngle),
-            endAngle: .degrees(endAngle),
-            clockwise: false
-        )
-        path.addArc(
-            center: centre,
-            radius: inner,
-            startAngle: .degrees(endAngle),
-            endAngle: .degrees(startAngle),
-            clockwise: true
-        )
+        path.addArc(center: centre, radius: radius, startAngle: .degrees(startAngle), endAngle: .degrees(endAngle), clockwise: false)
+        path.addArc(center: centre, radius: inner, startAngle: .degrees(endAngle), endAngle: .degrees(startAngle), clockwise: true)
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// The pointer that marks "now" at the bottom of the dial.
+private struct PointerTriangle: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
         path.closeSubpath()
         return path
     }
@@ -50,177 +50,170 @@ struct WheelItem: Identifiable {
     let isActive: Bool
 }
 
-/// The focus ring.
+/// The focus dial: a shallow bowl, not a full ring.
 ///
-/// The active task sits at the bottom under a fixed pointer. Progress inside the
-/// active task is drawn as an arc along its own segment; the ring itself turns
-/// clockwise by exactly one segment when the task changes, which is what carries
-/// the next task down the right-hand side into the bottom slot.
+/// The active task fills the dominant wedge at the bottom, under a fixed clay
+/// pointer. Upcoming tasks fan up the right side as thinner wedges — the same
+/// "next enters from the right" rule the wheel has always used, just folded
+/// into an arc instead of a closed circle. A numbered ruler along the active
+/// wedge's own span reads its duration in minutes.
 struct FocusWheelView: View {
     @Environment(\.colorScheme) private var scheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let items: [WheelItem]
-    /// 0...1 through the active task.
+    /// 0...1 through the active task. Reserved for a future progress mark;
+    /// the dial itself reads duration from the ruler, not a filled arc.
     let progress: Double
-    /// Identity of the active task, so a change can drive the rotation.
+    /// Identity of the active task, so wedge fills can cross-fade when it changes.
     let activeID: UUID?
 
-    @State private var rotationOffset: Double = 0
-
-    private var visibleCount: Int { max(1, items.count) }
-    private var sweep: Double { FocusWheelGeometry.sweep(visibleCount: visibleCount) }
+    private var neighbourCount: Int { max(0, items.count - 1) }
 
     var body: some View {
         GeometryReader { proxy in
-            let size = min(proxy.size.width, proxy.size.height)
-            let thickness = FocusWheelGeometry.ringThickness(for: size)
-            let centre = CGPoint(x: proxy.size.width / 2, y: proxy.size.height / 2)
-            let outerRadius = size / 2
-            let labelRadius = outerRadius - thickness / 2
+            let halfWidth = proxy.size.width / 2
+            let depth = max(1, proxy.size.height - FocusWheelGeometry.pointerInset)
+            let halfAngle = FocusWheelGeometry.dialHalfAngle(depth: depth, halfWidth: halfWidth)
+            let radius = FocusWheelGeometry.dialRadius(halfWidth: halfWidth, halfAngle: halfAngle)
+            let centre = CGPoint(
+                x: proxy.size.width / 2,
+                y: proxy.size.height - FocusWheelGeometry.pointerInset - radius
+            )
+            let thickness = FocusWheelGeometry.dialThickness(for: proxy.size.width)
 
             ZStack {
-                track(thickness: thickness, size: size)
-
-                // Nodes and their labels live in one rotated space, so a label can
-                // never drift away from the arc it belongs to.
-                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                    let span = FocusWheelGeometry.span(index: index, visibleCount: visibleCount)
-
-                    WheelSegmentShape(
-                        startAngle: span.start + rotationOffset,
-                        endAngle: span.end + rotationOffset,
-                        thickness: thickness
-                    )
-                    .fill(item.isActive ? item.colour.softStrong : item.colour.soft)
-                    .overlay(
-                        WheelSegmentShape(
-                            startAngle: span.start + rotationOffset,
-                            endAngle: span.end + rotationOffset,
-                            thickness: thickness
-                        )
-                        .stroke(FlowTheme.background(scheme), lineWidth: 2)
-                    )
-
-                    if item.isActive {
-                        progressArc(span: span, thickness: thickness, colour: item.colour)
-                    }
-
-                    segmentLabel(
-                        item: item,
-                        index: index,
-                        centre: centre,
-                        radius: labelRadius,
-                        thickness: thickness
-                    )
-                }
-
-                pointer(centre: centre, outerRadius: outerRadius, thickness: thickness)
+                wedges(centre: centre, radius: radius, thickness: thickness, halfAngle: halfAngle)
+                ruler(centre: centre, radius: radius, thickness: thickness, halfAngle: halfAngle)
+                pointer(centre: centre, radius: radius)
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
-        .aspectRatio(1, contentMode: .fit)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Focus wheel")
-        .onChange(of: activeID) { _, _ in
-            advanceWheel()
+    }
+
+    // MARK: - Wedges
+
+    private func wedges(centre: CGPoint, radius: CGFloat, thickness: CGFloat, halfAngle: Double) -> some View {
+        // Small angular gap between wedges reads as the mock's double rim
+        // between segments rather than one continuous band.
+        let gap = items.count > 1 ? 1.6 : 0.0
+
+        return ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+            let span = index == 0
+                ? FocusWheelGeometry.dialActiveSpan(halfAngle: halfAngle)
+                : FocusWheelGeometry.dialNeighbourSpan(index: index, neighbourCount: neighbourCount, halfAngle: halfAngle)
+            let wedgeThickness = index == 0 ? thickness * 1.3 : thickness
+
+            ZStack {
+                WheelWedgeShape(
+                    startAngle: span.start + gap,
+                    endAngle: span.end - gap,
+                    thickness: wedgeThickness,
+                    radius: radius,
+                    centre: centre
+                )
+                .fill(item.isActive ? item.colour.softStrong : item.colour.soft)
+                .overlay(
+                    WheelWedgeShape(
+                        startAngle: span.start + gap,
+                        endAngle: span.end - gap,
+                        thickness: wedgeThickness,
+                        radius: radius,
+                        centre: centre
+                    )
+                    .stroke(FlowTheme.separatorStrong(scheme), lineWidth: 1)
+                )
+                .animation(.easeInOut(duration: 0.3), value: item.id)
+
+                if index > 0 {
+                    neighbourLabel(item: item, span: span, centre: centre, radius: radius, thickness: wedgeThickness)
+                }
+            }
         }
     }
 
-    // MARK: - Pieces
-
-    private func track(thickness: CGFloat, size: CGFloat) -> some View {
-        Circle()
-            .strokeBorder(FlowTheme.surfaceSunken(scheme), lineWidth: thickness)
-            .frame(width: size, height: size)
-    }
-
-    /// A thin arc that fills clockwise through the active segment as time passes.
-    private func progressArc(span: (start: Double, end: Double), thickness: CGFloat, colour: ColourToken) -> some View {
-        let travelled = (span.end - span.start) * min(1, max(0, progress))
-        return WheelSegmentShape(
-            startAngle: span.start + rotationOffset,
-            endAngle: span.start + rotationOffset + travelled,
-            thickness: thickness * 0.18
-        )
-        .fill(colour.base.opacity(0.85))
-        .allowsHitTesting(false)
-    }
-
-    /// Icon, title and compact duration written *inside* the ring segment.
-    private func segmentLabel(
+    /// Icon, name and compact duration stacked at a neighbour wedge's outer edge.
+    private func neighbourLabel(
         item: WheelItem,
-        index: Int,
+        span: (start: Double, end: Double),
         centre: CGPoint,
         radius: CGFloat,
         thickness: CGFloat
     ) -> some View {
-        let angle = FocusWheelGeometry.centreAngle(index: index, visibleCount: visibleCount) + rotationOffset
-        let position = FocusWheelGeometry.point(centre: centre, radius: radius, angle: angle)
-        // Follows the arc, but never past a quarter turn — otherwise segments on
-        // the far side of the ring render upside down.
-        let rotation = FocusWheelGeometry.readableRotation(atAngle: angle)
+        let midAngle = (span.start + span.end) / 2
+        let position = FocusWheelGeometry.point(centre: centre, radius: radius - thickness / 2, angle: midAngle)
+        let rotation = FocusWheelGeometry.readableRotation(atAngle: midAngle)
 
         return VStack(spacing: 1) {
-            HStack(spacing: 3) {
-                if !item.iconName.isEmpty {
-                    Image(systemName: item.iconName)
-                        .font(.system(size: 10, weight: .semibold))
-                }
-                Text(item.title)
-                    .font(FlowFont.wheelSegment)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
+            Image(systemName: item.iconName)
+                .font(.system(size: 11, weight: .semibold))
+            Text(item.title)
+                .font(FlowFont.wheelSegment)
+                .lineLimit(1)
+                .truncationMode(.tail)
             Text(DurationFormatter.compact(minutes: item.minutes))
                 .font(FlowFont.durationChip)
                 .opacity(0.85)
         }
         .foregroundStyle(item.colour.onSoft)
-        // Keep the label comfortably inside the ring band so it can never clip.
-        .frame(maxWidth: max(60, thickness * 2.4))
+        .frame(maxWidth: max(56, thickness * 1.6))
         .rotationEffect(.degrees(rotation))
         .position(x: position.x, y: position.y)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            "\(item.isActive ? "Now: " : "")\(item.title), \(DurationFormatter.spoken(minutes: item.minutes))"
-        )
+        .accessibilityLabel("Next: \(item.title), \(DurationFormatter.spoken(minutes: item.minutes))")
     }
 
-    /// Fixed marker at the bottom. It never moves — the ring turns beneath it.
-    ///
-    /// Sized and centred on the ring band so it reads as a needle crossing the
-    /// track, not a tail hanging off the wheel.
-    private func pointer(centre: CGPoint, outerRadius: CGFloat, thickness: CGFloat) -> some View {
-        // Sits in the outer part of the band, clear of the label centred in it.
-        let length = thickness * 0.5
-        let anchor = FocusWheelGeometry.point(
-            centre: centre,
-            radius: outerRadius - length / 2,
-            angle: FocusWheelGeometry.bottomAngle
-        )
-        return Capsule()
-            .fill(FlowTheme.primaryText(scheme))
-            .frame(width: 3, height: length)
-            .position(x: anchor.x, y: anchor.y)
+    // MARK: - Ruler
+
+    /// A numbered minute scale across the active task's own span: minor
+    /// hairlines every minute, major ticks with a number every `majorStep`.
+    private func ruler(centre: CGPoint, radius: CGFloat, thickness: CGFloat, halfAngle: Double) -> some View {
+        let totalMinutes = min(180, max(1, items.first?.minutes ?? 30))
+        let majorStep = totalMinutes <= 30 ? 5 : (totalMinutes <= 60 ? 10 : 15)
+        let outer = radius + thickness * 1.3 / 2
+
+        return ZStack {
+            ForEach(Array(stride(from: 0, through: totalMinutes, by: 1)), id: \.self) { minute in
+                let angle = FocusWheelGeometry.dialTickAngle(minute: minute, totalMinutes: totalMinutes, halfAngle: halfAngle)
+                let isMajor = minute % majorStep == 0
+                tick(angle: angle, centre: centre, outer: outer, isMajor: isMajor)
+
+                if isMajor {
+                    let labelPoint = FocusWheelGeometry.point(centre: centre, radius: outer + 13, angle: angle)
+                    Text("\(minute)")
+                        // Explicit 11pt: the smallest size the HIG allows,
+                        // chosen deliberately rather than let the ruler shrink further.
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                        .position(labelPoint)
+                }
+            }
+        }
+        .accessibilityHidden(true)
+    }
+
+    private func tick(angle: Double, centre: CGPoint, outer: CGFloat, isMajor: Bool) -> some View {
+        let length: CGFloat = isMajor ? 7 : 3
+        let from = FocusWheelGeometry.point(centre: centre, radius: outer, angle: angle)
+        let to = FocusWheelGeometry.point(centre: centre, radius: outer + length, angle: angle)
+        return Path { path in
+            path.move(to: from)
+            path.addLine(to: to)
+        }
+        .stroke(FlowTheme.tertiaryText(scheme), lineWidth: isMajor ? 1.5 : 1)
+    }
+
+    // MARK: - Pointer
+
+    /// The clay marker at the very bottom of the dial, pointing up into the
+    /// active wedge — fixed, since the active task always sits at the bottom.
+    private func pointer(centre: CGPoint, radius: CGFloat) -> some View {
+        let tip = FocusWheelGeometry.point(centre: centre, radius: radius + 15, angle: FocusWheelGeometry.bottomAngle)
+        return PointerTriangle()
+            .fill(FlowTheme.accent)
+            .frame(width: 16, height: 11)
+            .position(x: tip.x, y: tip.y - 5.5)
             .accessibilityHidden(true)
-    }
-
-    // MARK: - Transition
-
-    /// Turns the ring one segment clockwise as the next task arrives.
-    ///
-    /// Reduced Motion gets the same information as a discrete update instead of
-    /// a continuous sweep.
-    private func advanceWheel() {
-        guard !reduceMotion else {
-            rotationOffset = 0
-            return
-        }
-        // Start one segment back, then animate forward: increasing angle is clockwise.
-        rotationOffset = -sweep
-        withAnimation(.easeInOut(duration: 1.1)) {
-            rotationOffset = 0
-        }
     }
 }

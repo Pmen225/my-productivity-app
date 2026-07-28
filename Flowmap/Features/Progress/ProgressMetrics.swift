@@ -66,35 +66,6 @@ public struct ProgressSummary: Equatable, Sendable {
     }
 }
 
-/// One day on the trend chart.
-public struct ProgressTrendPoint: Identifiable, Equatable, Sendable {
-    public var id: Date { day }
-    public var day: Date
-    public var plannedMinutes: Int
-    public var actualMinutes: Int
-
-    public init(day: Date, plannedMinutes: Int, actualMinutes: Int) {
-        self.day = day
-        self.plannedMinutes = plannedMinutes
-        self.actualMinutes = actualMinutes
-    }
-}
-
-/// One slice of the category breakdown, keyed by the task's `colourToken` so
-/// it always matches the colour shown everywhere else in the app.
-public struct ProgressCategorySlice: Identifiable, Equatable, Sendable {
-    public var id: String { token.rawValue }
-    public var token: ColourToken
-    public var completedCount: Int
-    public var minutes: Int
-
-    public init(token: ColourToken, completedCount: Int, minutes: Int) {
-        self.token = token
-        self.completedCount = completedCount
-        self.minutes = minutes
-    }
-}
-
 /// Pure maths over persisted `FlowTask` / `TaskSegment` / `FocusSession`
 /// arrays. Nothing here touches SwiftData, a `ModelContext` or the UI, so
 /// every function is unit-testable with plain model instances.
@@ -141,64 +112,5 @@ public enum ProgressMetrics {
             carryoverCount: carryoverCount,
             completionRate: completionRate
         )
-    }
-
-    /// One point per calendar day in `range`, for the trend chart.
-    public static func trendPoints(
-        segments: [TaskSegment],
-        sessions: [FocusSession],
-        range: Range<Date>,
-        calendar: Calendar
-    ) -> [ProgressTrendPoint] {
-        var day = calendar.startOfDay(for: range.lowerBound)
-        var points: [ProgressTrendPoint] = []
-
-        while day < range.upperBound {
-            guard let nextDay = calendar.date(byAdding: .day, value: 1, to: day) else { break }
-            let dayRange = day..<nextDay
-            let planned = segments
-                .filter { dayRange.contains($0.startDate) }
-                .reduce(0) { $0 + $1.durationMinutes }
-            let actual = sessions
-                .filter { dayRange.contains($0.startedAt) }
-                .reduce(0) { $0 + $1.actualMinutes }
-            points.append(ProgressTrendPoint(day: day, plannedMinutes: planned, actualMinutes: actual))
-            day = nextDay
-        }
-        return points
-    }
-
-    /// Completed-task counts and focus minutes for `range`, grouped by the
-    /// task's `colourToken` and sorted by minutes spent, most first.
-    public static func categoryBreakdown(
-        tasks: [FlowTask],
-        sessions: [FocusSession],
-        range: Range<Date>
-    ) -> [ProgressCategorySlice] {
-        var counts: [ColourToken: Int] = [:]
-        for task in tasks where task.status == .completed {
-            guard let completedAt = task.completedAt, range.contains(completedAt) else { continue }
-            counts[task.colour, default: 0] += 1
-        }
-
-        var minutes: [ColourToken: Int] = [:]
-        for session in sessions {
-            guard range.contains(session.startedAt), let task = session.task else { continue }
-            minutes[task.colour, default: 0] += session.actualMinutes
-        }
-
-        let tokens = Set(counts.keys).union(minutes.keys)
-        return tokens
-            .map { token in
-                ProgressCategorySlice(
-                    token: token,
-                    completedCount: counts[token] ?? 0,
-                    minutes: minutes[token] ?? 0
-                )
-            }
-            .sorted { lhs, rhs in
-                if lhs.minutes != rhs.minutes { return lhs.minutes > rhs.minutes }
-                return lhs.completedCount > rhs.completedCount
-            }
     }
 }

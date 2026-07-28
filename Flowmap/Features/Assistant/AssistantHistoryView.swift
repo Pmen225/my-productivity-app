@@ -26,13 +26,17 @@ struct AssistantHistoryView: View {
                     FlowEmptyState(symbol: "bubble.left.and.bubble.right", title: "No conversations yet", message: "Start one below.")
                 }
                 if !activeThreads.isEmpty {
-                    Section("Conversations") {
+                    Section {
                         ForEach(activeThreads) { row(for: $0) }
+                    } header: {
+                        FlowEyebrow("Conversations")
                     }
                 }
                 if !archivedThreads.isEmpty {
-                    Section("Archived") {
+                    Section {
                         ForEach(archivedThreads) { row(for: $0) }
+                    } header: {
+                        FlowEyebrow("Archived")
                     }
                 }
             }

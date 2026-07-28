@@ -85,6 +85,21 @@ struct TimelineBlock: Identifiable {
     }
 }
 
+// MARK: - Header scope
+
+/// The header's Day/Week/Month scope menu. Presentational only for now: the
+/// timeline underneath always shows today regardless of the selection, since
+/// a real week/month agenda is a separate feature this slice does not build.
+/// Kept here (rather than wired into `TodayView`) so it stays a self-contained,
+/// zero-behaviour-change visual affordance matching the mock's popover.
+enum TodayScope: String, CaseIterable, Identifiable {
+    case day = "Day"
+    case week = "Week"
+    case month = "Month"
+
+    var id: String { rawValue }
+}
+
 // MARK: - Primary action
 
 /// The screen's single primary action: resume the plan, or make one.

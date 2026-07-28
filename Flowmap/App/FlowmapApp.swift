@@ -30,6 +30,9 @@ struct FlowmapApp: App {
                         _ = environment.applyPlan(environment.planToday())
                     }
                     environment.reconcileOnActivation()
+                    #if os(iOS)
+                    environment.activateWatchLink()
+                    #endif
                 }
                 .onOpenURL { url in
                     guard let link = DeepLink(url: url) else { return }

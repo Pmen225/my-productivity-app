@@ -15,6 +15,7 @@ public struct AssistantConversationView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
+            statusPill
             messagesList
             if let pending = viewModel.pendingProposal {
                 AssistantProposalCard(
@@ -35,6 +36,26 @@ public struct AssistantConversationView: View {
             composer
         }
         .background(FlowTheme.background(scheme))
+    }
+
+    /// A small status pill under the navigation title: whether a provider key
+    /// is on file, so the quick-command-only ceiling is never a surprise.
+    private var statusPill: some View {
+        HStack(spacing: FlowSpacing.xs) {
+            Circle()
+                .fill(viewModel.hasAPIKey ? FlowTheme.accent : FlowTheme.tertiaryText(scheme))
+                .frame(width: 6, height: 6)
+            Text(viewModel.hasAPIKey ? "Connected" : "Local commands only")
+                .font(FlowFont.caption.weight(.semibold))
+                .foregroundStyle(FlowTheme.secondaryText(scheme))
+        }
+        .padding(.horizontal, FlowSpacing.m)
+        .padding(.vertical, FlowSpacing.xs)
+        .background(Capsule().fill(FlowTheme.surfaceSunken(scheme)))
+        .overlay(Capsule().strokeBorder(FlowTheme.separator(scheme), lineWidth: 1))
+        .padding(.top, FlowSpacing.s)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .accessibilityElement(children: .combine)
     }
 
     private var messagesList: some View {
@@ -76,32 +97,37 @@ public struct AssistantConversationView: View {
     }
 
     private var composer: some View {
-        HStack(alignment: .bottom, spacing: FlowSpacing.s) {
-            TextField("Ask Flowmap, or type a quick command…", text: $viewModel.inputText, axis: .vertical)
-                .textFieldStyle(.plain)
-                .font(FlowFont.body)
-                .lineLimit(1...4)
-                .focused($isComposerFocused)
-                .onSubmit(viewModel.send)
+        HStack(alignment: .center, spacing: FlowSpacing.s) {
+            HStack(spacing: FlowSpacing.s) {
+                TextField("Ask Flowmap, or type a quick command…", text: $viewModel.inputText, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(FlowFont.body)
+                    .lineLimit(1...4)
+                    .focused($isComposerFocused)
+                    .onSubmit(viewModel.send)
 
-            DictationButton { transcript in
-                viewModel.inputText = transcript.isEmpty ? viewModel.inputText : transcript
+                DictationButton { transcript in
+                    viewModel.inputText = transcript.isEmpty ? viewModel.inputText : transcript
+                }
             }
+            .padding(.horizontal, FlowSpacing.m)
+            .padding(.vertical, FlowSpacing.s)
+            .background(Capsule().fill(FlowTheme.surface(scheme)))
+            .overlay(Capsule().strokeBorder(FlowTheme.separatorStrong(scheme), lineWidth: 1))
 
             Button(action: viewModel.send) {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 26))
-                    .foregroundStyle(sendIsEnabled ? FlowTheme.accent : FlowTheme.secondaryText(scheme))
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: FlowControlSize.secondary, height: FlowControlSize.secondary)
+                    .background(Circle().fill(FlowTheme.accentFill))
             }
             .buttonStyle(.plain)
+            .flowHitTarget()
+            .opacity(sendIsEnabled ? 1 : 0.5)
             .disabled(!sendIsEnabled)
             .accessibilityLabel("Send")
         }
-        .padding(FlowSpacing.m)
-        .background(
-            RoundedRectangle(cornerRadius: FlowRadius.medium, style: .continuous)
-                .fill(FlowTheme.surfaceSunken(scheme))
-        )
         .padding(FlowSpacing.screen)
     }
 

@@ -80,4 +80,71 @@ public enum FocusWheelGeometry {
         guard let requested = visibility.visibleCount else { return available }
         return min(requested, available)
     }
+
+    // MARK: - Bottom-arc dial
+    //
+    // The mock's dial is a shallow bowl cut from a much larger circle, not a
+    // full ring: the active task sits centred at the bottom under a fixed
+    // pointer exactly as above, and upcoming tasks fan up the right-hand side
+    // as thinner wedges — the same "next enters from the right" rule, folded
+    // into an arc instead of a closed circle.
+
+    /// Clearance kept between the dial's lowest point and the pointer beneath it.
+    public static let pointerInset: CGFloat = 14
+
+    /// Fraction of the dial's total sweep the active wedge occupies; the rest
+    /// fans out to whatever upcoming neighbours are shown.
+    public static let dialActiveFraction: Double = 0.56
+
+    /// Half the dial's total visible sweep, solved so the bowl reaches the
+    /// full width of its container (`halfWidth`) at a chosen, shallow `depth`:
+    /// `depth = halfWidth · tan(halfAngle / 2)`.
+    public static func dialHalfAngle(depth: CGFloat, halfWidth: CGFloat) -> Double {
+        guard halfWidth > 0 else { return 0 }
+        return 2 * Double(atan(depth / halfWidth)) * 180 / .pi
+    }
+
+    /// Radius of the circle the visible bowl is cut from.
+    public static func dialRadius(halfWidth: CGFloat, halfAngle: Double) -> CGFloat {
+        let radians = halfAngle * .pi / 180
+        guard halfAngle > 0, sin(radians) > 0 else { return halfWidth }
+        return halfWidth / CGFloat(sin(radians))
+    }
+
+    /// Ring thickness for the dial, given its width.
+    public static func dialThickness(for width: CGFloat) -> CGFloat {
+        max(46, min(64, width * 0.16))
+    }
+
+    /// Angular span of the active wedge, centred at `bottomAngle`.
+    public static func dialActiveSpan(halfAngle: Double) -> (start: Double, end: Double) {
+        let half = halfAngle * dialActiveFraction
+        return (bottomAngle - half, bottomAngle + half)
+    }
+
+    /// Angular span of the upcoming neighbour at `index` (`1` is the very next
+    /// task), fanning further right beyond the active wedge, one slice per
+    /// neighbour shown.
+    public static func dialNeighbourSpan(
+        index: Int,
+        neighbourCount: Int,
+        halfAngle: Double
+    ) -> (start: Double, end: Double) {
+        let active = dialActiveSpan(halfAngle: halfAngle)
+        guard neighbourCount > 0 else { return (active.start, active.start) }
+        let remaining = halfAngle * (1 - dialActiveFraction)
+        let each = remaining / Double(neighbourCount)
+        let start = active.start - each * Double(index)
+        return (start, start + each)
+    }
+
+    /// Angle of the ruler tick at `minute` of `totalMinutes`, mapped across
+    /// the active wedge's own span, left (`0`) to right (`totalMinutes`) —
+    /// the ruler reads as the active task's own duration scale.
+    public static func dialTickAngle(minute: Int, totalMinutes: Int, halfAngle: Double) -> Double {
+        let span = dialActiveSpan(halfAngle: halfAngle)
+        guard totalMinutes > 0 else { return span.end }
+        let fraction = Double(minute) / Double(totalMinutes)
+        return span.end - (span.end - span.start) * fraction
+    }
 }

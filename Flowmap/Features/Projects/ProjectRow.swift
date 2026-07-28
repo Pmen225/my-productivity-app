@@ -39,14 +39,23 @@ public struct ProjectRow: View {
 
             VStack(alignment: .trailing, spacing: FlowSpacing.xxs) {
                 ProgressView(value: project.progress)
+                    .progressViewStyle(.linear)
                     .frame(width: 60)
-                    .tint(project.colour.base)
+                    .tint(FlowTheme.accent)
                 Text(project.progressPercentText)
-                    .font(FlowFont.caption)
+                    .font(FlowFont.caption.monospacedDigit())
                     .foregroundStyle(FlowTheme.secondaryText(scheme))
             }
         }
-        .padding(.vertical, FlowSpacing.xs)
+        .padding(FlowSpacing.m)
+        .background(
+            RoundedRectangle(cornerRadius: FlowRadius.medium, style: .continuous)
+                .fill(FlowTheme.surface(scheme))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: FlowRadius.medium, style: .continuous)
+                .strokeBorder(FlowTheme.separator(scheme), lineWidth: 1)
+        )
         .accessibilityElement(children: .combine)
     }
 

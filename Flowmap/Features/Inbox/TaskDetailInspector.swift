@@ -9,6 +9,7 @@ public struct TaskDetailInspector: View {
     @Environment(\.flow) private var flow
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var scheme
     @Query(sort: \TaskList.sortOrder) private var lists: [TaskList]
     @Query(sort: \Project.sortOrder) private var projects: [Project]
 
@@ -24,17 +25,21 @@ public struct TaskDetailInspector: View {
 
     public var body: some View {
         Form {
-            Section("Title") {
+            Section {
                 TextField("Task title", text: $task.title)
                     .font(FlowFont.cardTitle)
+            } header: {
+                FlowEyebrow("Title")
             }
 
-            Section("Description") {
+            Section {
                 TextEditor(text: $task.details)
                     .frame(minHeight: 80)
+            } header: {
+                FlowEyebrow("Description")
             }
 
-            Section("Duration") {
+            Section {
                 Stepper(
                     DurationFormatter.compact(minutes: task.estimatedMinutes),
                     value: $task.estimatedMinutes,
@@ -42,9 +47,11 @@ public struct TaskDetailInspector: View {
                     step: 5
                 )
                 .accessibilityLabel("Duration, \(task.durationAccessibilityLabel)")
+            } header: {
+                FlowEyebrow("Duration")
             }
 
-            Section("Priority") {
+            Section {
                 Picker("Priority", selection: $task.priority) {
                     ForEach(TaskPriority.allCases, id: \.self) { priority in
                         Label(priority.displayName, systemImage: priority.symbolName).tag(priority)
@@ -52,24 +59,30 @@ public struct TaskDetailInspector: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
+            } header: {
+                FlowEyebrow("Priority")
             }
 
-            Section("List") {
+            Section {
                 Picker("List", selection: listSelection) {
                     Text("Inbox").tag(UUID?.none)
                     ForEach(lists.filter { !$0.isArchived }) { list in
                         Text(list.name).tag(Optional(list.id))
                     }
                 }
+            } header: {
+                FlowEyebrow("List")
             }
 
-            Section("Project") {
+            Section {
                 Picker("Project", selection: projectSelection) {
                     Text("None").tag(UUID?.none)
                     ForEach(projects) { project in
                         Text(project.title).tag(Optional(project.id))
                     }
                 }
+            } header: {
+                FlowEyebrow("Project")
             }
 
             scheduleSection
@@ -81,15 +94,16 @@ public struct TaskDetailInspector: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        .presentationCornerRadius(FlowRadius.large)
     }
 
     // MARK: - Schedule
 
     private var scheduleSection: some View {
-        Section("Schedule") {
+        Section {
             if task.allSegmentsOrdered.isEmpty {
                 Text("Not scheduled yet.")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FlowTheme.tertiaryText(scheme))
             } else {
                 ForEach(task.allSegmentsOrdered) { segment in
                     segmentRow(segment)
@@ -113,6 +127,8 @@ public struct TaskDetailInspector: View {
                     Label("Schedule a block", systemImage: "plus")
                 }
             }
+        } header: {
+            FlowEyebrow("Schedule")
         }
     }
 
@@ -155,7 +171,7 @@ public struct TaskDetailInspector: View {
     // MARK: - Subtasks
 
     private var subtasksSection: some View {
-        Section("Subtasks") {
+        Section {
             ForEach(task.orderedSubtasks) { subtask in
                 subtaskRow(subtask)
             }
@@ -172,6 +188,8 @@ public struct TaskDetailInspector: View {
                 .disabled(newSubtaskTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .accessibilityLabel("Add subtask")
             }
+        } header: {
+            FlowEyebrow("Subtasks")
         }
     }
 
@@ -194,7 +212,7 @@ public struct TaskDetailInspector: View {
     // MARK: - Linked map node / note
 
     private var linkedMapNodeSection: some View {
-        Section("Linked map node") {
+        Section {
             if let node = task.mapNode {
                 HStack {
                     Image(systemName: node.iconName.isEmpty ? "circle.grid.2x2" : node.iconName)
@@ -208,13 +226,15 @@ public struct TaskDetailInspector: View {
                 }
             } else {
                 Text("Not linked to a map node.")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FlowTheme.tertiaryText(scheme))
             }
+        } header: {
+            FlowEyebrow("Linked map node")
         }
     }
 
     private var linkedNoteSection: some View {
-        Section("Linked note") {
+        Section {
             if let note = task.notes?.first {
                 HStack {
                     Image(systemName: note.iconName)
@@ -228,8 +248,10 @@ public struct TaskDetailInspector: View {
                 }
             } else {
                 Text("Not linked to a note.")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FlowTheme.tertiaryText(scheme))
             }
+        } header: {
+            FlowEyebrow("Linked note")
         }
     }
 

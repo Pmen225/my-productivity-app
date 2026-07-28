@@ -97,6 +97,8 @@ struct NotesListView: View {
     private func noteRow(for note: Note) -> some View {
         Button { onSelect(note) } label: { NoteRow(note: note) }
             .buttonStyle(.plain)
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
             .swipeActions(edge: .leading) {
                 Button {
                     note.isFavourite.toggle()
@@ -278,6 +280,14 @@ private struct NoteRow: View {
                     .foregroundStyle(.yellow)
             }
         }
-        .padding(.vertical, FlowSpacing.xxs)
+        .padding(FlowSpacing.m)
+        .background(
+            RoundedRectangle(cornerRadius: FlowRadius.medium, style: .continuous)
+                .fill(FlowTheme.surface(scheme))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: FlowRadius.medium, style: .continuous)
+                .strokeBorder(FlowTheme.separator(scheme), lineWidth: 1)
+        )
     }
 }

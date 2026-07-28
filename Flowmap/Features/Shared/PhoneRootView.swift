@@ -13,14 +13,25 @@ struct PhoneRootView: View {
     @State private var showingSearch = false
     @State private var showingCapture = false
 
+    /// Tab order and icon for the floating tab bar. Labels come from
+    /// `DeepLink.title` so the chrome and the deep-link vocabulary never drift.
+    private static let tabOrder: [(DeepLink, systemImage: String)] = [
+        (.today, "sun.max"),
+        (.map, "point.topleft.down.to.point.bottomright.curvepath"),
+        (.calendar, "calendar"),
+        (.focus, "timer"),
+        (.library, "square.stack"),
+    ]
+
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
+        ZStack(alignment: .bottom) {
             TabView(selection: $tab) {
                 NavigationStack {
                     TodayView()
                 }
                 .tabItem { Label("Today", systemImage: "sun.max") }
                 .tag(DeepLink.today)
+                .toolbar(.hidden, for: .tabBar)
 
                 NavigationStack {
                     MapListView()
@@ -29,31 +40,50 @@ struct PhoneRootView: View {
                     Label("Map", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
                 }
                 .tag(DeepLink.map)
+                .toolbar(.hidden, for: .tabBar)
 
                 NavigationStack {
                     CalendarRootView()
                 }
                 .tabItem { Label("Calendar", systemImage: "calendar") }
                 .tag(DeepLink.calendar)
+                .toolbar(.hidden, for: .tabBar)
 
                 NavigationStack {
                     FocusScreen()
                 }
                 .tabItem { Label("Focus", systemImage: "timer") }
                 .tag(DeepLink.focus)
+                .toolbar(.hidden, for: .tabBar)
 
                 NavigationStack {
                     LibraryView(showingAssistant: $showingAssistant, onSearchResult: navigate(to:))
                 }
                 .tabItem { Label("Library", systemImage: "square.stack") }
                 .tag(DeepLink.library)
+                .toolbar(.hidden, for: .tabBar)
             }
 
-            // Focus fills the space above the tab bar with its own card, so the
-            // orb would sit on top of it. The Assistant stays one tap away from
-            // every other destination.
+            FlowTabBar(
+                selection: $tab,
+                items: Self.tabOrder.map {
+                    FlowTabBarItem(id: $0.0, title: $0.0.title, systemImage: $0.systemImage)
+                }
+            )
+            .padding(.horizontal, FlowSpacing.screen)
+            .padding(.bottom, FlowSpacing.xs)
+        }
+        // Focus fills the space above the tab bar with its own card, so the
+        // floating controls would sit on top of it. The Assistant and quick
+        // capture stay one tap away from every other destination.
+        .overlay(alignment: .bottomTrailing) {
             if tab != .focus {
-                assistantOrb
+                VStack(spacing: FlowSpacing.m) {
+                    createButton
+                    assistantOrb
+                }
+                .padding(.trailing, FlowSpacing.screen)
+                .padding(.bottom, FlowSpacing.xxxl)
             }
         }
         .sheet(isPresented: $showingAssistant) {
@@ -63,7 +93,10 @@ struct PhoneRootView: View {
             GlobalSearchView { result in navigate(to: result) }
         }
         .sheet(isPresented: $showingCapture) {
-            QuickCaptureView().presentationDetents([.height(300)])
+            QuickCaptureView()
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.hidden)
+                .presentationCornerRadius(FlowRadius.large)
         }
         .onReceive(NotificationCenter.default.publisher(for: .flowmapOpenDeepLink)) { notification in
             guard let request = notification.object as? DeepLinkRequest else { return }
@@ -75,23 +108,33 @@ struct PhoneRootView: View {
         }
     }
 
-    /// Floats above the tab bar. The bottom padding clears both the tab bar and
-    /// the home indicator, so it never sits on top of content.
-    private var assistantOrb: some View {
-        Button {
-            showingAssistant = true
-        } label: {
-            Image(systemName: "sparkles")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 52, height: 52)
-                .background(Circle().fill(FlowTheme.accent))
-                .shadow(color: FlowTheme.shadow(scheme), radius: 10, y: 3)
+    /// The floating create button — new task, project or initiative — sitting
+    /// above the assistant orb, clear of the tab bar.
+    private var createButton: some View {
+        FlowFloatingButton(
+            systemImage: "plus",
+            diameter: FlowControlSize.create,
+            background: FlowTheme.accent,
+            foreground: .white,
+            shadowColor: FlowTheme.accentShadow,
+            accessibilityLabel: "New task, project or initiative"
+        ) {
+            showingCapture = true
         }
-        .buttonStyle(.plain)
-        .padding(.trailing, FlowSpacing.screen)
-        .padding(.bottom, 72)
-        .accessibilityLabel("Assistant")
+    }
+
+    /// Floats above the tab bar, below the create button.
+    private var assistantOrb: some View {
+        FlowFloatingButton(
+            systemImage: "sparkles",
+            diameter: FlowControlSize.secondary,
+            background: FlowTheme.popoverSurface,
+            foreground: .white,
+            shadowColor: FlowTheme.shadow(scheme),
+            accessibilityLabel: "Assistant"
+        ) {
+            showingAssistant = true
+        }
     }
 
     private func navigate(to result: SearchResult) {
@@ -118,50 +161,54 @@ struct LibraryView: View {
 
     var body: some View {
         List {
-            Section("Tasks") {
-                ForEach(SmartView.allCases) { view in
+            Section(header: sectionHeader("TASKS")) {
+                ForEach(Array(SmartView.allCases.enumerated()), id: \.element) { index, view in
                     NavigationLink {
                         TaskListScreen(source: .smartView(view))
                     } label: {
-                        Label(view.displayName, systemImage: view.symbolName)
+                        libraryLabel(view.displayName, symbol: view.symbolName, token: Self.rowTokens[index % Self.rowTokens.count])
                     }
                 }
             }
+            .listRowBackground(FlowTheme.surface(scheme))
 
             if !lists.isEmpty {
-                Section("Lists") {
+                Section(header: sectionHeader("LISTS")) {
                     ForEach(lists) { list in
                         NavigationLink {
                             TaskListScreen(source: .userList(list))
                         } label: {
-                            Label(list.name, systemImage: list.iconName)
+                            libraryLabel(list.name, symbol: list.iconName, token: list.colour)
                         }
                     }
                 }
+                .listRowBackground(FlowTheme.surface(scheme))
             }
 
-            Section {
+            Section(header: sectionHeader("BUILD & REVIEW")) {
                 NavigationLink { ProjectsScreen() } label: {
-                    Label("Projects", systemImage: "folder")
+                    libraryLabel("Projects", symbol: "folder", token: .lavender)
                 }
                 NavigationLink { NotesRootView() } label: {
-                    Label("Notes", systemImage: "doc.text")
+                    libraryLabel("Notes", symbol: "doc.text", token: .yellow)
                 }
                 NavigationLink { ProgressScreen() } label: {
-                    Label("Progress", systemImage: "chart.bar")
+                    libraryLabel("Progress", symbol: "chart.bar", token: .pink)
                 }
                 Button {
                     showingAssistant = true
                 } label: {
-                    Label("Assistant", systemImage: "sparkles")
-                        .foregroundStyle(FlowTheme.primaryText(scheme))
+                    libraryLabel("Assistant", symbol: "sparkles", token: .teal)
                 }
                 NavigationLink { SettingsScreen() } label: {
-                    Label("Settings", systemImage: "gearshape")
+                    libraryLabel("Settings", symbol: "gearshape", token: .blue)
                 }
             }
+            .listRowBackground(FlowTheme.surface(scheme))
         }
-        .navigationTitle("Library")
+        .scrollContentBackground(.hidden)
+        .background(FlowTheme.background(scheme).ignoresSafeArea())
+        .flowScreenTitle("Library")
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button { showingSearch = true } label: { Image(systemName: "magnifyingglass") }
@@ -176,8 +223,42 @@ struct LibraryView: View {
             GlobalSearchView { result in onSearchResult(result) }
         }
         .sheet(isPresented: $showingCapture) {
-            QuickCaptureView().presentationDetents([.height(300)])
+            QuickCaptureView()
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.hidden)
+                .presentationCornerRadius(FlowRadius.large)
         }
+    }
+
+    /// The design's pastel token order for smart-view rows, cycled in order.
+    private static let rowTokens: [ColourToken] = [
+        .teal, .blue, .peach, .yellow, .lavender, .green, .pink,
+    ]
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 10, weight: .heavy, design: .rounded))
+            .kerning(1.5)
+            .foregroundStyle(FlowTheme.tertiaryText(scheme))
+    }
+
+    /// The mock's row: soft token squircle with a solid dot, then the title.
+    private func libraryLabel(_ title: String, symbol: String, token: ColourToken) -> some View {
+        HStack(spacing: FlowSpacing.m) {
+            ZStack {
+                RoundedRectangle(cornerRadius: FlowRadius.tile, style: .continuous)
+                    .fill(token.soft)
+                    .frame(width: 32, height: 32)
+                Image(systemName: symbol)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(token.onSoft)
+            }
+            Text(title)
+                .font(FlowFont.body.weight(.semibold))
+                .foregroundStyle(FlowTheme.primaryText(scheme))
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(title)
     }
 }
 #endif

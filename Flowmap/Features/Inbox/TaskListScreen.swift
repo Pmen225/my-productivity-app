@@ -110,11 +110,15 @@ public struct TaskListScreen: View {
             headerSection
             taskSections
         }
+        .scrollContentBackground(.hidden)
+        .background(FlowTheme.background(scheme).ignoresSafeArea())
         #else
         List {
             headerSection
             taskSections
         }
+        .scrollContentBackground(.hidden)
+        .background(FlowTheme.background(scheme).ignoresSafeArea())
         #endif
     }
 
@@ -128,6 +132,7 @@ public struct TaskListScreen: View {
                     onAdd: { withAnimation(.snappy) { isAddingTask.toggle() } }
                 )
                 .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
 
                 if isAddingTask {
                     QuickAddTaskView(
@@ -136,10 +141,12 @@ public struct TaskListScreen: View {
                         onFinished: { withAnimation(.snappy) { isAddingTask = false } }
                     )
                     .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
                 }
             } else {
                 CompactSectionHeader(title: source.title, count: filteredTasks.count)
                     .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
             }
         }
     }
@@ -149,6 +156,7 @@ public struct TaskListScreen: View {
         if filteredTasks.isEmpty {
             FlowEmptyState(symbol: source.symbolName, title: source.title, message: source.emptyMessage)
                 .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
         } else {
             ForEach(groupedSections, id: \.title) { section in
                 Section {
@@ -162,7 +170,7 @@ public struct TaskListScreen: View {
                     )
                 } header: {
                     if !section.title.isEmpty {
-                        Text(section.title)
+                        FlowEyebrow(section.title)
                     }
                 }
             }
@@ -174,10 +182,14 @@ public struct TaskListScreen: View {
         #if os(macOS)
         TaskRowView(task: task)
             .tag(task.id)
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
         #else
         TaskRowView(task: task)
             .contentShape(Rectangle())
             .onTapGesture { selectedTask = task }
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
         #endif
     }
 

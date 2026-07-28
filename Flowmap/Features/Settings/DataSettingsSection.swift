@@ -39,7 +39,7 @@ struct DataSettingsSection: View {
     var body: some View {
         FlowCard {
             VStack(alignment: .leading, spacing: FlowSpacing.l) {
-                CompactSectionHeader(title: "Data")
+                FlowEyebrow("Data")
 
                 syncStatusRow
 

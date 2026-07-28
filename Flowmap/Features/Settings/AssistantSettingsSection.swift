@@ -19,7 +19,7 @@ struct AssistantSettingsSection: View {
     var body: some View {
         FlowCard {
             VStack(alignment: .leading, spacing: FlowSpacing.l) {
-                CompactSectionHeader(title: "Assistant")
+                FlowEyebrow("Assistant")
 
                 if let flow {
                     providerRow(flow)
@@ -88,7 +88,17 @@ struct AssistantSettingsSection: View {
                 .foregroundStyle(FlowTheme.secondaryText(scheme))
             HStack(spacing: FlowSpacing.s) {
                 SecureField("Enter new key", text: $apiKeyInput)
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, FlowSpacing.m)
+                    .padding(.vertical, FlowSpacing.s)
+                    .background(
+                        RoundedRectangle(cornerRadius: FlowRadius.small, style: .continuous)
+                            .fill(FlowTheme.surfaceSunken(scheme))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: FlowRadius.small, style: .continuous)
+                            .strokeBorder(FlowTheme.separatorStrong(scheme), lineWidth: 1)
+                    )
                 SecondaryActionButton("Save") {
                     KeychainService.set(apiKeyInput, account: account)
                     apiKeyInput = ""
