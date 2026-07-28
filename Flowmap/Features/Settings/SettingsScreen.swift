@@ -25,9 +25,13 @@ struct SettingsScreen: View {
         .background(FlowTheme.background(scheme).ignoresSafeArea())
     }
 
+    /// Drawn in the scroll content rather than the navigation bar: this screen
+    /// has no bar for a principal item to sit in, so `.flowScreenTitle` would
+    /// leave it with no title at all. Matches `ProgressScreen`'s treatment.
     private var header: some View {
         Text("Settings")
-            .font(FlowFont.screenTitle)
+            .font(FlowFont.screenTitleCompact)
             .foregroundStyle(FlowTheme.primaryText(scheme))
+            .frame(maxWidth: .infinity, alignment: .center)
     }
 }

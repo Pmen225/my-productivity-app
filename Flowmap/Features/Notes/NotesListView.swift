@@ -55,6 +55,7 @@ struct NotesListView: View {
         .searchable(text: $searchText, prompt: "Search notes")
         .toolbar { scopeToolbarItem }
         .navigationTitle(scope.displayName)
+        .flowScreenTitle(scope.displayName)
         .alert("Rename note", isPresented: renameAlertBinding) {
             TextField("Title", text: $renameText)
             Button("Cancel", role: .cancel) {}

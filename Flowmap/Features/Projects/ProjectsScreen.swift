@@ -49,6 +49,7 @@ public struct ProjectsScreen: View {
             }
         }
         .navigationTitle("Projects")
+        .flowScreenTitle("Projects")
         .searchable(text: $searchText, placement: .automatic, prompt: "Search projects")
         .navigationDestination(for: Project.self) { project in
             ProjectDetailView(project: project)

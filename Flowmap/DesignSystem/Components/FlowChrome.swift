@@ -122,15 +122,20 @@ public struct FlowFloatingButton: View {
 
 /// The mock's quiet centred screen title — 15pt bold, sitting in the nav
 /// bar's principal slot instead of the system's large left-aligned title.
+///
+/// iPhone only. The mock is an iPhone design, and on macOS the window already
+/// shows `navigationTitle` in its title bar — adding a principal toolbar item
+/// there would simply print the same words twice. Callers keep their own
+/// `.navigationTitle` so the back-button label and the VoiceOver heading
+/// survive on both platforms.
 private struct FlowScreenTitle: ViewModifier {
     @Environment(\.colorScheme) private var scheme
     let title: String
 
     func body(content: Content) -> some View {
+        #if os(iOS)
         content
-            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
-            #endif
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Text(title)
@@ -139,6 +144,9 @@ private struct FlowScreenTitle: ViewModifier {
                         .accessibilityAddTraits(.isHeader)
                 }
             }
+        #else
+        content
+        #endif
     }
 }
 

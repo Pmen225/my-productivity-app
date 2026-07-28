@@ -76,6 +76,7 @@ public struct TaskListScreen: View {
     public var body: some View {
         content
             .navigationTitle(source.title)
+            .flowScreenTitle(source.title)
             .searchable(text: $searchText, placement: .automatic, prompt: "Search tasks")
             .toolbar { toolbarContent }
             .popover(isPresented: $showEllipsisMenu) {

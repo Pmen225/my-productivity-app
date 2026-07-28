@@ -65,6 +65,7 @@ public struct MapListView: View {
         .scrollContentBackground(.hidden)
         .background(FlowTheme.background(scheme).ignoresSafeArea())
         .navigationTitle("Maps")
+        .flowScreenTitle("Maps")
         .searchable(text: $searchText, placement: .automatic, prompt: "Search maps")
         .navigationDestination(for: MapDocument.self) { map in
             MapDetailView(map: map)
