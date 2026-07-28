@@ -195,8 +195,7 @@ public struct TaskDetailInspector: View {
 
     private func subtaskRow(_ subtask: Subtask) -> some View {
         Button {
-            subtask.toggle()
-            try? context.save()
+            flow?.gamification.toggleSubtask(subtask)
         } label: {
             HStack {
                 Image(systemName: subtask.isCompleted ? "checkmark.circle.fill" : "circle")

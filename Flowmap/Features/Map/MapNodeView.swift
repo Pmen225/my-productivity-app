@@ -194,9 +194,9 @@ struct MapNodeView: View {
     /// beneath the dark anchor pill, map-wide rather than per-branch.
     private var rootStack: some View {
         let counts = taskCounts(in: node)
-        let xp = counts.completed * MapNodeView.xpPerTask
+        let level = flow?.gamification.level ?? GamificationCurve.level(forTotalXP: 0)
         return VStack(spacing: FlowSpacing.xxs) {
-            Text("LV \(level(forXP: xp)) · \(xp) XP")
+            Text("LV \(level.level) · \(level.xpIntoLevel) XP")
                 .font(.system(size: 10, weight: .heavy, design: .rounded))
                 .foregroundStyle(FlowTheme.accent)
                 .kerning(0.8)
@@ -310,15 +310,6 @@ struct MapNodeView: View {
     }
 
     // MARK: - Task progress
-
-    /// XP awarded per completed linked task — a round, documented assumption
-    /// rather than a sourced design number, kept in one place so it can be
-    /// revisited without touching the layout code around it.
-    private static let xpPerTask = 5
-
-    /// `L = XP / 100 + 1` — the level shown on the root pill.
-    private func level(forXP xp: Int) -> Int { xp / MapNodeView.xpLevelSpan + 1 }
-    private static let xpLevelSpan = 100
 
     /// Completed vs. total linked tasks across `node`'s whole subtree —
     /// ignoring collapse state, so a folded branch's caption never lies

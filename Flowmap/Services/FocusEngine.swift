@@ -106,15 +106,24 @@ public final class FocusEngine {
         )
     }
 
+    private func gamificationService() -> GamificationService {
+        GamificationService(context: context, settings: settings)
+    }
+
     // MARK: - Today's queue
 
-    /// Scheduled segments for `day`, earliest first — the order the wheel walks.
-    public func queue(for day: Date = Date()) -> [TaskSegment] {
+    /// Every segment starting on `day`, in any state — the day-cleared check
+    /// needs the terminal ones too, which `queue(for:)` deliberately excludes.
+    private func segments(on day: Date) -> [TaskSegment] {
         let dayStart = calendar.startOfDay(for: day)
         guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else { return [] }
         let segments = (try? context.fetch(FetchDescriptor<TaskSegment>())) ?? []
-        return segments
-            .filter { $0.startDate >= dayStart && $0.startDate < dayEnd }
+        return segments.filter { $0.startDate >= dayStart && $0.startDate < dayEnd }
+    }
+
+    /// Scheduled segments for `day`, earliest first — the order the wheel walks.
+    public func queue(for day: Date = Date()) -> [TaskSegment] {
+        segments(on: day)
             .filter { $0.state == .scheduled || $0.state == .elapsed }
             .filter { $0.task?.status.isOpen ?? false }
             .sorted { $0.startDate < $1.startDate }
@@ -219,6 +228,7 @@ public final class FocusEngine {
             pending.task.definitionOfDone = trimmed
             pending.task.hasBeenPlanned = true
             try? context.save()
+            gamificationService().award(.taskPlanned)
         }
         pendingGate = nil
         if let segment = pending.segment {
@@ -283,6 +293,7 @@ public final class FocusEngine {
         if let task = session.task {
             task.actualMinutes += session.actualMinutes
             task.markCompleted(at: now)
+            gamificationService().award(.taskCompleted(estimatedMinutes: task.estimatedMinutes))
         }
         if let segment = session.segment { segment.state = .completed }
         try? context.save()
@@ -435,6 +446,27 @@ public final class FocusEngine {
             nextTaskTitle: nextTitle,
             canExtend: requeue != nil
         )
+        awardDayClearedIfNeeded(now: now)
+    }
+
+    /// Awards the day-cleared bonus the first time every one of today's
+    /// segments has reached a terminal state (completed, missed or
+    /// cancelled — `.elapsed` is excluded, since it means a task's time ran
+    /// out without being resolved either way) with at least one completed.
+    /// Guarded by `lastDayClearedAwardDay` so re-checking after every later
+    /// transition on the same day, or a second device doing the same, cannot
+    /// award it twice.
+    private func awardDayClearedIfNeeded(now: Date) {
+        let dayStart = calendar.startOfDay(for: now)
+        if let last = settings.lastDayClearedAwardDay, calendar.isDate(last, inSameDayAs: now) { return }
+        let today = segments(on: now)
+        guard !today.isEmpty else { return }
+        let terminal: Set<SegmentState> = [.completed, .missed, .cancelled]
+        guard today.allSatisfy({ terminal.contains($0.state) }) else { return }
+        guard today.contains(where: { $0.state == .completed }) else { return }
+        gamificationService().award(.dayCleared)
+        settings.lastDayClearedAwardDay = dayStart
+        try? context.save()
     }
 
     /// Undoes a requeue the user rejected from the banner.
@@ -464,7 +496,9 @@ public final class FocusEngine {
             context.delete(segment)
         }
         task.markCompleted()
+        gamificationService().award(.taskCompleted(estimatedMinutes: task.estimatedMinutes))
         try? context.save()
         pendingTransition = nil
+        awardDayClearedIfNeeded(now: Date())
     }
 }

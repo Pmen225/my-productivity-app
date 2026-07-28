@@ -3,12 +3,13 @@ import SwiftUI
 
 /// Progress informs, it never shames: a small centred title, an initiative
 /// card, the project list and a 3-up stat-tile row — all recomputed live from
-/// persisted tasks, segments, maps and focus sessions. Nothing here is a
-/// stored aggregate — XP and level are read straight off completed task
-/// counts, the same rule the map root pill uses (see `xpPerTask` below).
+/// persisted tasks, segments, maps and focus sessions. XP and level come from
+/// `GamificationService`, the same source `MapNodeView`'s root pill reads, so
+/// the two screens cannot disagree about what level the user is.
 struct ProgressScreen: View {
     @Environment(\.flow) private var flow
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @Query(sort: \FlowTask.updatedAt, order: .reverse) private var allTasks: [FlowTask]
     @Query(sort: \TaskSegment.startDate) private var allSegments: [TaskSegment]
@@ -18,6 +19,10 @@ struct ProgressScreen: View {
 
     @State private var period: ProgressPeriod = .today
     @State private var showsXPExplainer = false
+    /// The XP-into-level figure actually on screen. Separate from
+    /// `currentLevel.xpIntoLevel` so a level-up can roll the old value into
+    /// the new one over the design's timing instead of jumping instantly.
+    @State private var displayedXPIntoLevel: Int?
 
     private var calendar: Calendar {
         var calendar = Calendar.current
@@ -37,6 +42,13 @@ struct ProgressScreen: View {
     /// there is no separate notion of an active map anywhere else in the app.
     private var initiative: MapDocument? { maps.first }
 
+    /// The account's level, derived fresh from persisted total XP every read
+    /// — the same `GamificationService` `MapNodeView`'s root pill reads, so
+    /// the two screens cannot disagree about what level this is.
+    private var currentLevel: GamificationLevel {
+        flow?.gamification.level ?? GamificationCurve.level(forTotalXP: 0)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: FlowSpacing.l) {
@@ -52,6 +64,46 @@ struct ProgressScreen: View {
             .padding(FlowSpacing.screen)
         }
         .background(FlowTheme.background(scheme).ignoresSafeArea())
+        .onAppear {
+            if displayedXPIntoLevel == nil { displayedXPIntoLevel = currentLevel.xpIntoLevel }
+        }
+        .onChange(of: currentLevel.level) { oldLevel, newLevel in
+            // A level-up gets the design's roll. Anything else that changes
+            // the figure (an XP gain that stays within the same level) just
+            // updates it straight away — only the level-up is a "moment".
+            if newLevel > oldLevel {
+                rollDisplayedXP(to: currentLevel.xpIntoLevel)
+            } else {
+                displayedXPIntoLevel = currentLevel.xpIntoLevel
+            }
+        }
+        .onChange(of: currentLevel.xpIntoLevel) { _, newValue in
+            guard !isRolling else { return }
+            displayedXPIntoLevel = newValue
+        }
+    }
+
+    @State private var isRolling = false
+
+    /// Rolls the XP-into-level figure from its old value to `newValue` on the
+    /// design's own timing: a 480ms pre-roll delay, then an 1100ms roll.
+    /// Reduce Motion replaces the roll with an instant, discrete update —
+    /// the same convention `FlowChrome`'s `animated(_:)` helper uses for the
+    /// create sheet's selections, rather than inventing a second one.
+    private func rollDisplayedXP(to newValue: Int) {
+        guard !reduceMotion else {
+            displayedXPIntoLevel = newValue
+            return
+        }
+        isRolling = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.48) {
+            withAnimation(.linear(duration: 1.1)) {
+                displayedXPIntoLevel = newValue
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) {
+                isRolling = false
+            }
+        }
     }
 
     private var title: some View {
@@ -73,14 +125,6 @@ struct ProgressScreen: View {
 
     // MARK: - Initiative card
 
-    /// XP awarded per completed linked task, and the XP span per level — the
-    /// same two-line rule `MapNodeView`'s root pill uses. That helper is
-    /// private to the map canvas, so the rule is replicated here rather than
-    /// factored into a new gamification service.
-    private static let xpPerTask = 5
-    private static let xpLevelSpan = 100
-    private func level(forXP xp: Int) -> Int { xp / Self.xpLevelSpan + 1 }
-
     private func taskCounts(in map: MapDocument) -> (completed: Int, total: Int) {
         let tasks = map.orderedNodes.compactMap(\.linkedTask)
         return (tasks.count { $0.status == .completed }, tasks.count)
@@ -88,9 +132,8 @@ struct ProgressScreen: View {
 
     private func initiativeCard(_ map: MapDocument) -> some View {
         let counts = taskCounts(in: map)
-        let xp = counts.completed * Self.xpPerTask
-        let currentLevel = level(forXP: xp)
-        let xpIntoLevel = xp % Self.xpLevelSpan
+        let level = currentLevel
+        let xpIntoLevel = displayedXPIntoLevel ?? level.xpIntoLevel
         let fraction = counts.total > 0 ? Double(counts.completed) / Double(counts.total) : 0
 
         return FlowCard {
@@ -105,12 +148,13 @@ struct ProgressScreen: View {
                     }
                     Spacer(minLength: FlowSpacing.s)
                     VStack(alignment: .trailing, spacing: FlowSpacing.xxs) {
-                        Text("LV \(currentLevel)")
+                        Text("LV \(level.level)")
                             .font(.system(size: 17, weight: .heavy, design: .rounded))
                             .foregroundStyle(FlowTheme.accent)
-                        Text("\(xpIntoLevel) / \(Self.xpLevelSpan) XP · next LV \(currentLevel + 1)")
+                        Text("\(xpIntoLevel) / \(level.xpForLevel) XP · next LV \(level.level + 1)")
                             .font(FlowFont.caption)
                             .foregroundStyle(FlowTheme.secondaryText(scheme))
+                            .contentTransition(.numericText())
                     }
                 }
 
@@ -134,20 +178,22 @@ struct ProgressScreen: View {
                         .foregroundStyle(FlowTheme.secondaryText(scheme))
                 }
 
-                Text("Every completed task in this map earns \(Self.xpPerTask) XP.")
+                Text("Finishing tasks, planning them and clearing your day all earn XP.")
                     .font(FlowFont.caption)
                     .foregroundStyle(FlowTheme.tertiaryText(scheme))
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(map.title), level \(currentLevel)")
-        .accessibilityValue("\(xpIntoLevel) of \(Self.xpLevelSpan) XP, \(counts.completed) of \(counts.total) tasks complete")
+        .accessibilityLabel("\(map.title), level \(level.level)")
+        .accessibilityValue("\(xpIntoLevel) of \(level.xpForLevel) XP, \(counts.completed) of \(counts.total) tasks complete")
     }
 
     private var xpDisclosure: some View {
         FlowCard {
             DisclosureGroup("How XP works", isExpanded: $showsXPExplainer) {
-                Text("Every completed task linked to this map earns \(Self.xpPerTask) XP. Every \(Self.xpLevelSpan) XP reaches the next level.")
+                // The design's own copy (design-inventory.md §"XP / levelling"):
+                // finishing beats starting, and each level costs more than the last.
+                Text("+1 XP per minute of a finished task, +5 per subtask, +10 for planning, +25 per task when a project closes, +50 for clearing your day. Each level costs 100 × level^1.5 — level 2 takes one good day, level 5 a strong week.")
                     .font(FlowFont.caption)
                     .foregroundStyle(FlowTheme.secondaryText(scheme))
                     .padding(.top, FlowSpacing.xs)

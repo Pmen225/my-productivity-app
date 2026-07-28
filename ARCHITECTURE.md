@@ -148,6 +148,7 @@ information.
 |---|---|
 | `SchedulingService` / `SchedulingEngine` | All planning, placement and requeueing |
 | `FocusEngine` | Timer, transitions, task hand-off |
+| `GamificationService` / `GamificationCurve` | The one XP total, its level curve and award table — `MapNodeView` and `ProgressScreen` both read this rather than each keeping a copy |
 | `CalendarService` | EventKit: permission, selected calendars, de-duplicated reads, optional write-back |
 | `NotificationService` | Local notifications, keyed on segment id so rescheduling replaces rather than stacks |
 | `SearchService` | Global search across five content types |

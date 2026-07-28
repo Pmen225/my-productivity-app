@@ -7,6 +7,7 @@ import SwiftUI
 struct PlanGateDialog: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.modelContext) private var context
+    @Environment(\.flow) private var flow
 
     let task: FlowTask
     let onStart: (String) -> Void
@@ -91,8 +92,7 @@ struct PlanGateDialog: View {
 
     private func subtaskRow(_ subtask: Subtask) -> some View {
         Button {
-            subtask.toggle()
-            try? context.save()
+            flow?.gamification.toggleSubtask(subtask)
         } label: {
             HStack(spacing: FlowSpacing.xs) {
                 Image(systemName: subtask.isCompleted ? "checkmark.circle.fill" : "circle")

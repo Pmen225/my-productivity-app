@@ -52,6 +52,14 @@ struct TestWorld {
         SchedulingEngine(settings: settings, calendar: calendar)
     }
 
+    func gamification() -> GamificationService {
+        GamificationService(context: context, settings: settings)
+    }
+
+    func focusEngine() -> FocusEngine {
+        FocusEngine(context: context, settings: settings, calendar: calendar)
+    }
+
     @discardableResult
     func makeTask(
         _ title: String,

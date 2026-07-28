@@ -32,7 +32,6 @@ enum FocusCardPage: Int, CaseIterable, Identifiable {
 /// At rest it keeps a measurable gap from the wheel — the two never touch.
 struct FocusTaskCard: View {
     @Environment(\.colorScheme) private var scheme
-    @Environment(\.modelContext) private var context
     @Environment(\.flow) private var flow
 
     let queue: [TaskSegment]
@@ -278,8 +277,7 @@ struct FocusTaskCard: View {
 
     private func subtaskRow(_ subtask: Subtask) -> some View {
         Button {
-            subtask.toggle()
-            try? context.save()
+            flow?.gamification.toggleSubtask(subtask)
         } label: {
             HStack(spacing: FlowSpacing.m) {
                 Image(systemName: subtask.isCompleted ? "checkmark.circle.fill" : "circle")

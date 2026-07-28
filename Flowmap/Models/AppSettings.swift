@@ -68,6 +68,15 @@ public final class AppSettings {
     public var assistantProviderRaw: String = AssistantProvider.anthropic.rawValue
     public var assistantModel: String = AssistantProvider.anthropic.defaultModel
 
+    // Gamification
+    /// The single running XP total for this user. Level and progress are
+    /// never stored — `GamificationService` derives them from this on every
+    /// read, exactly as `Project.progress` derives from its tasks.
+    public var totalXP: Int = 0
+    /// The day the "day cleared" bonus was last awarded, so a reconciliation
+    /// pass or a second device cannot award it twice for the same day.
+    public var lastDayClearedAwardDay: Date?
+
     // Lifecycle
     public var hasCompletedOnboarding: Bool = false
     public var hasLoadedDemoData: Bool = false

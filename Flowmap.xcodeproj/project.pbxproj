@@ -41,6 +41,7 @@
 		2BE0B7DA91D9C890DFAC0972 /* GoogleOAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 015E051EF8CD81D0B32913D9 /* GoogleOAuth.swift */; };
 		2E7ABCA5900842AC26F437CD /* SeedData.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0FAB11E09F545922FCFD24E /* SeedData.swift */; };
 		2E965BD09B3B3B69DBC00521 /* TodayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3AEB805F6CB4CB81E1D2B34 /* TodayView.swift */; };
+		3122B8E3A06EA501A6325781 /* GamificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85B4135C8F542311B9A1D8BD /* GamificationService.swift */; };
 		332A3B718715C56035C5A7B9 /* FocusWheelSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4564C4E8A79E9FED86048C7 /* FocusWheelSettingsSection.swift */; };
 		3487C3868E483B785EFDBDBE /* GoogleCalendarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06EE1F6A498560488D7AEFCE /* GoogleCalendarTests.swift */; };
 		34C96BB12BD401C2270472A7 /* NoteEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88A49759EB5628D1EF220D83 /* NoteEditorView.swift */; };
@@ -57,6 +58,7 @@
 		3FE95B815E57FF0F8202196E /* BackupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2E0CA6209243A93200D345A /* BackupService.swift */; };
 		4072537F437EE8595BEC8919 /* FlowmapWatchWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AEA5461D33FCC592DE802C6 /* FlowmapWatchWidget.swift */; };
 		423683C4D2B0291AA8655038 /* NoteBlockRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 219C8FC141BDD3DC8D699A29 /* NoteBlockRow.swift */; };
+		4553EDCEBA0B9C28C5522D63 /* GamificationCurve.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D955F3D59161C2706C4D952 /* GamificationCurve.swift */; };
 		47A6582CA14AA9A3644403BA /* QuickCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = D22693D164B2E1005B34F95C /* QuickCapture.swift */; };
 		4BE39C1F7C9418BCFCC5621A /* AssistantViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE97604132C1BFFAB3E2CA3D /* AssistantViewModel.swift */; };
 		4D04FBD68E348E3CBE1E112B /* SchedulingEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3323B2927957B2BF88DC714 /* SchedulingEngine.swift */; };
@@ -96,6 +98,7 @@
 		86DE4BEBE5C4EAE1FD26C314 /* ReviewRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86304997C9D32819EBDD206F /* ReviewRegressionTests.swift */; };
 		8832DEE2AAC0B4F69C14BECB /* ModelContainerFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA7094DE397EF5DCFD495E04 /* ModelContainerFactory.swift */; };
 		895A54ED23892FF1CE21DB9D /* NotesListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76C7E6681EFC5F44DE35E609 /* NotesListView.swift */; };
+		8CE47926BF9263C2B664A769 /* GamificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BEA6662C9F357223242197D /* GamificationTests.swift */; };
 		8EBD529DD4C5559E4CE22176 /* TaskSegment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E0FB57305EC7E688CE1F2AD /* TaskSegment.swift */; };
 		90A7294C680A9C67E46080F9 /* AboutSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C0CBD54720120E311923079 /* AboutSettingsSection.swift */; };
 		91198C5C62F8A9374DA48DD8 /* ProjectDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00E639C60CF01D64FE44F5A3 /* ProjectDetailView.swift */; };
@@ -228,6 +231,7 @@
 		177E30013AEF5034640579DE /* GlobalSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalSearchView.swift; sourceTree = "<group>"; };
 		1910EFCFB759F0FA0C47D492 /* PhoneRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneRootView.swift; sourceTree = "<group>"; };
 		1CE75CBAF8C8C0A74C2E6327 /* DeepLinks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLinks.swift; sourceTree = "<group>"; };
+		1D955F3D59161C2706C4D952 /* GamificationCurve.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamificationCurve.swift; sourceTree = "<group>"; };
 		20C468ABBC0E19C9A93FF318 /* CreateListSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateListSheet.swift; sourceTree = "<group>"; };
 		2164ADB418E7C81EE838810D /* DataIntegrityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataIntegrityTests.swift; sourceTree = "<group>"; };
 		219C8FC141BDD3DC8D699A29 /* NoteBlockRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteBlockRow.swift; sourceTree = "<group>"; };
@@ -239,6 +243,7 @@
 		290204222CE5B358AD68E8F6 /* FocusVoiceScheduleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusVoiceScheduleTests.swift; sourceTree = "<group>"; };
 		2A2A65534AACBCB3A815D738 /* MapNodeConversion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapNodeConversion.swift; sourceTree = "<group>"; };
 		2B4F90BBB64EFCB2850D452D /* WatchCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchCaptureView.swift; sourceTree = "<group>"; };
+		2BEA6662C9F357223242197D /* GamificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamificationTests.swift; sourceTree = "<group>"; };
 		2C0CBD54720120E311923079 /* AboutSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutSettingsSection.swift; sourceTree = "<group>"; };
 		2C81E91657B6D3F353AD5A11 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
 		2CFB458CEA5ED386D8370B3E /* CalendarAccountRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarAccountRow.swift; sourceTree = "<group>"; };
@@ -284,6 +289,7 @@
 		7E04112C12BA31A7B85C45F7 /* FocusVoiceSchedule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusVoiceSchedule.swift; sourceTree = "<group>"; };
 		8388A9C91062B2AA6C520547 /* TaskDetailInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskDetailInspector.swift; sourceTree = "<group>"; };
 		83B3648432B82B48EC26C361 /* Typography.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Typography.swift; sourceTree = "<group>"; };
+		85B4135C8F542311B9A1D8BD /* GamificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamificationService.swift; sourceTree = "<group>"; };
 		85BB5B55726E17A62E586ABE /* CalendarControlAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarControlAPI.swift; sourceTree = "<group>"; };
 		86304997C9D32819EBDD206F /* ReviewRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewRegressionTests.swift; sourceTree = "<group>"; };
 		88648DD7A3B0CA77C1DB4957 /* FlowmapUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = FlowmapUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -373,6 +379,7 @@
 				2164ADB418E7C81EE838810D /* DataIntegrityTests.swift */,
 				62569CD38AA4E9CA693B82B7 /* FocusTests.swift */,
 				290204222CE5B358AD68E8F6 /* FocusVoiceScheduleTests.swift */,
+				2BEA6662C9F357223242197D /* GamificationTests.swift */,
 				06EE1F6A498560488D7AEFCE /* GoogleCalendarTests.swift */,
 				86304997C9D32819EBDD206F /* ReviewRegressionTests.swift */,
 				2E31B3506918265E9FD29EFE /* SchedulingTests.swift */,
@@ -671,6 +678,8 @@
 				042B1AC1D30F037BB3FB55AD /* FocusEngine.swift */,
 				7E04112C12BA31A7B85C45F7 /* FocusVoiceSchedule.swift */,
 				B017E50841C81D3D637B2D74 /* FocusVoiceService.swift */,
+				1D955F3D59161C2706C4D952 /* GamificationCurve.swift */,
+				85B4135C8F542311B9A1D8BD /* GamificationService.swift */,
 				8C8CE9EB8CFBF49AF06A0E61 /* KeychainService.swift */,
 				2C81E91657B6D3F353AD5A11 /* NotificationService.swift */,
 				B3323B2927957B2BF88DC714 /* SchedulingEngine.swift */,
@@ -901,6 +910,7 @@
 				C64A724ADF9AEFAD0912D29B /* DataIntegrityTests.swift in Sources */,
 				2363EA1EF4FEF96F9F8DAF09 /* FocusTests.swift in Sources */,
 				0D0D9FFADCE4678DE5728CC9 /* FocusVoiceScheduleTests.swift in Sources */,
+				8CE47926BF9263C2B664A769 /* GamificationTests.swift in Sources */,
 				3487C3868E483B785EFDBDBE /* GoogleCalendarTests.swift in Sources */,
 				86DE4BEBE5C4EAE1FD26C314 /* ReviewRegressionTests.swift in Sources */,
 				DBCA770ED3DF5E69935F5826 /* SchedulingTests.swift in Sources */,
@@ -966,6 +976,8 @@
 				F642801A24B8DD52BAAAEF5D /* FocusWheelGeometry.swift in Sources */,
 				332A3B718715C56035C5A7B9 /* FocusWheelSettingsSection.swift in Sources */,
 				C544DBAC35277F8226C9C1D8 /* FocusWheelView.swift in Sources */,
+				4553EDCEBA0B9C28C5522D63 /* GamificationCurve.swift in Sources */,
+				3122B8E3A06EA501A6325781 /* GamificationService.swift in Sources */,
 				1C91F5C6D5CE6223EC36F9F1 /* GeneralSettingsSection.swift in Sources */,
 				6F30178E6B9FAAEDBF61C5E5 /* GlobalSearchView.swift in Sources */,
 				7528233C3F1BA3E8C1E5BA1E /* GoogleCalendarProvider.swift in Sources */,

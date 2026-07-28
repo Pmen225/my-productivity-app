@@ -8,6 +8,7 @@ import SwiftUI
 public struct ProjectOverviewTab: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.modelContext) private var context
+    @Environment(\.flow) private var flow
     @Bindable var project: Project
 
     public init(project: Project) {
@@ -50,6 +51,12 @@ public struct ProjectOverviewTab: View {
             colourRow
         }
         .padding(FlowSpacing.screen)
+        .onChange(of: project.status) { oldStatus, newStatus in
+            // "Project closed" is this app's Project reaching .completed — the
+            // one place the design's per-task bonus has an event to hang off.
+            guard newStatus == .completed, oldStatus != .completed else { return }
+            flow?.gamification.award(.projectClosed(taskCount: project.actionableTasks.count))
+        }
     }
 
     private var progressCard: some View {

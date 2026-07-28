@@ -16,6 +16,10 @@ public final class AppEnvironment {
     public let notificationService: NotificationService
     public let voiceService: FocusVoiceService
     public let searchService: SearchService
+    /// The one XP total and its curve. `MapNodeView`'s root pill and
+    /// `ProgressScreen`'s initiative card both read this rather than each
+    /// keeping their own copy of the level maths.
+    public let gamification: GamificationService
     /// Every calendar account, merged. The planner reads busy time from here so
     /// it cannot end up with one rule for Apple and another for Google.
     public let calendarHub: CalendarHub
@@ -47,6 +51,7 @@ public final class AppEnvironment {
         self.notificationService = NotificationService()
         self.voiceService = FocusVoiceService()
         self.searchService = SearchService(context: context)
+        self.gamification = GamificationService(context: context, settings: settings)
         self.focusEngine = FocusEngine(context: context, settings: settings, voiceService: voiceService)
 
         let settings = self.settings
