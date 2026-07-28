@@ -13,6 +13,7 @@ struct SettingsScreen: View {
 
                 GeneralSettingsSection()
                 FocusWheelSettingsSection()
+                FocusAudioSettingsSection()
                 NotificationSettingsSection()
                 CalendarSettingsSection()
                 AssistantSettingsSection()

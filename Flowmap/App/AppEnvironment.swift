@@ -14,6 +14,7 @@ public final class AppEnvironment {
     public let settings: AppSettings
     public let calendarService: CalendarService
     public let notificationService: NotificationService
+    public let voiceService: FocusVoiceService
     public let searchService: SearchService
     /// Every calendar account, merged. The planner reads busy time from here so
     /// it cannot end up with one rule for Apple and another for Google.
@@ -44,8 +45,9 @@ public final class AppEnvironment {
         self.settings = Self.loadOrCreateSettings(in: context)
         self.calendarService = CalendarService()
         self.notificationService = NotificationService()
+        self.voiceService = FocusVoiceService()
         self.searchService = SearchService(context: context)
-        self.focusEngine = FocusEngine(context: context, settings: settings)
+        self.focusEngine = FocusEngine(context: context, settings: settings, voiceService: voiceService)
 
         let settings = self.settings
         let appleProvider = AppleCalendarProvider(
@@ -135,6 +137,7 @@ public final class AppEnvironment {
         refreshCalendarWindow(around: moment)
 
         focusEngine.processElapsedSessionIfNeeded(now: moment)
+        focusEngine.checkVoiceAnnouncements(now: moment)
 
         let outcomes = scheduling().reconcileMissedWork(now: moment)
         if let first = outcomes.first { requeueBanner = first }
@@ -153,6 +156,7 @@ public final class AppEnvironment {
         now = date
         focusEngine.tick = date
         focusEngine.processElapsedSessionIfNeeded(now: date)
+        focusEngine.checkVoiceAnnouncements(now: date)
         #if os(iOS)
         // Cheap: the link drops a snapshot identical to the last one.
         watchLink.publishCurrent()

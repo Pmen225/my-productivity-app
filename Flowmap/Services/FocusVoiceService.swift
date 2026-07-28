@@ -1,0 +1,96 @@
+import AVFoundation
+import Foundation
+import Observation
+
+/// Speaks the focus coach's task-start, time-left and wind-down announcements.
+///
+/// Owns the `AVSpeechSynthesizer` and every word said; `FocusVoiceSchedule`
+/// only decides *when* something is due, so the schedule stays testable
+/// without a simulator and `FocusEngine` stays free of speech concerns.
+/// `AVSpeechSynthesizer` is not `Sendable`, so this stays confined to the
+/// main actor rather than reaching for `@unchecked Sendable`.
+@MainActor
+@Observable
+public final class FocusVoiceService {
+    private let synthesizer = AVSpeechSynthesizer()
+    /// What has already been said for each running session, so a pause/resume
+    /// or a relaunch mid-session never repeats an announcement.
+    private var announcedBySession: [UUID: Set<FocusVoiceMilestone>] = [:]
+
+    public init() {}
+
+    /// Every voice this device can speak with, for the settings picker.
+    /// Read live from the system rather than a hard-coded list, since
+    /// availability differs by device, language and downloaded voice packs.
+    public static func availableVoices() -> [AVSpeechSynthesisVoice] {
+        AVSpeechSynthesisVoice.speechVoices()
+    }
+
+    /// Speaks the task-start announcement. Called once, exactly when a fresh
+    /// session begins — not on resume, where the caller simply does not call
+    /// this again.
+    public func announceTaskStart(title: String, settings: AppSettings) {
+        guard settings.focusVoiceEnabled else { return }
+        speak("Drop what you're doing — \(title) starts now.", settings: settings)
+    }
+
+    /// Checks whether the active session has newly crossed a time-left,
+    /// countdown or wind-down threshold, and speaks it if so.
+    ///
+    /// Driven by `FocusEngine`'s existing tick — this never starts a second
+    /// timer of its own.
+    public func tick(sessionID: UUID, duration: TimeInterval, elapsed: TimeInterval, settings: AppSettings) {
+        guard settings.focusVoiceEnabled else { return }
+        let due = FocusVoiceSchedule.dueMilestones(duration: duration, elapsed: elapsed)
+        guard !due.isEmpty else { return }
+
+        let announced = announcedBySession[sessionID] ?? []
+        guard let toSpeak = FocusVoiceSchedule.nextAnnouncement(
+            duration: duration, elapsed: elapsed, alreadyAnnounced: announced
+        ) else { return }
+
+        // Mark every milestone due right now as announced, not just the one
+        // spoken — otherwise an older one skipped this tick (because it was
+        // superseded by a fresher one) would resurface stale on the next tick.
+        announcedBySession[sessionID] = announced.union(due)
+        speak(text(for: toSpeak), settings: settings)
+    }
+
+    /// Clears this session's history and stops any speech in flight —
+    /// called whenever a session ends, so nothing keeps talking afterwards.
+    public func sessionEnded(sessionID: UUID) {
+        announcedBySession[sessionID] = nil
+        synthesizer.stopSpeaking(at: .word)
+    }
+
+    // MARK: - Wording
+
+    private func text(for milestone: FocusVoiceMilestone) -> String {
+        switch milestone {
+        case .timeLeft(let minutes):
+            "\(minutes) minutes left."
+        case .countdown(let minutesLeft):
+            minutesLeft == 1 ? "1 minute left." : "\(minutesLeft) minutes left."
+        case .windDown(let minutes):
+            minutes == 1 ? "1 minute to reflect." : "\(minutes) minutes to reflect."
+        }
+    }
+
+    // MARK: - Speaking
+
+    private func speak(_ text: String, settings: AppSettings) {
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.voice = voice(for: settings)
+        synthesizer.speak(utterance)
+    }
+
+    /// The user's chosen voice if it is still installed, else the system's
+    /// default for the current language — never a hard failure.
+    private func voice(for settings: AppSettings) -> AVSpeechSynthesisVoice? {
+        if let identifier = settings.focusVoiceIdentifier,
+           let voice = AVSpeechSynthesisVoice(identifier: identifier) {
+            return voice
+        }
+        return AVSpeechSynthesisVoice(language: AVSpeechSynthesisVoice.currentLanguageCode())
+    }
+}

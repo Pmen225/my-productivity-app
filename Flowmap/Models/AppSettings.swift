@@ -27,6 +27,13 @@ public final class AppSettings {
     public var focusHapticsEnabled: Bool = true
     public var autoStartNextTask: Bool = true
 
+    // Focus voice coach
+    /// Speaks task-start, time-left and wind-down announcements during focus.
+    public var focusVoiceEnabled: Bool = true
+    /// The chosen `AVSpeechSynthesisVoice.identifier`. Nil uses the system
+    /// default for the current language.
+    public var focusVoiceIdentifier: String?
+
     // Notifications
     public var notifyFiveMinuteWarning: Bool = true
     public var notifyTaskStart: Bool = true

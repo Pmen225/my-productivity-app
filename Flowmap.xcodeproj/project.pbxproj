@@ -14,6 +14,7 @@
 		0A6E48CBEC6945A5D8CBB59A /* ProgressMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78C20A3B4E84D29B5775538F /* ProgressMetrics.swift */; };
 		0BD3809BC2F3E04797507438 /* MapNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 375E452CBC16B13A4BC4CF71 /* MapNode.swift */; };
 		0CA89E95FAE44254C9F857F9 /* MapViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8F2A459CF8B13744C34F2D8 /* MapViewModel.swift */; };
+		0D0D9FFADCE4678DE5728CC9 /* FocusVoiceScheduleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 290204222CE5B358AD68E8F6 /* FocusVoiceScheduleTests.swift */; };
 		0E035F365CF9298654EDDE6F /* ProjectDetailTabs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23C8C021D7A67F7285C0F667 /* ProjectDetailTabs.swift */; };
 		0FFA52978D734B271B8409F7 /* TaskList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7157B90BDB7FD287D8D8DB58 /* TaskList.swift */; };
 		1240189BE208C86FA55AB467 /* FlowChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12FB6F47260BEE53320D9F3C /* FlowChrome.swift */; };
@@ -48,6 +49,7 @@
 		363894EB5CFB65DBA862BBE5 /* NoteDetailsPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60CEA7BC3E9BB362BE953DED /* NoteDetailsPanel.swift */; };
 		369C3C20C46F50CDA5DA5AA5 /* WatchSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3262E8D2637654501AE38CE4 /* WatchSyncService.swift */; };
 		37BB0B9E14EB7AF19B264857 /* WatchStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FE7A6218F38908E1ACAED04 /* WatchStore.swift */; };
+		3B88BB62C091BA5125C80562 /* FocusVoiceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B017E50841C81D3D637B2D74 /* FocusVoiceService.swift */; };
 		3B8E0C6B5386C536019C9514 /* DataSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94B66B4A87C9FB9B766C49A2 /* DataSettingsSection.swift */; };
 		3CD181BDAB922D74595FD031 /* TimelineDragDrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14D1F57BF06C28FA627A1C51 /* TimelineDragDrop.swift */; };
 		3D42C546AC99536E16C3B7F7 /* CalendarAgendaView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D190B720FF1DCB4D43D8BFA4 /* CalendarAgendaView.swift */; };
@@ -65,12 +67,14 @@
 		5544F0A29E2635FB6499E158 /* WatchSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3262E8D2637654501AE38CE4 /* WatchSyncService.swift */; };
 		55E074FAF43279790C9E2B74 /* MacRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DD1471937A8A4EB83DFD666 /* MacRootView.swift */; };
 		56832A79CB0A9D7204F891CA /* CalendarAccountRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CFB458CEA5ED386D8370B3E /* CalendarAccountRow.swift */; };
+		572DDAB89F87ABECE7F744C9 /* FocusAudioSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 222F426C16459359BDF8DB0F /* FocusAudioSettingsSection.swift */; };
 		576D4B7AEB1AA6DCFE184978 /* CalendarBlockViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AA2EB637D0D441F675876FF /* CalendarBlockViews.swift */; };
 		581D5696DFB74C3572E7BE82 /* DurationFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0445857E5428A7957338906D /* DurationFormatter.swift */; };
 		5B3A7287C352C2AFF6FF7E78 /* AssistantConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E16183C63A9438933AF44DC5 /* AssistantConversationView.swift */; };
 		5CDC1691BEEBB6A72D857545 /* MapNodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA761013D82B313562E967A6 /* MapNodeView.swift */; };
 		5EEE8FA2F1E1125EF195338E /* FocusEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 042B1AC1D30F037BB3FB55AD /* FocusEngine.swift */; };
 		62DB46FCCC0D14BD97715B8C /* AssistantHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AC001236DE458368552395 /* AssistantHistoryView.swift */; };
+		6449ECFD5600735BB8413FAE /* FocusVoiceSchedule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E04112C12BA31A7B85C45F7 /* FocusVoiceSchedule.swift */; };
 		64AA22B45652BBDCCDA2B54A /* FlowmapWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25D9017B881D651639815087 /* FlowmapWatchApp.swift */; };
 		650AFBB56F69C3908E757BE0 /* SpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6FB9684FCDA105A8646626 /* SpeechService.swift */; };
 		65FD3166134BE80D765E9A8B /* ProgressStatTilesRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACE034DF588EB84FD8EAE0D /* ProgressStatTilesRow.swift */; };
@@ -226,10 +230,12 @@
 		20C468ABBC0E19C9A93FF318 /* CreateListSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateListSheet.swift; sourceTree = "<group>"; };
 		2164ADB418E7C81EE838810D /* DataIntegrityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataIntegrityTests.swift; sourceTree = "<group>"; };
 		219C8FC141BDD3DC8D699A29 /* NoteBlockRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteBlockRow.swift; sourceTree = "<group>"; };
+		222F426C16459359BDF8DB0F /* FocusAudioSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusAudioSettingsSection.swift; sourceTree = "<group>"; };
 		22FC31B834EE4619646D4D7B /* AssistantScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantScreen.swift; sourceTree = "<group>"; };
 		2332F95A183B3D9DE69D741B /* WatchTimelineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTimelineView.swift; sourceTree = "<group>"; };
 		23C8C021D7A67F7285C0F667 /* ProjectDetailTabs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectDetailTabs.swift; sourceTree = "<group>"; };
 		25D9017B881D651639815087 /* FlowmapWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowmapWatchApp.swift; sourceTree = "<group>"; };
+		290204222CE5B358AD68E8F6 /* FocusVoiceScheduleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusVoiceScheduleTests.swift; sourceTree = "<group>"; };
 		2A2A65534AACBCB3A815D738 /* MapNodeConversion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapNodeConversion.swift; sourceTree = "<group>"; };
 		2B4F90BBB64EFCB2850D452D /* WatchCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchCaptureView.swift; sourceTree = "<group>"; };
 		2C0CBD54720120E311923079 /* AboutSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutSettingsSection.swift; sourceTree = "<group>"; };
@@ -273,6 +279,7 @@
 		74845EEAC53CB32EEE99789E /* FlowmapTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = FlowmapTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		76C7E6681EFC5F44DE35E609 /* NotesListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesListView.swift; sourceTree = "<group>"; };
 		78C20A3B4E84D29B5775538F /* ProgressMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressMetrics.swift; sourceTree = "<group>"; };
+		7E04112C12BA31A7B85C45F7 /* FocusVoiceSchedule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusVoiceSchedule.swift; sourceTree = "<group>"; };
 		8388A9C91062B2AA6C520547 /* TaskDetailInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskDetailInspector.swift; sourceTree = "<group>"; };
 		83B3648432B82B48EC26C361 /* Typography.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Typography.swift; sourceTree = "<group>"; };
 		85BB5B55726E17A62E586ABE /* CalendarControlAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarControlAPI.swift; sourceTree = "<group>"; };
@@ -300,6 +307,7 @@
 		AA6FB9684FCDA105A8646626 /* SpeechService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechService.swift; sourceTree = "<group>"; };
 		AD971E8BEEB1BA04AC552EF3 /* FocusSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusSession.swift; sourceTree = "<group>"; };
 		AF4E26815ACDA0050E9804CE /* CalendarControlAPITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarControlAPITests.swift; sourceTree = "<group>"; };
+		B017E50841C81D3D637B2D74 /* FocusVoiceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusVoiceService.swift; sourceTree = "<group>"; };
 		B0F610FA9645988CDEAF350A /* ProjectTasksTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectTasksTab.swift; sourceTree = "<group>"; };
 		B3323B2927957B2BF88DC714 /* SchedulingEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchedulingEngine.swift; sourceTree = "<group>"; };
 		B4564C4E8A79E9FED86048C7 /* FocusWheelSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusWheelSettingsSection.swift; sourceTree = "<group>"; };
@@ -362,6 +370,7 @@
 				AF4E26815ACDA0050E9804CE /* CalendarControlAPITests.swift */,
 				2164ADB418E7C81EE838810D /* DataIntegrityTests.swift */,
 				62569CD38AA4E9CA693B82B7 /* FocusTests.swift */,
+				290204222CE5B358AD68E8F6 /* FocusVoiceScheduleTests.swift */,
 				06EE1F6A498560488D7AEFCE /* GoogleCalendarTests.swift */,
 				86304997C9D32819EBDD206F /* ReviewRegressionTests.swift */,
 				2E31B3506918265E9FD29EFE /* SchedulingTests.swift */,
@@ -657,6 +666,8 @@
 				9AE7A6299405545AE13993BA /* AssistantToolRouter.swift */,
 				2D37B6ECC0169153F5381900 /* CalendarService.swift */,
 				042B1AC1D30F037BB3FB55AD /* FocusEngine.swift */,
+				7E04112C12BA31A7B85C45F7 /* FocusVoiceSchedule.swift */,
+				B017E50841C81D3D637B2D74 /* FocusVoiceService.swift */,
 				8C8CE9EB8CFBF49AF06A0E61 /* KeychainService.swift */,
 				2C81E91657B6D3F353AD5A11 /* NotificationService.swift */,
 				B3323B2927957B2BF88DC714 /* SchedulingEngine.swift */,
@@ -722,6 +733,7 @@
 				2CFB458CEA5ED386D8370B3E /* CalendarAccountRow.swift */,
 				04B302DF58D172EC24E02261 /* CalendarSettingsSection.swift */,
 				94B66B4A87C9FB9B766C49A2 /* DataSettingsSection.swift */,
+				222F426C16459359BDF8DB0F /* FocusAudioSettingsSection.swift */,
 				B4564C4E8A79E9FED86048C7 /* FocusWheelSettingsSection.swift */,
 				5D835A0EB76A8F742A6B7EE7 /* GeneralSettingsSection.swift */,
 				1304A4AE2E3B366C873179AD /* NotificationSettingsSection.swift */,
@@ -885,6 +897,7 @@
 				E0919EB3FCC0750DBAC8C081 /* CalendarControlAPITests.swift in Sources */,
 				C64A724ADF9AEFAD0912D29B /* DataIntegrityTests.swift in Sources */,
 				2363EA1EF4FEF96F9F8DAF09 /* FocusTests.swift in Sources */,
+				0D0D9FFADCE4678DE5728CC9 /* FocusVoiceScheduleTests.swift in Sources */,
 				3487C3868E483B785EFDBDBE /* GoogleCalendarTests.swift in Sources */,
 				86DE4BEBE5C4EAE1FD26C314 /* ReviewRegressionTests.swift in Sources */,
 				DBCA770ED3DF5E69935F5826 /* SchedulingTests.swift in Sources */,
@@ -939,10 +952,13 @@
 				7E1215C1A9A90D6EB3168ABF /* FlowTheme.swift in Sources */,
 				997C6539C4088DD6697F0371 /* FlowmapApp.swift in Sources */,
 				50E198D580D8DB13AD374E31 /* FlowmapIntents.swift in Sources */,
+				572DDAB89F87ABECE7F744C9 /* FocusAudioSettingsSection.swift in Sources */,
 				5EEE8FA2F1E1125EF195338E /* FocusEngine.swift in Sources */,
 				81F1144A50E60DF8825419EE /* FocusScreen.swift in Sources */,
 				35D5ADEB11915C20A9F76E90 /* FocusSession.swift in Sources */,
 				AB20E1476E087BE50F8AFF70 /* FocusTaskCard.swift in Sources */,
+				6449ECFD5600735BB8413FAE /* FocusVoiceSchedule.swift in Sources */,
+				3B88BB62C091BA5125C80562 /* FocusVoiceService.swift in Sources */,
 				F642801A24B8DD52BAAAEF5D /* FocusWheelGeometry.swift in Sources */,
 				332A3B718715C56035C5A7B9 /* FocusWheelSettingsSection.swift in Sources */,
 				C544DBAC35277F8226C9C1D8 /* FocusWheelView.swift in Sources */,

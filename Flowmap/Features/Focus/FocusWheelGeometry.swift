@@ -83,59 +83,149 @@ public enum FocusWheelGeometry {
 
     // MARK: - Bottom-arc dial
     //
-    // The mock's dial is a shallow bowl cut from a much larger circle, not a
-    // full ring: the active task sits centred at the bottom under a fixed
-    // pointer exactly as above, and upcoming tasks fan up the right-hand side
-    // as thinner wedges — the same "next enters from the right" rule, folded
-    // into an arc instead of a closed circle.
+    // The mock's dial is a shallow bowl cut from a much larger, mostly
+    // off-screen circle: real clock time sweeps under a fixed pointer at the
+    // bottom, so a segment's position comes from when it actually falls in
+    // the day, not from a slot in a fixed fan (`focus-wheel-spec.md` §2).
+    // A segment already finished lands left of the pointer; one still ahead
+    // lands right — both sides populate whenever segments exist there,
+    // unlike the one-sided fan this replaced.
 
     /// Clearance kept between the dial's lowest point and the pointer beneath it.
     public static let pointerInset: CGFloat = 14
 
-    /// Fraction of the dial's total sweep the active wedge occupies; the rest
-    /// fans out to whatever upcoming neighbours are shown.
+    /// Degrees of arc every minute of the day sweeps under the fixed
+    /// pointer — one constant across every zoom level. The "5M vs 1 vs 2 vs
+    /// 3" difference is entirely a change of radius, never of this rate
+    /// (`focus-wheel-spec.md` §2). 780 is the minutes in the 13-hour window
+    /// the design maps onto a full 360° turn.
+    public static let degreesPerMinute: Double = 360.0 / 780.0
+
+    /// How far out the bowl's true (mostly off-screen) circle sits for each
+    /// zoom level, as a multiple of the container's own width. Values are the
+    /// design's pixel radii against its fixed 375pt canvas
+    /// (`focus-wheel-spec.md` §2) turned into ratios, so the bowl scales to
+    /// whatever width `FocusScreen` actually gives it while keeping the
+    /// design's proportions. `5M` is solved rather than looked up: the
+    /// radius at which the container's own half-width subtends 2.5 minutes
+    /// of arc — an almost-flat horizon showing roughly five minutes across
+    /// the visible chord.
+    public static func bowlTargetRadiusFraction(for visibility: WheelVisibility) -> Double {
+        switch visibility {
+        case .one: return 1150.0 / 375.0
+        case .two, .all: return 680.0 / 375.0
+        case .three: return 500.0 / 375.0
+        case .fiveMinute:
+            let halfDegrees = 2.5 * degreesPerMinute
+            return 0.5 / sin(halfDegrees * .pi / 180)
+        }
+    }
+
+    /// The bowl's target radius, in points, for a dial `width` wide.
+    public static func bowlTargetRadius(forWidth width: CGFloat, visibility: WheelVisibility) -> CGFloat {
+        width * CGFloat(bowlTargetRadiusFraction(for: visibility))
+    }
+
+    /// The ring is always this fraction of the dial's width thick, regardless
+    /// of zoom level (`focus-wheel-spec.md` §2's fixed 136pt against its
+    /// 375pt canvas).
+    public static let bowlThicknessFraction: CGFloat = 136.0 / 375.0
+
+    public static func bowlThickness(forWidth width: CGFloat) -> CGFloat {
+        width * bowlThicknessFraction
+    }
+
+    /// Half the angular window actually on screen at `radius`, for a dial
+    /// `width` wide: the container's own half-width subtends this many
+    /// degrees at that radius. A bigger radius (more zoomed in) narrows the
+    /// window — this, not `degreesPerMinute`, is the entire zoom mechanism
+    /// (`focus-wheel-spec.md` §2).
+    public static func bowlHalfVisibleDegrees(radius: CGFloat, width: CGFloat) -> Double {
+        guard radius > 0 else { return 0 }
+        let ratio = min(1, Double(width / 2 / radius))
+        return asin(ratio) * 180 / .pi
+    }
+
+    /// The visible angular window, with a 3° overscan margin either side so
+    /// segments don't pop in right at the container's own edge
+    /// (`focus-wheel-spec.md` §2).
+    public static func bowlVisibleWindow(radius: CGFloat, width: CGFloat) -> (min: Double, max: Double) {
+        let half = bowlHalfVisibleDegrees(radius: radius, width: width)
+        return (bottomAngle - half - 3, bottomAngle + half + 3)
+    }
+
+    /// Leading/trailing angle of a segment that starts `start` minutes from
+    /// midnight and lasts `duration` minutes, at the current time
+    /// `nowMinutes` (same units). Returned already sorted so it can be
+    /// passed straight to `WheelWedgeShape`. A segment already finished
+    /// lands past the pointer on one side; one still ahead lands past it on
+    /// the other — both from this single formula, since only `nowMinutes`
+    /// relative to `start`/`start + duration` decides which
+    /// (`focus-wheel-spec.md` §2).
+    public static func bowlSegmentSpan(start: Double, duration: Double, nowMinutes: Double) -> (start: Double, end: Double) {
+        let leading = bottomAngle + (nowMinutes - start) * degreesPerMinute
+        let trailing = bottomAngle + (nowMinutes - (start + duration)) * degreesPerMinute
+        return (min(leading, trailing), max(leading, trailing))
+    }
+
+    /// Whether a segment with this span falls at least partly inside the
+    /// visible window — the crop that replaces a fixed task-count cap: every
+    /// scheduled segment is considered, only the angle decides which are
+    /// drawn (`focus-wheel-spec.md` §2).
+    public static func bowlSegmentIsVisible(span: (start: Double, end: Double), window: (min: Double, max: Double)) -> Bool {
+        // Overlap, not containment. A segment longer than the visible window
+        // is the normal case on a zoomed dial — the active task usually is —
+        // so requiring it to fit entirely inside the window drops exactly the
+        // segment the user is looking at.
+        span.end > window.min + 1 && span.start < window.max - 1
+    }
+
+    /// Unscheduled spans of the working day (08:00–21:00 by default), given
+    /// the day's scheduled `(start, duration)` pairs in minutes. Re-scanned
+    /// fresh each call rather than cached, since segments can change between
+    /// renders (`focus-wheel-spec.md` §2).
+    public static func bowlGaps(
+        scheduled: [(start: Double, duration: Double)],
+        dayStart: Double = 480,
+        dayEnd: Double = 1260
+    ) -> [(start: Double, duration: Double)] {
+        var gaps: [(start: Double, duration: Double)] = []
+        var cursor = dayStart
+        for segment in scheduled.sorted(by: { $0.start < $1.start }) {
+            if segment.start > cursor {
+                gaps.append((start: cursor, duration: segment.start - cursor))
+            }
+            cursor = max(cursor, segment.start + segment.duration)
+        }
+        if cursor < dayEnd {
+            gaps.append((start: cursor, duration: dayEnd - cursor))
+        }
+        return gaps
+    }
+
+    /// Whether a gap's own visible span, clipped to the window with a 2°
+    /// margin, is wide enough to earn a `FREE` label rather than just the
+    /// bare ring showing through (`focus-wheel-spec.md` §2's 9° threshold).
+    /// The gap itself is never filled — this only decides the label.
+    public static func bowlGapShowsFreeLabel(span: (start: Double, end: Double), window: (min: Double, max: Double)) -> Bool {
+        let clippedEnd = min(span.end, window.max - 2)
+        let clippedStart = max(span.start, window.min + 2)
+        return clippedEnd - clippedStart > 9
+    }
+
+    /// Fraction of the visible window the active wedge's ruler overlay
+    /// spans. Unrelated to the active segment's own true (and possibly
+    /// asymmetric) elapsed/remaining split — the ruler stays the
+    /// artificially-centred overlay it has always been since task 57 fixed
+    /// its numbering, decoupled from where the real wedge now sits.
     public static let dialActiveFraction: Double = 0.56
 
-    /// Half the dial's total visible sweep, solved so the bowl reaches the
-    /// full width of its container (`halfWidth`) at a chosen, shallow `depth`:
-    /// `depth = halfWidth · tan(halfAngle / 2)`.
-    public static func dialHalfAngle(depth: CGFloat, halfWidth: CGFloat) -> Double {
-        guard halfWidth > 0 else { return 0 }
-        return 2 * Double(atan(depth / halfWidth)) * 180 / .pi
-    }
-
-    /// Radius of the circle the visible bowl is cut from.
-    public static func dialRadius(halfWidth: CGFloat, halfAngle: Double) -> CGFloat {
-        let radians = halfAngle * .pi / 180
-        guard halfAngle > 0, sin(radians) > 0 else { return halfWidth }
-        return halfWidth / CGFloat(sin(radians))
-    }
-
-    /// Ring thickness for the dial, given its width.
-    public static func dialThickness(for width: CGFloat) -> CGFloat {
-        max(46, min(64, width * 0.16))
-    }
-
-    /// Angular span of the active wedge, centred at `bottomAngle`.
+    /// Angular span of the active wedge's ruler overlay, centred at
+    /// `bottomAngle` — unchanged since task 57; the bowl's per-segment
+    /// placement above does not feed into this.
     public static func dialActiveSpan(halfAngle: Double) -> (start: Double, end: Double) {
         let half = halfAngle * dialActiveFraction
         return (bottomAngle - half, bottomAngle + half)
-    }
-
-    /// Angular span of the upcoming neighbour at `index` (`1` is the very next
-    /// task), fanning further right beyond the active wedge, one slice per
-    /// neighbour shown.
-    public static func dialNeighbourSpan(
-        index: Int,
-        neighbourCount: Int,
-        halfAngle: Double
-    ) -> (start: Double, end: Double) {
-        let active = dialActiveSpan(halfAngle: halfAngle)
-        guard neighbourCount > 0 else { return (active.start, active.start) }
-        let remaining = halfAngle * (1 - dialActiveFraction)
-        let each = remaining / Double(neighbourCount)
-        let start = active.start - each * Double(index)
-        return (start, start + each)
     }
 
     /// Angle of the ruler tick showing `minutesRemaining` of `totalMinutes`,

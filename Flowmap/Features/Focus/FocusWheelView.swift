@@ -60,15 +60,55 @@ struct WheelItem: Identifiable {
     let colour: ColourToken
     let minutes: Int
     let isActive: Bool
+    /// Minutes since midnight this item starts — the clock-time axis the
+    /// time-based bowl places every segment along (`focus-wheel-spec.md` §2).
+    let startMinutes: Double
 }
 
-/// The focus dial: a shallow bowl, not a full ring.
+/// A wedge of the time-based bowl. Unlike `WheelWedgeShape`, its `radius` is
+/// part of `animatableData` too, so a zoom-level change (`Rtarget` switching
+/// between view modes) eases smoothly instead of snapping — the pointer sits
+/// at a fixed screen position while the circle underneath it grows or shrinks,
+/// so the centre is derived from the interpolated radius rather than passed
+/// in as a separately-animating point that could drift out of step with it.
+private struct BowlWedgeShape: Shape {
+    var startAngle: Double
+    var endAngle: Double
+    var radius: CGFloat
+    let thickness: CGFloat
+    let centreX: CGFloat
+    let pointerY: CGFloat
+
+    var animatableData: AnimatablePair<AnimatablePair<Double, Double>, Double> {
+        get { AnimatablePair(AnimatablePair(startAngle, endAngle), Double(radius)) }
+        set {
+            startAngle = newValue.first.first
+            endAngle = newValue.first.second
+            radius = CGFloat(newValue.second)
+        }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let centre = CGPoint(x: centreX, y: pointerY - radius)
+        let inner = max(0, radius - thickness)
+        var path = Path()
+        path.addArc(center: centre, radius: radius, startAngle: .degrees(startAngle), endAngle: .degrees(endAngle), clockwise: false)
+        path.addArc(center: centre, radius: inner, startAngle: .degrees(endAngle), endAngle: .degrees(startAngle), clockwise: true)
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// The focus dial: a time-based bowl, not a task-slot fan.
 ///
-/// The active task fills the dominant wedge at the bottom, under a fixed clay
-/// pointer. Upcoming tasks fan up the right side as thinner wedges — the same
-/// "next enters from the right" rule the wheel has always used, just folded
-/// into an arc instead of a closed circle. A numbered ruler along the active
-/// wedge's own span reads its duration in minutes.
+/// Every segment is placed by clock time under a fixed pointer at the
+/// bottom — as real time advances the whole ring of segments sweeps under
+/// it, so a segment already under way renders left of the pointer and one
+/// still to come renders right (`focus-wheel-spec.md` §2). Switching view
+/// modes changes only the ring's radius (`FocusWheelGeometry.bowlTargetRadius`)
+/// — the degrees-per-minute rate is constant across every view, so zooming
+/// never changes a segment's size relative to another, only how much of the
+/// day is visible through the fixed-width window.
 struct FocusWheelView: View {
     @Environment(\.colorScheme) private var scheme
 
@@ -78,26 +118,31 @@ struct FocusWheelView: View {
     let progress: Double
     /// Identity of the active task, so wedge fills can cross-fade when it changes.
     let activeID: UUID?
-
-    private var neighbourCount: Int { max(0, items.count - 1) }
+    /// Minutes since midnight right now — the same clock every segment is
+    /// placed against. `FocusScreen` ticks this forward once a second.
+    let nowMinutes: Double
+    /// Which zoom level to draw. `.all` never reaches this view — `FocusScreen`
+    /// renders `FocusWheelOverviewView` for it instead.
+    let visibility: WheelVisibility
 
     var body: some View {
         GeometryReader { proxy in
-            let halfWidth = proxy.size.width / 2
-            let depth = max(1, proxy.size.height - FocusWheelGeometry.pointerInset)
-            let halfAngle = FocusWheelGeometry.dialHalfAngle(depth: depth, halfWidth: halfWidth)
-            let radius = FocusWheelGeometry.dialRadius(halfWidth: halfWidth, halfAngle: halfAngle)
-            let centre = CGPoint(
-                x: proxy.size.width / 2,
-                y: proxy.size.height - FocusWheelGeometry.pointerInset - radius
-            )
-            let thickness = FocusWheelGeometry.dialThickness(for: proxy.size.width)
+            let width = proxy.size.width
+            let radius = FocusWheelGeometry.bowlTargetRadius(forWidth: width, visibility: visibility)
+            let thickness = FocusWheelGeometry.bowlThickness(forWidth: width)
+            let centreX = width / 2
+            let pointerY = proxy.size.height - FocusWheelGeometry.pointerInset
+            let centre = CGPoint(x: centreX, y: pointerY - radius)
+            let window = FocusWheelGeometry.bowlVisibleWindow(radius: radius, width: width)
+            let halfAngle = FocusWheelGeometry.bowlHalfVisibleDegrees(radius: radius, width: width)
 
             ZStack {
-                wedges(centre: centre, radius: radius, thickness: thickness, halfAngle: halfAngle)
+                wedges(centreX: centreX, pointerY: pointerY, centre: centre, radius: radius, thickness: thickness, window: window)
+                gaps(centre: centre, radius: radius, thickness: thickness, window: window)
                 ruler(centre: centre, radius: radius, thickness: thickness, halfAngle: halfAngle)
                 pointer(centre: centre, radius: radius)
             }
+            .animation(.easeOut(duration: 0.35), value: radius)
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
         .accessibilityElement(children: .contain)
@@ -106,43 +151,73 @@ struct FocusWheelView: View {
 
     // MARK: - Wedges
 
-    private func wedges(centre: CGPoint, radius: CGFloat, thickness: CGFloat, halfAngle: Double) -> some View {
+    private func wedges(
+        centreX: CGFloat,
+        pointerY: CGFloat,
+        centre: CGPoint,
+        radius: CGFloat,
+        thickness: CGFloat,
+        window: (min: Double, max: Double)
+    ) -> some View {
         // Small angular gap between wedges reads as the mock's double rim
         // between segments rather than one continuous band.
         let gap = items.count > 1 ? 1.6 : 0.0
 
-        return ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-            let span = index == 0
-                ? FocusWheelGeometry.dialActiveSpan(halfAngle: halfAngle)
-                : FocusWheelGeometry.dialNeighbourSpan(index: index, neighbourCount: neighbourCount, halfAngle: halfAngle)
-            let wedgeThickness = index == 0 ? thickness * 1.3 : thickness
+        return ForEach(items) { item in
+            let span = FocusWheelGeometry.bowlSegmentSpan(start: item.startMinutes, duration: Double(item.minutes), nowMinutes: nowMinutes)
 
-            ZStack {
-                WheelWedgeShape(
-                    startAngle: span.start + gap,
-                    endAngle: span.end - gap,
-                    thickness: wedgeThickness,
-                    radius: radius,
-                    centre: centre
-                )
-                .fill(item.isActive ? item.colour.softStrong : item.colour.soft)
-                .overlay(
-                    WheelWedgeShape(
+            if FocusWheelGeometry.bowlSegmentIsVisible(span: span, window: window) {
+                let wedgeThickness = item.isActive ? thickness * 1.3 : thickness
+
+                ZStack {
+                    BowlWedgeShape(
                         startAngle: span.start + gap,
                         endAngle: span.end - gap,
-                        thickness: wedgeThickness,
                         radius: radius,
-                        centre: centre
+                        thickness: wedgeThickness,
+                        centreX: centreX,
+                        pointerY: pointerY
                     )
-                    .stroke(FlowTheme.separatorStrong(scheme), lineWidth: 1)
-                )
-                .animation(.easeInOut(duration: 0.3), value: item.id)
+                    .fill(item.isActive ? item.colour.softStrong : item.colour.soft)
+                    .overlay(
+                        BowlWedgeShape(
+                            startAngle: span.start + gap,
+                            endAngle: span.end - gap,
+                            radius: radius,
+                            thickness: wedgeThickness,
+                            centreX: centreX,
+                            pointerY: pointerY
+                        )
+                        .stroke(FlowTheme.separatorStrong(scheme), lineWidth: 1)
+                    )
+                    .animation(.easeInOut(duration: 0.3), value: item.id)
 
-                if index > 0 {
-                    neighbourLabel(item: item, span: span, centre: centre, radius: radius, thickness: wedgeThickness)
+                    if item.isActive {
+                        activeTitle(item: item, span: span, centre: centre, radius: radius)
+                    } else {
+                        neighbourLabel(item: item, span: span, centre: centre, radius: radius, thickness: wedgeThickness)
+                    }
                 }
             }
         }
+    }
+
+    /// The active wedge's title, drawn horizontally rather than arc-rotated —
+    /// it sits directly under the fixed pointer, so it never needs to lean
+    /// the way an off-centre neighbour label does to stay readable.
+    private func activeTitle(item: WheelItem, span: (start: Double, end: Double), centre: CGPoint, radius: CGFloat) -> some View {
+        let midAngle = (span.start + span.end) / 2
+        let position = FocusWheelGeometry.point(centre: centre, radius: radius, angle: midAngle)
+
+        return Text(item.title)
+            .font(FlowFont.wheelSegment)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .foregroundStyle(item.colour.onSoft)
+            .position(position)
+            // The centre readout already announces the active task's title;
+            // this on-wedge label is purely visual.
+            .accessibilityHidden(true)
     }
 
     /// Icon, name and compact duration stacked at a neighbour wedge's outer edge.
@@ -174,6 +249,37 @@ struct FocusWheelView: View {
         .position(x: position.x, y: position.y)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Next: \(item.title), \(DurationFormatter.spoken(minutes: item.minutes))")
+    }
+
+    // MARK: - Gaps
+
+    /// Unscheduled stretches of the day (`FocusWheelGeometry.bowlGaps`, scanned
+    /// 08:00–21:00). No fill is drawn for a gap — the ring's own background
+    /// shows through — only a `FREE` label, and only once its visible span
+    /// clears 9°, so a sliver of gap at the window's edge never gets a
+    /// crowded label.
+    private func gaps(centre: CGPoint, radius: CGFloat, thickness: CGFloat, window: (min: Double, max: Double)) -> some View {
+        let scheduled = items.map { (start: $0.startMinutes, duration: Double($0.minutes)) }
+        let dayGaps = FocusWheelGeometry.bowlGaps(scheduled: scheduled)
+
+        return ForEach(Array(dayGaps.enumerated()), id: \.offset) { _, gapItem in
+            let span = FocusWheelGeometry.bowlSegmentSpan(start: gapItem.start, duration: gapItem.duration, nowMinutes: nowMinutes)
+
+            if FocusWheelGeometry.bowlGapShowsFreeLabel(span: span, window: window) {
+                let midAngle = (span.start + span.end) / 2
+                let position = FocusWheelGeometry.point(centre: centre, radius: radius - thickness / 2, angle: midAngle)
+
+                // The existing eyebrow treatment (`FlowFont.eyebrow`, 1.5pt
+                // tracking, `FlowTheme.tertiaryText`) rather than the design's
+                // literal `#CBBFA9` — this codebase never hard-codes a colour.
+                Text("FREE")
+                    .font(FlowFont.eyebrow)
+                    .tracking(1.5)
+                    .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                    .position(position)
+                    .accessibilityHidden(true)
+            }
+        }
     }
 
     // MARK: - Ruler

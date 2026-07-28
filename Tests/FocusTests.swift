@@ -357,4 +357,72 @@ struct FocusWheelGeometryTests {
         #expect(threshold >= CGFloat(measuredWidth))
         #endif
     }
+
+    @Test("A finished segment renders left of the pointer; one still ahead renders right")
+    func pastAndFutureSegmentsSitOnOppositeSides() {
+        let width: CGFloat = 375
+        let radius = FocusWheelGeometry.bowlTargetRadius(forWidth: width, visibility: .two)
+        let centre = CGPoint(x: 100, y: 100)
+        let now = 600.0 // 10:00
+
+        // Already finished: 09:00-09:30, well before "now".
+        let past = FocusWheelGeometry.bowlSegmentSpan(start: 540, duration: 30, nowMinutes: now)
+        let pastMid = (past.start + past.end) / 2
+        let pastPoint = FocusWheelGeometry.point(centre: centre, radius: radius, angle: pastMid)
+        #expect(pastPoint.x < centre.x)
+
+        // Still ahead: 11:00-11:30.
+        let future = FocusWheelGeometry.bowlSegmentSpan(start: 660, duration: 30, nowMinutes: now)
+        let futureMid = (future.start + future.end) / 2
+        let futurePoint = FocusWheelGeometry.point(centre: centre, radius: radius, angle: futureMid)
+        #expect(futurePoint.x > centre.x)
+    }
+
+    @Test("A segment entirely outside the visible window is skipped")
+    func segmentOutsideWindowIsSkipped() {
+        let width: CGFloat = 375
+        let radius = FocusWheelGeometry.bowlTargetRadius(forWidth: width, visibility: .one)
+        let window = FocusWheelGeometry.bowlVisibleWindow(radius: radius, width: width)
+
+        // Three hours out on a dial zoomed in enough that it has scrolled
+        // well clear of the visible chord.
+        let span = FocusWheelGeometry.bowlSegmentSpan(start: 900, duration: 30, nowMinutes: 600)
+        #expect(FocusWheelGeometry.bowlSegmentIsVisible(span: span, window: window) == false)
+
+        // Sanity check on the same dial: a segment straddling "now" IS visible.
+        let visibleSpan = FocusWheelGeometry.bowlSegmentSpan(start: 590, duration: 20, nowMinutes: 600)
+        #expect(FocusWheelGeometry.bowlSegmentIsVisible(span: visibleSpan, window: window) == true)
+
+        // A segment LONGER than the visible window must still be drawn. The
+        // window here spans roughly 82 minutes, so a two-hour task overflows
+        // both ends — and it is usually the active task, the one thing that
+        // must never vanish. Containment-instead-of-overlap here emptied the
+        // whole dial once already.
+        let longSpan = FocusWheelGeometry.bowlSegmentSpan(start: 540, duration: 120, nowMinutes: 600)
+        #expect(longSpan.start < window.min)
+        #expect(longSpan.end > window.max)
+        #expect(FocusWheelGeometry.bowlSegmentIsVisible(span: longSpan, window: window) == true)
+    }
+
+    @Test("A gap under 9° visible span gets no FREE label; one over it does")
+    func gapFreeLabelThreshold() {
+        let width: CGFloat = 375
+        let radius = FocusWheelGeometry.bowlTargetRadius(forWidth: width, visibility: .two)
+        let window = FocusWheelGeometry.bowlVisibleWindow(radius: radius, width: width)
+        let now = 600.0
+
+        let narrowGap = FocusWheelGeometry.bowlSegmentSpan(start: 595, duration: 10, nowMinutes: now)
+        #expect(FocusWheelGeometry.bowlGapShowsFreeLabel(span: narrowGap, window: window) == false)
+
+        let wideGap = FocusWheelGeometry.bowlSegmentSpan(start: 540, duration: 120, nowMinutes: now)
+        #expect(FocusWheelGeometry.bowlGapShowsFreeLabel(span: wideGap, window: window) == true)
+    }
+
+    @Test("5M's radius dwarfs view 1's, so it reads as an almost-flat horizon")
+    func fiveMinuteRadiusFarExceedsViewOne() {
+        let width: CGFloat = 375
+        let viewOne = FocusWheelGeometry.bowlTargetRadius(forWidth: width, visibility: .one)
+        let fiveMinute = FocusWheelGeometry.bowlTargetRadius(forWidth: width, visibility: .fiveMinute)
+        #expect(fiveMinute > viewOne * 5)
+    }
 }

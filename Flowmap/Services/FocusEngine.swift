@@ -29,6 +29,9 @@ public final class FocusEngine {
     private let context: ModelContext
     private let settings: AppSettings
     private let calendar: Calendar
+    /// Speaks task-start, time-left and wind-down announcements. Optional so
+    /// existing call sites (tests, App Intents) need not supply one.
+    private let voiceService: FocusVoiceService?
     /// Read fresh on every use. A continuation placed by the focus timer must
     /// respect the user's real calendar, and a snapshot taken at init would be
     /// empty at launch and stale forever after.
@@ -45,11 +48,13 @@ public final class FocusEngine {
         context: ModelContext,
         settings: AppSettings,
         externalEvents: [ExternalCalendarEvent] = [],
-        calendar: Calendar = .current
+        calendar: Calendar = .current,
+        voiceService: FocusVoiceService? = nil
     ) {
         self.context = context
         self.settings = settings
         self.calendar = calendar
+        self.voiceService = voiceService
         self.externalEventsProvider = { externalEvents }
         self.activeSession = Self.findRunningSession(in: context)
     }
@@ -150,6 +155,9 @@ public final class FocusEngine {
         if let task, task.status.isOpen { task.status = .active }
         try? context.save()
         activeSession = session
+        if let task {
+            voiceService?.announceTaskStart(title: task.title, settings: settings)
+        }
         return session
     }
 
@@ -189,6 +197,7 @@ public final class FocusEngine {
         try? context.save()
 
         activeSession = nil
+        voiceService?.sessionEnded(sessionID: session.id)
         advanceToNextTask(now: now, finishedTitle: title, requeue: nil)
     }
 
@@ -216,6 +225,7 @@ public final class FocusEngine {
         }
 
         activeSession = nil
+        voiceService?.sessionEnded(sessionID: session.id)
         advanceToNextTask(now: now, finishedTitle: title, requeue: requeue)
     }
 
@@ -242,6 +252,7 @@ public final class FocusEngine {
         }
         try? context.save()
         activeSession = nil
+        voiceService?.sessionEnded(sessionID: session.id)
     }
 
     private func finishActiveSession(outcome: FocusOutcome, now: Date) {
@@ -253,6 +264,7 @@ public final class FocusEngine {
             if task.status == .active || task.status == .paused { task.status = .planned }
         }
         activeSession = nil
+        voiceService?.sessionEnded(sessionID: session.id)
     }
 
     // MARK: - Elapsed transition
@@ -272,6 +284,7 @@ public final class FocusEngine {
         session.finish(outcome: .elapsed, at: now)
         guard session.claimTransition() else {
             activeSession = nil
+            voiceService?.sessionEnded(sessionID: session.id)
             return
         }
 
@@ -294,7 +307,23 @@ public final class FocusEngine {
         }
 
         activeSession = nil
+        voiceService?.sessionEnded(sessionID: session.id)
         advanceToNextTask(now: now, finishedTitle: title, requeue: requeue)
+    }
+
+    // MARK: - Voice coach
+
+    /// Speaks the next due time-left, countdown or wind-down announcement for
+    /// the active session, if any is newly due. Driven by the app's existing
+    /// tick — this adds no timer of its own.
+    public func checkVoiceAnnouncements(now: Date = Date()) {
+        guard let session = activeSession, session.isRunning else { return }
+        voiceService?.tick(
+            sessionID: session.id,
+            duration: session.plannedSeconds,
+            elapsed: session.elapsedSeconds(at: now),
+            settings: settings
+        )
     }
 
     /// Rotates to the next scheduled task without asking a blocking question.

@@ -78,39 +78,57 @@ struct FocusScreen: View {
 
     private var visibility: WheelVisibility { flow?.settings.wheelVisibility ?? .two }
 
-    /// The active task first, then the queue behind it.
+    /// The active task first, then the queue behind it, each carrying the
+    /// clock time it starts. The time-based bowl needs every scheduled
+    /// segment, not just the next handful — it crops what's actually drawn
+    /// by visible angle, not by a task-count cap (`focus-wheel-spec.md` §2),
+    /// so nothing here truncates by `visibility` any more.
     private var wheelItems: [WheelItem] {
-        var ordered: [(FlowTask?, Int, UUID)] = []
+        var ordered: [(task: FlowTask?, minutes: Int, id: UUID, start: Date)] = []
 
         if let task = activeTask {
             let minutes = session.map { Int(($0.plannedSeconds / 60).rounded()) }
                 ?? activeSegment?.durationMinutes
                 ?? task.estimatedMinutes
-            ordered.append((task, minutes, activeSegment?.id ?? task.id))
+            let start = activeSegment?.startDate ?? session?.startedAt ?? now
+            ordered.append((task, minutes, activeSegment?.id ?? task.id, start))
         }
 
         for segment in queue where segment.id != activeSegment?.id {
             guard segment.startDate >= now || segment.id != activeSegment?.id else { continue }
-            ordered.append((segment.task, segment.durationMinutes, segment.id))
+            ordered.append((segment.task, segment.durationMinutes, segment.id, segment.startDate))
         }
 
         // Free focus with no task still deserves a ring to watch.
         if ordered.isEmpty, let session {
-            ordered.append((nil, Int((session.plannedSeconds / 60).rounded()), session.id))
+            ordered.append((nil, Int((session.plannedSeconds / 60).rounded()), session.id, session.startedAt))
         }
 
-        let count = FocusWheelGeometry.visibleCount(for: visibility, queueCount: ordered.count)
-        return ordered.prefix(count).enumerated().map { index, entry in
+        return ordered.enumerated().map { index, entry in
             WheelItem(
-                id: entry.2,
-                title: entry.0?.title ?? "Focus",
-                iconName: entry.0?.iconName ?? "timer",
-                colour: entry.0?.colour ?? .violet,
-                minutes: entry.1,
-                isActive: index == 0
+                id: entry.id,
+                title: entry.task?.title ?? "Focus",
+                iconName: entry.task?.iconName ?? "timer",
+                colour: entry.task?.colour ?? .violet,
+                minutes: entry.minutes,
+                isActive: index == 0,
+                startMinutes: minutesFromMidnight(entry.start)
             )
         }
     }
+
+    /// Minutes since midnight on the day `date` falls on — the common time
+    /// axis the bowl places every segment along (`focus-wheel-spec.md` §2's
+    /// `start`/`nowW` units). This is unit conversion, not geometry:
+    /// `FocusWheelGeometry` still does every angular computation from the
+    /// raw minute value returned here.
+    private func minutesFromMidnight(_ date: Date) -> Double {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: date)
+        return date.timeIntervalSince(start) / 60
+    }
+
+    private var nowMinutes: Double { minutesFromMidnight(now) }
 
     private var progress: Double { session?.progress(at: now) ?? 0 }
 
@@ -142,7 +160,9 @@ struct FocusScreen: View {
                     FocusWheelView(
                         items: wheelItems,
                         progress: progress,
-                        activeID: wheelItems.first?.id
+                        activeID: wheelItems.first?.id,
+                        nowMinutes: nowMinutes,
+                        visibility: visibility
                     )
                 }
             }
@@ -226,7 +246,9 @@ struct FocusScreen: View {
         // target is grown around it rather than the artwork scaled up.
         .frame(minWidth: 44, minHeight: 44)
         .contentShape(Rectangle())
-        .accessibilityLabel("\(mode.displayName) tasks visible")
+        // Reuses the same string the HUD shows on selection, so `5M` never
+        // gets mislabelled as a task count here either (`WheelVisibility.announcement`).
+        .accessibilityLabel(mode.announcement)
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 

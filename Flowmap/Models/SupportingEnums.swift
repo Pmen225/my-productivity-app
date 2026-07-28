@@ -296,6 +296,10 @@ public enum AppearanceMode: String, Codable, CaseIterable, Sendable {
 
 /// How many wheel segments the Focus screen reveals at once.
 public enum WheelVisibility: String, Codable, CaseIterable, Sendable {
+    // Declaration order is display order (`focus-wheel-spec.md` §1's chip
+    // row and both pickers iterate `allCases`): `5M` sits before `1` as the
+    // most zoomed-in step, `All` remains the most zoomed-out.
+    case fiveMinute = "fiveMinute"
     case one
     case two
     case three
@@ -303,6 +307,7 @@ public enum WheelVisibility: String, Codable, CaseIterable, Sendable {
 
     public var displayName: String {
         switch self {
+        case .fiveMinute: "5M"
         case .one: "1"
         case .two: "2"
         case .three: "3"
@@ -310,9 +315,14 @@ public enum WheelVisibility: String, Codable, CaseIterable, Sendable {
         }
     }
 
-    /// Number of upcoming tasks drawn beside the active one, or `nil` for every task.
+    /// Number of upcoming tasks drawn beside the active one, or `nil` for
+    /// every task. `5M` is a zoom level on the time-based bowl, not a task
+    /// cap — like `all`, it returns `nil` so every scheduled segment is
+    /// considered and the bowl's own visible-angle window decides what's
+    /// actually drawn (`focus-wheel-spec.md` §2).
     public var visibleCount: Int? {
         switch self {
+        case .fiveMinute: nil
         case .one: 1
         case .two: 2
         case .three: 3
@@ -324,6 +334,8 @@ public enum WheelVisibility: String, Codable, CaseIterable, Sendable {
         switch self {
         case .all: "All tasks visible"
         case .one: "1 task visible"
+        // "5M tasks visible" would misreport a zoom level as a task count.
+        case .fiveMinute: "Zoomed to a five-minute window"
         default: "\(displayName) tasks visible"
         }
     }
