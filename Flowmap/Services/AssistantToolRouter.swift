@@ -675,7 +675,15 @@ public struct AssistantToolRouter {
             guard let task = findTask(matching: query) else {
                 return AssistantToolResult(toolName: AssistantToolName.startFocus.rawValue, success: false, message: "I couldn't find a single task matching \"\(query)\".")
             }
+            // The Assistant starts through the same rule as the wheel — it
+            // cannot skip the compulsory planning gate for an unplanned
+            // task, only report that it is blocked. `pendingGate` is now set
+            // on the real, shared engine, so the gate modal is ready the
+            // moment Focus is next opened.
             guard flow.focusEngine.start(task: task, minutes: args.minutes, now: flow.now) != nil else {
+                if flow.focusEngine.pendingGate?.kind == .planGate {
+                    return AssistantToolResult(toolName: AssistantToolName.startFocus.rawValue, success: false, message: "\"\(task.title)\" needs a Definition of Done before it can start — open Flowmap to plan it.")
+                }
                 return AssistantToolResult(toolName: AssistantToolName.startFocus.rawValue, success: false, message: "Focus couldn't start for \"\(task.title)\".")
             }
             return AssistantToolResult(toolName: AssistantToolName.startFocus.rawValue, success: true, message: "Focus started on \"\(task.title)\".", undo: .stopFocusSession)

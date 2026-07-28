@@ -35,6 +35,15 @@ public final class FlowTask {
     public var carryoverCount: Int = 0
     public var lastCarriedAt: Date?
 
+    // MARK: - Compulsory planning phase
+
+    /// Free text written before this task's clock can first start — the
+    /// Definition of Done. Empty until planned.
+    public var definitionOfDone: String = ""
+    /// Set the moment a Definition of Done is recorded. `FocusEngine` reads
+    /// this to decide between the full planning gate and a lighter clock-in.
+    public var hasBeenPlanned: Bool = false
+
     // MARK: - Relationships
 
     public var workspace: Workspace?

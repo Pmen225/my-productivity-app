@@ -308,6 +308,10 @@ public final class AppEnvironment {
             guard focusEngine.activeSession == nil else { return }
             let next = focusEngine.currentSegment(at: moment)
                 ?? focusEngine.queue(for: moment).first { $0.state == .scheduled && $0.endDate > moment }
+            // Deliberately does NOT bypass the compulsory planning gate: the
+            // watch has no UI for a Definition of Done, so a gated task just
+            // sets `pendingGate` on this same shared engine and surfaces the
+            // gate/clock-in modal next time the phone's Focus screen is open.
             if let next { _ = focusEngine.start(segment: next, now: moment) }
         case .capture(let text):
             captureFromWatch(text)

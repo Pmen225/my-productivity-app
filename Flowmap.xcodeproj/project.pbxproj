@@ -60,6 +60,7 @@
 		47A6582CA14AA9A3644403BA /* QuickCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = D22693D164B2E1005B34F95C /* QuickCapture.swift */; };
 		4BE39C1F7C9418BCFCC5621A /* AssistantViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE97604132C1BFFAB3E2CA3D /* AssistantViewModel.swift */; };
 		4D04FBD68E348E3CBE1E112B /* SchedulingEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3323B2927957B2BF88DC714 /* SchedulingEngine.swift */; };
+		4E1487153814838C218DA2E6 /* FocusGateDialogs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B70CD2D167FA310083966D4 /* FocusGateDialogs.swift */; };
 		4F14C405B5F2ECF3E409FFFC /* ProjectRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F122F3F799BD5C3A624E6D02 /* ProjectRow.swift */; };
 		50E198D580D8DB13AD374E31 /* FlowmapIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA3A937A96DCAC536301478D /* FlowmapIntents.swift */; };
 		5123FBCC089C3A6577B29097 /* NotificationSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1304A4AE2E3B366C873179AD /* NotificationSettingsSection.swift */; };
@@ -262,6 +263,7 @@
 		56CC30784A6DA0DA4A5838CB /* Flowmap.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Flowmap.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		57ABF4D658B9AFD07818B8CE /* SupportingEnums.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportingEnums.swift; sourceTree = "<group>"; };
 		5AEA5461D33FCC592DE802C6 /* FlowmapWatchWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowmapWatchWidget.swift; sourceTree = "<group>"; };
+		5B70CD2D167FA310083966D4 /* FocusGateDialogs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusGateDialogs.swift; sourceTree = "<group>"; };
 		5CCB33BFB3A5B7C6BDCD1009 /* FlowTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowTheme.swift; sourceTree = "<group>"; };
 		5D835A0EB76A8F742A6B7EE7 /* GeneralSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralSettingsSection.swift; sourceTree = "<group>"; };
 		5DD1471937A8A4EB83DFD666 /* MacRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacRootView.swift; sourceTree = "<group>"; };
@@ -584,6 +586,7 @@
 		BAA55F4F35A8A46EF37B7646 /* Focus */ = {
 			isa = PBXGroup;
 			children = (
+				5B70CD2D167FA310083966D4 /* FocusGateDialogs.swift */,
 				96F995AA9674AB820F917F44 /* FocusScreen.swift */,
 				C8C1B63CC93A57451F9786C0 /* FocusTaskCard.swift */,
 				715CC141529F00C1FBEDA05B /* FocusWheelGeometry.swift */,
@@ -954,6 +957,7 @@
 				50E198D580D8DB13AD374E31 /* FlowmapIntents.swift in Sources */,
 				572DDAB89F87ABECE7F744C9 /* FocusAudioSettingsSection.swift in Sources */,
 				5EEE8FA2F1E1125EF195338E /* FocusEngine.swift in Sources */,
+				4E1487153814838C218DA2E6 /* FocusGateDialogs.swift in Sources */,
 				81F1144A50E60DF8825419EE /* FocusScreen.swift in Sources */,
 				35D5ADEB11915C20A9F76E90 /* FocusSession.swift in Sources */,
 				AB20E1476E087BE50F8AFF70 /* FocusTaskCard.swift in Sources */,

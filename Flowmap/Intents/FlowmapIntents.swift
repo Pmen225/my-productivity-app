@@ -69,7 +69,15 @@ struct StartFocusIntent: AppIntent {
         let now = Date()
 
         if let segment = engine.currentSegment(at: now), let task = segment.task {
-            _ = engine.start(segment: segment, now: now)
+            // Siri has no surface for the plan-gate's Definition of Done
+            // field, so a gated task is reported through the dialog rather
+            // than bypassed — the same compulsory rule the phone UI enforces.
+            guard engine.start(segment: segment, now: now) != nil else {
+                if engine.pendingGate?.kind == .planGate {
+                    return .result(dialog: IntentDialog("\(task.title) needs a Definition of Done first — open Flowmap to plan it."))
+                }
+                return .result(dialog: IntentDialog("\(task.title) needs a quick clock-in — open Flowmap to start it."))
+            }
             return .result(dialog: IntentDialog("Focusing on \(task.title)."))
         }
 

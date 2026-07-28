@@ -216,7 +216,16 @@ struct TodayView: View {
     private func performPrimaryAction() {
         switch primaryAction {
         case .startCurrentTask(let segment):
-            flow?.focusEngine.start(segment: segment)
+            // Today has no gate/clock-in modal of its own; a blocked start
+            // just explains itself via the existing refusal banner and
+            // points at Focus, where `FocusScreen` renders the real dialog.
+            guard flow?.focusEngine.start(segment: segment) != nil else {
+                let needsPlan = flow?.focusEngine.pendingGate?.kind == .planGate
+                showRefusal(needsPlan
+                    ? "Write a Definition of Done in Focus before this can start."
+                    : "Clock in from Focus to start this task.")
+                return
+            }
         case .planDay:
             openPlanPreview()
         }

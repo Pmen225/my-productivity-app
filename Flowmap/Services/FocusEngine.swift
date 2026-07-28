@@ -18,6 +18,27 @@ public struct FocusTransition: Identifiable, Sendable {
     }
 }
 
+/// What the compulsory planning phase demands before a task's clock can
+/// start: a Definition of Done the first time a task is ever started, a
+/// lighter re-confirmation whenever unfinished work comes back around.
+public enum TaskGate: Equatable, Sendable {
+    case planGate
+    case clockIn
+}
+
+/// The task (and, for a scheduled start, the segment) currently waiting on a
+/// `TaskGate`. Any view can render this; nothing may start the session it
+/// describes until `FocusEngine.resolveGate` is called.
+public struct PendingGate {
+    public let task: FlowTask
+    public let segment: TaskSegment?
+    public let kind: TaskGate
+    /// The caller's requested length for a non-timeline start, carried
+    /// through the gate so resolving it starts the same length that was
+    /// asked for rather than falling back to the task's default.
+    public let minutes: Int?
+}
+
 /// Drives the focus timer and the automatic hand-off between tasks.
 ///
 /// All timing lives in `FocusSession` as timestamps; this type only decides
@@ -41,6 +62,10 @@ public final class FocusEngine {
     public private(set) var activeSession: FocusSession?
     /// Set when a task's time has just run out, for the non-blocking banner.
     public var pendingTransition: FocusTransition?
+    /// Set instead of starting, when the compulsory planning phase blocks a
+    /// start. The view renders the plan gate or the clock-in dialog from
+    /// this; resolve it via `resolveGate`, never by calling `start` again.
+    public var pendingGate: PendingGate?
     /// Drives the countdown redraw. Bumped by the view's timer tick.
     public var tick: Date = Date()
 
@@ -113,6 +138,10 @@ public final class FocusEngine {
     // MARK: - Starting
 
     /// Starts focus on a scheduled block, using the time it has left.
+    ///
+    /// Returns `nil` and sets `pendingGate` instead of starting when the
+    /// compulsory planning phase blocks this task — the caller must not
+    /// treat a `nil` result the same as a failure to find a session.
     @discardableResult
     public func start(segment: TaskSegment, now: Date = Date()) -> FocusSession? {
         guard let task = segment.task else { return nil }
@@ -121,19 +150,81 @@ public final class FocusEngine {
             existing.resume(at: now)
             return existing
         }
-        finishActiveSession(outcome: .skipped, now: now)
+        if let kind = gateDecision(for: task, segment: segment) {
+            pendingGate = PendingGate(task: task, segment: segment, kind: kind, minutes: nil)
+            return nil
+        }
+        return beginSegment(segment, task: task, now: now)
+    }
 
+    /// Starts focus on a task that is not on the timeline. Subject to the
+    /// same gate as `start(segment:)` — see that method's note on `nil`.
+    @discardableResult
+    public func start(task: FlowTask, minutes: Int? = nil, now: Date = Date()) -> FocusSession? {
+        if let kind = gateDecision(for: task, segment: nil) {
+            pendingGate = PendingGate(task: task, segment: nil, kind: kind, minutes: minutes)
+            return nil
+        }
+        return beginTask(task, minutes: minutes, now: now)
+    }
+
+    private func beginSegment(_ segment: TaskSegment, task: FlowTask, now: Date) -> FocusSession {
+        finishActiveSession(outcome: .skipped, now: now)
         let remaining = segment.remainingSeconds(at: now)
         let planned = remaining > 0 ? remaining : Double(segment.durationMinutes) * 60
         return begin(task: task, segment: segment, seconds: planned, now: now)
     }
 
-    /// Starts focus on a task that is not on the timeline.
-    @discardableResult
-    public func start(task: FlowTask, minutes: Int? = nil, now: Date = Date()) -> FocusSession? {
+    private func beginTask(_ task: FlowTask, minutes: Int?, now: Date) -> FocusSession {
         finishActiveSession(outcome: .skipped, now: now)
         let length = minutes ?? max(SchedulingEngine.snapMinutes, task.unscheduledMinutes > 0 ? task.unscheduledMinutes : task.estimatedMinutes)
         return begin(task: task, segment: task.segment(at: now), seconds: Double(length) * 60, now: now)
+    }
+
+    // MARK: - Compulsory planning gate
+
+    /// The gate decision for starting `task`, or `nil` to start immediately.
+    ///
+    /// A task never starts, by any path, without a Definition of Done —
+    /// that is the product's "compulsory planning phase" and applies to the
+    /// Assistant and App Intents exactly as it does to a tap on the wheel.
+    /// Once planned, only a task RETURNING via a requeued/carried-over
+    /// segment (`isContinuation`) asks for a conscious clock-in — the
+    /// design's own words are "unfinished work always comes around again".
+    /// A first-ever segment for an already-planned task, or an ad hoc
+    /// (non-timeline) start, proceeds without any modal.
+    private func gateDecision(for task: FlowTask, segment: TaskSegment?) -> TaskGate? {
+        if !task.hasBeenPlanned { return .planGate }
+        if segment?.isContinuation == true { return .clockIn }
+        return nil
+    }
+
+    /// Resolves `pendingGate`: records the Definition of Done and marks the
+    /// task planned (first-time gate only), then starts the segment or task
+    /// it was blocking. This call IS the gate's resolution, so it starts via
+    /// the private `begin…` helpers directly rather than asking
+    /// `gateDecision` again — asking again would just re-block on a task
+    /// this same call is about to mark planned.
+    ///
+    /// Enforced here, not just in the view: an empty Definition of Done
+    /// leaves `pendingGate` untouched and returns `nil` — "blocked" means
+    /// blocked even for a caller that skips `PlanGateDialog` entirely.
+    @discardableResult
+    public func resolveGate(definitionOfDone: String? = nil, now: Date = Date()) -> FocusSession? {
+        guard let pending = pendingGate else { return nil }
+        if pending.kind == .planGate {
+            let trimmed = (definitionOfDone ?? pending.task.definitionOfDone)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return nil }
+            pending.task.definitionOfDone = trimmed
+            pending.task.hasBeenPlanned = true
+            try? context.save()
+        }
+        pendingGate = nil
+        if let segment = pending.segment {
+            return beginSegment(segment, task: pending.task, now: now)
+        }
+        return beginTask(pending.task, minutes: pending.minutes, now: now)
     }
 
     /// Free focus with no task attached. Defaults to 30 minutes.

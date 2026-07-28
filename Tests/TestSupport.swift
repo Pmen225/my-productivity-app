@@ -62,7 +62,11 @@ struct TestWorld {
         minimumChunk: Int = 15,
         status: TaskStatus = .inbox,
         sortOrder: Int = 0,
-        flaggedForToday: Bool = false
+        flaggedForToday: Bool = false,
+        // Defaults `true` so every existing call site — written before the
+        // compulsory planning gate existed — keeps starting immediately.
+        // Gate-specific tests pass `planned: false` explicitly.
+        planned: Bool = true
     ) -> FlowTask {
         let task = FlowTask(
             title: title,
@@ -75,6 +79,7 @@ struct TestWorld {
         task.isSplittable = splittable
         task.minimumChunkMinutes = minimumChunk
         task.isFlaggedForToday = flaggedForToday
+        task.hasBeenPlanned = planned
         context.insert(task)
         try? context.save()
         return task

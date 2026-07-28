@@ -162,6 +162,28 @@ final class ScreenshotTests: XCTestCase {
         }
     }
 
+    /// The compulsory planning gate: every seeded demo task starts
+    /// unplanned, so the first "Start focus" tap on a fresh demo always
+    /// opens the Definition of Done modal rather than starting the clock.
+    func testCaptureGate() {
+        let app = launch()
+        if tapTab(app, "Focus") {
+            let startButton = app.buttons["Start focus"].firstMatch
+            if startButton.waitForExistence(timeout: 8) {
+                startButton.tap()
+                let definitionField = app.textFields["Definition of done"].firstMatch
+                if definitionField.waitForExistence(timeout: 5) {
+                    Thread.sleep(forTimeInterval: 1)
+                    capture(app, named: "iphone-focus-gate")
+                } else {
+                    XCTFail("Plan gate did not appear after Start focus")
+                }
+            } else {
+                XCTFail("Start focus button not found")
+            }
+        }
+    }
+
     /// Dark-scheme passes of the two signature screens, via the legacy
     /// interface-style launch override (the in-app Appearance control is a
     /// scroll-wheel the test cannot reliably drive).

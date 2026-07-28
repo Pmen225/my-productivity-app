@@ -39,6 +39,7 @@ struct FocusScreen: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .flowDialogOverlay(isPresented: pendingGate != nil) { gateDialog }
         .onReceive(ticker) { date in
             flow?.tick(date)
         }
@@ -63,6 +64,7 @@ struct FocusScreen: View {
 
     private var engine: FocusEngine? { flow?.focusEngine }
     private var now: Date { flow?.now ?? Date() }
+    private var pendingGate: PendingGate? { engine?.pendingGate }
 
     private var session: FocusSession? { engine?.activeSession }
 
@@ -476,6 +478,26 @@ struct FocusScreen: View {
         var parts: [String] = ["\(completed) task\(completed == 1 ? "" : "s") completed today"]
         if carried > 0 { parts.append("\(carried) carried to a later slot") }
         return parts.joined(separator: " · ")
+    }
+
+    /// Renders the compulsory planning gate or the lighter clock-in modal,
+    /// whichever `FocusEngine` decided this segment/task needs. Resolving
+    /// either calls back into the engine, which is the only thing that may
+    /// start the session it was blocking.
+    @ViewBuilder
+    private var gateDialog: some View {
+        if let pendingGate {
+            switch pendingGate.kind {
+            case .planGate:
+                PlanGateDialog(task: pendingGate.task) { definitionOfDone in
+                    _ = engine?.resolveGate(definitionOfDone: definitionOfDone, now: now)
+                }
+            case .clockIn:
+                ClockInDialog(task: pendingGate.task) {
+                    _ = engine?.resolveGate(now: now)
+                }
+            }
+        }
     }
 
     private func transitionBanner(_ transition: FocusTransition) -> some View {

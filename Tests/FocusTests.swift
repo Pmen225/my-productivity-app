@@ -228,6 +228,95 @@ struct FocusEngineTests {
     }
 }
 
+@Suite("Compulsory planning gate")
+@MainActor
+struct FocusGateTests {
+    private func engine(_ world: TestWorld) -> FocusEngine {
+        FocusEngine(context: world.context, settings: world.settings, calendar: world.calendar)
+    }
+
+    @Test("A never-planned task opens the gate instead of starting")
+    func neverPlannedOpensGate() throws {
+        let world = try TestWorld()
+        let task = world.makeTask("Reading", minutes: 30, planned: false)
+        let segment = world.makeSegment(for: task, start: world.date(hour: 9), minutes: 30)
+        let focus = engine(world)
+
+        let session = focus.start(segment: segment, now: world.date(hour: 9))
+
+        #expect(session == nil)
+        #expect(focus.activeSession == nil)
+        #expect(focus.pendingGate?.kind == .planGate)
+        #expect(focus.pendingGate?.task.id == task.id)
+    }
+
+    @Test("An empty Definition of Done cannot start the task")
+    func emptyDefinitionBlocksStart() throws {
+        let world = try TestWorld()
+        let task = world.makeTask("Reading", minutes: 30, planned: false)
+        let segment = world.makeSegment(for: task, start: world.date(hour: 9), minutes: 30)
+        let focus = engine(world)
+
+        _ = focus.start(segment: segment, now: world.date(hour: 9))
+        #expect(focus.pendingGate != nil)
+
+        // Whitespace-only text does not satisfy the gate.
+        let blocked = focus.resolveGate(definitionOfDone: "   ", now: world.date(hour: 9))
+        #expect(blocked == nil)
+        #expect(focus.activeSession == nil)
+        #expect(focus.pendingGate != nil) // still blocked, not silently cleared
+        #expect(task.hasBeenPlanned == false)
+
+        // Real text resolves the same gate and starts the clock.
+        let started = focus.resolveGate(definitionOfDone: "10 pages read", now: world.date(hour: 9))
+        #expect(started != nil)
+        #expect(task.hasBeenPlanned == true)
+        #expect(task.definitionOfDone == "10 pages read")
+        #expect(focus.pendingGate == nil)
+    }
+
+    @Test("A planned task returning via a continuation gets clock-in, not the gate")
+    func plannedTaskGetsClockIn() throws {
+        let world = try TestWorld()
+        let task = world.makeTask("Reading", minutes: 30, planned: true)
+        let segment = world.makeSegment(
+            for: task, start: world.date(hour: 9), minutes: 30, source: .focusContinuation
+        )
+        let focus = engine(world)
+
+        let session = focus.start(segment: segment, now: world.date(hour: 9))
+
+        #expect(session == nil)
+        #expect(focus.pendingGate?.kind == .clockIn)
+
+        let resolved = focus.resolveGate(now: world.date(hour: 9))
+        #expect(resolved != nil)
+        #expect(focus.activeSession?.task?.id == task.id)
+    }
+
+    @Test("The gate does not fire twice for the same task")
+    func gateDoesNotRefireForSameTask() throws {
+        let world = try TestWorld()
+        let task = world.makeTask("Reading", minutes: 30, planned: false)
+        let segment = world.makeSegment(for: task, start: world.date(hour: 9), minutes: 30)
+        let focus = engine(world)
+
+        _ = focus.start(segment: segment, now: world.date(hour: 9))
+        #expect(focus.pendingGate?.kind == .planGate)
+        _ = focus.resolveGate(definitionOfDone: "Done when read", now: world.date(hour: 9))
+        #expect(focus.activeSession != nil)
+
+        // Finish this run, then start a fresh (non-continuation) segment for
+        // the same, now-planned task — it must not re-open the gate.
+        focus.completeCurrentTask(now: world.date(hour: 9, minute: 20))
+        let second = world.makeSegment(for: task, start: world.date(hour: 10), minutes: 30)
+        let resumed = focus.start(segment: second, now: world.date(hour: 10))
+
+        #expect(resumed != nil)
+        #expect(focus.pendingGate == nil)
+    }
+}
+
 @Suite("Focus wheel geometry")
 struct FocusWheelGeometryTests {
     @Test("The active task sits at the bottom in every visibility mode")
