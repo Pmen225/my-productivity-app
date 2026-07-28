@@ -130,11 +130,22 @@ struct FocusScreen: View {
             titleBar
             centreContent
 
-            FocusWheelView(
-                items: wheelItems,
-                progress: progress,
-                activeID: wheelItems.first?.id
-            )
+            Group {
+                if visibility == .all {
+                    FocusWheelOverviewView(
+                        items: wheelItems,
+                        isSessionActive: session != nil,
+                        centreCountdownText: countdownMinutesText,
+                        centreCountdownAccessibilityLabel: countdownAccessibilityLabel
+                    )
+                } else {
+                    FocusWheelView(
+                        items: wheelItems,
+                        progress: progress,
+                        activeID: wheelItems.first?.id
+                    )
+                }
+            }
             .frame(width: dialWidth, height: dialHeight)
 
             Spacer(minLength: FlowSpacing.wheelCardGap)

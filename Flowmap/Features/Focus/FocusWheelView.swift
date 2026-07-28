@@ -40,6 +40,18 @@ private struct PointerTriangle: Shape {
     }
 }
 
+/// The fixed pointer beneath the wheel, shared by the bowl and the overview
+/// ring — kept in one place so a future tweak to its shape or offset can't
+/// drift between the two the way a duplicated angle once did.
+private func wheelPointer(centre: CGPoint, radius: CGFloat) -> some View {
+    let tip = FocusWheelGeometry.point(centre: centre, radius: radius + 15, angle: FocusWheelGeometry.bottomAngle)
+    return PointerTriangle()
+        .fill(FlowTheme.accent)
+        .frame(width: 16, height: 11)
+        .position(x: tip.x, y: tip.y - 5.5)
+        .accessibilityHidden(true)
+}
+
 /// A task on the wheel, resolved for drawing.
 struct WheelItem: Identifiable {
     let id: UUID
@@ -175,13 +187,17 @@ struct FocusWheelView: View {
 
         return ZStack {
             ForEach(Array(stride(from: 0, through: totalMinutes, by: 1)), id: \.self) { minute in
-                let angle = FocusWheelGeometry.dialTickAngle(minute: minute, totalMinutes: totalMinutes, halfAngle: halfAngle)
+                // Tick spacing and the major/minor rule stay keyed to minutes
+                // elapsed from task start; only the printed number — and the
+                // angle it maps to — reads as minutes remaining.
+                let remaining = totalMinutes - minute
+                let angle = FocusWheelGeometry.dialTickAngle(minutesRemaining: remaining, totalMinutes: totalMinutes, halfAngle: halfAngle)
                 let isMajor = minute % majorStep == 0
                 tick(angle: angle, centre: centre, outer: outer, isMajor: isMajor)
 
                 if isMajor {
                     let labelPoint = FocusWheelGeometry.point(centre: centre, radius: outer + 13, angle: angle)
-                    Text("\(minute)")
+                    Text("\(remaining)")
                         // Explicit 11pt: the smallest size the HIG allows,
                         // chosen deliberately rather than let the ruler shrink further.
                         .font(.system(size: 11, weight: .medium, design: .rounded))
@@ -209,11 +225,167 @@ struct FocusWheelView: View {
     /// The clay marker at the very bottom of the dial, pointing up into the
     /// active wedge — fixed, since the active task always sits at the bottom.
     private func pointer(centre: CGPoint, radius: CGFloat) -> some View {
-        let tip = FocusWheelGeometry.point(centre: centre, radius: radius + 15, angle: FocusWheelGeometry.bottomAngle)
-        return PointerTriangle()
-            .fill(FlowTheme.accent)
-            .frame(width: 16, height: 11)
-            .position(x: tip.x, y: tip.y - 5.5)
-            .accessibilityHidden(true)
+        wheelPointer(centre: centre, radius: radius)
+    }
+}
+
+/// The `All`-mode dial: a small, fully-closed 360° ring, one wedge per
+/// queued task sized to its own share of total duration — the closed-circle
+/// counterpart to the bowl, drawn only when every task is visible at once
+/// (`focus-wheel-spec.md` §3).
+struct FocusWheelOverviewView: View {
+    @Environment(\.colorScheme) private var scheme
+
+    let items: [WheelItem]
+    /// Whether the active item has a running timer, rather than merely
+    /// occupying the bottom slot — decides "Now" vs "Next" in the centre
+    /// readout below.
+    let isSessionActive: Bool
+    /// Minutes to show in the centre: live remaining time if a session is
+    /// running, otherwise the item's own planned duration — the same string
+    /// `FocusScreen` already shows above the ring, reused rather than
+    /// recomputed here.
+    let centreCountdownText: String
+    let centreCountdownAccessibilityLabel: String
+
+    var body: some View {
+        GeometryReader { proxy in
+            let width = min(proxy.size.width, proxy.size.height)
+            let outerRadius = FocusWheelGeometry.overviewOuterRadius(width: width)
+            let innerRadius = FocusWheelGeometry.overviewInnerRadius(width: width)
+            let centre = CGPoint(x: proxy.size.width / 2, y: proxy.size.height / 2)
+
+            ZStack {
+                wedges(centre: centre, outerRadius: outerRadius, innerRadius: innerRadius)
+                pointer(centre: centre, radius: outerRadius)
+                centreReadout()
+                    .position(centre)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Focus wheel overview")
+    }
+
+    // MARK: - Wedges
+
+    private func wedges(centre: CGPoint, outerRadius: CGFloat, innerRadius: CGFloat) -> some View {
+        // Same double-rim gap the bowl uses between wedges.
+        let gap = items.count > 1 ? 1.6 : 0.0
+        let thickness = outerRadius - innerRadius
+        let durations = items.map(\.minutes)
+        let midRadius = (outerRadius + innerRadius) / 2
+
+        return ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+            let span = FocusWheelGeometry.overviewSpan(index: index, durations: durations)
+            let showsLabel = FocusWheelGeometry.overviewShowsLabel(spanDegrees: span.end - span.start, labelRadius: midRadius)
+
+            ZStack {
+                WheelWedgeShape(
+                    startAngle: span.start + gap,
+                    endAngle: span.end - gap,
+                    thickness: thickness,
+                    radius: outerRadius,
+                    centre: centre
+                )
+                .fill(item.isActive ? item.colour.softStrong : item.colour.soft)
+                .overlay(
+                    WheelWedgeShape(
+                        startAngle: span.start + gap,
+                        endAngle: span.end - gap,
+                        thickness: thickness,
+                        radius: outerRadius,
+                        centre: centre
+                    )
+                    .stroke(FlowTheme.separatorStrong(scheme), lineWidth: 1)
+                )
+
+                if showsLabel {
+                    segmentLabel(item: item, span: span, centre: centre, outerRadius: outerRadius, innerRadius: innerRadius)
+                        .accessibilityHidden(true)
+                }
+            }
+            // Carried on the wedge itself, not the label: a segment too
+            // narrow to hold any label (see `overviewShowsLabel`) must still
+            // be announced to VoiceOver with its title and duration.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(item.title), \(DurationFormatter.spoken(minutes: item.minutes))")
+        }
+    }
+
+    /// Two label tiers by span width: wide segments get a title plus a
+    /// duration label, narrow ones drop the title and show only the
+    /// compact duration (`FocusWheelGeometry.overviewShowsTitle`) — the
+    /// geometry decides the tier and the label's flip, never this view.
+    /// Only called once `overviewShowsLabel` has already confirmed there's
+    /// room for a label at all.
+    private func segmentLabel(
+        item: WheelItem,
+        span: (start: Double, end: Double),
+        centre: CGPoint,
+        outerRadius: CGFloat,
+        innerRadius: CGFloat
+    ) -> some View {
+        let mid = (span.start + span.end) / 2
+        let midRadius = (outerRadius + innerRadius) / 2
+        let rotation = FocusWheelGeometry.readableRotation(atAngle: mid)
+        let position = FocusWheelGeometry.point(centre: centre, radius: midRadius, angle: mid)
+        let showsTitle = FocusWheelGeometry.overviewShowsTitle(spanDegrees: span.end - span.start)
+
+        return Group {
+            if showsTitle {
+                VStack(spacing: 1) {
+                    Text(item.title)
+                        .font(FlowFont.wheelSegment)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Text(DurationFormatter.compact(minutes: item.minutes))
+                        .font(FlowFont.durationChip)
+                        .opacity(0.85)
+                }
+                .frame(maxWidth: max(56, (outerRadius - innerRadius) * 1.6))
+            } else {
+                Text(DurationFormatter.compact(minutes: item.minutes))
+                    .font(FlowFont.durationChip)
+            }
+        }
+        .foregroundStyle(item.colour.onSoft)
+        .rotationEffect(.degrees(rotation))
+        .position(position)
+    }
+
+    // MARK: - Centre readout
+
+    /// The NOW readout the design fixes inside the donut hole: an eyebrow,
+    /// the active item's minutes in the same tabular style `NowStrip` and
+    /// the Today NOW card use, and its title — "Now" with a live countdown
+    /// while a session is actually running, else "Next" with that item's
+    /// own planned duration, since the bottom slot is always occupied but
+    /// isn't always timed (`focus-wheel-spec.md` §6).
+    private func centreReadout() -> some View {
+        Group {
+            if let first = items.first {
+                VStack(spacing: 2) {
+                    FlowEyebrow(isSessionActive ? "Now" : "Next")
+                    (
+                        Text(centreCountdownText).font(FlowFont.countdownCompact)
+                            + Text(" min").font(FlowFont.chromeLabel)
+                    )
+                    .foregroundStyle(FlowTheme.accentText(scheme))
+                    Text(first.title)
+                        .font(FlowFont.chromeLabel)
+                        .foregroundStyle(FlowTheme.secondaryText(scheme))
+                        .lineLimit(1)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(isSessionActive ? "Now" : "Next"): \(first.title), \(centreCountdownAccessibilityLabel)")
+            }
+        }
+    }
+
+    // MARK: - Pointer
+
+    private func pointer(centre: CGPoint, radius: CGFloat) -> some View {
+        wheelPointer(centre: centre, radius: radius)
     }
 }

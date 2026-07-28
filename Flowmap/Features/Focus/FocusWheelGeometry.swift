@@ -138,13 +138,88 @@ public enum FocusWheelGeometry {
         return (start, start + each)
     }
 
-    /// Angle of the ruler tick at `minute` of `totalMinutes`, mapped across
-    /// the active wedge's own span, left (`0`) to right (`totalMinutes`) —
-    /// the ruler reads as the active task's own duration scale.
-    public static func dialTickAngle(minute: Int, totalMinutes: Int, halfAngle: Double) -> Double {
+    /// Angle of the ruler tick showing `minutesRemaining` of `totalMinutes`,
+    /// mapped across the active wedge's own span. The scale counts down like
+    /// the header's countdown: the full duration sits at the LEFT end and
+    /// `0` sits at the RIGHT end (`focus-wheel-spec.md` §4 — the design
+    /// numbers minutes remaining, not minutes elapsed).
+    public static func dialTickAngle(minutesRemaining: Int, totalMinutes: Int, halfAngle: Double) -> Double {
         let span = dialActiveSpan(halfAngle: halfAngle)
-        guard totalMinutes > 0 else { return span.end }
-        let fraction = Double(minute) / Double(totalMinutes)
-        return span.end - (span.end - span.start) * fraction
+        guard totalMinutes > 0 else { return span.start }
+        let fraction = Double(minutesRemaining) / Double(totalMinutes)
+        return span.start + (span.end - span.start) * fraction
+    }
+
+    // MARK: - All-mode overview ring
+    //
+    // The mock's `All` view swaps the bowl for a small, fully-closed 360°
+    // ring: every queued task gets one wedge, sized to its own share of
+    // total duration, rather than the bowl's fixed per-slot sweep. Fixed at
+    // `R0=96, R1=146` about a 320pt canvas (`focus-wheel-spec.md` §3);
+    // expressed as fractions of canvas width so the ring scales with
+    // whatever container it's given while keeping that same 96:146 ratio.
+
+    private static let overviewCanvasWidth: CGFloat = 320
+    public static let overviewOuterRadiusFraction: CGFloat = 146 / overviewCanvasWidth
+    public static let overviewInnerRadiusFraction: CGFloat = 96 / overviewCanvasWidth
+
+    /// Beyond this angular span a segment earns both a title and a duration
+    /// label; at or below it, only the compact duration is drawn — a label
+    /// tier demotion, not truncation (`focus-wheel-spec.md` §3, design line 565).
+    public static let overviewLabelThresholdDegrees: Double = 26
+
+    public static func overviewOuterRadius(width: CGFloat) -> CGFloat {
+        width * overviewOuterRadiusFraction
+    }
+
+    public static func overviewInnerRadius(width: CGFloat) -> CGFloat {
+        width * overviewInnerRadiusFraction
+    }
+
+    /// Angular span of the item at `index` (`0` is the active task), sized
+    /// to its own share of `durations`' total and laid out clockwise from
+    /// the active wedge — the same "next enters from the right" rule as the
+    /// bowl, just closed into a full circle instead of a shallow arc.
+    public static func overviewSpan(index: Int, durations: [Int]) -> (start: Double, end: Double) {
+        guard durations.indices.contains(index) else { return (bottomAngle, bottomAngle) }
+        let total = max(1, durations.reduce(0, +))
+        func width(_ i: Int) -> Double { 360 * Double(durations[i]) / Double(total) }
+
+        let activeWidth = width(0)
+        let activeStart = bottomAngle - activeWidth / 2
+        guard index > 0 else { return (activeStart, activeStart + activeWidth) }
+
+        var end = activeStart
+        for i in 1..<index { end -= width(i) }
+        return (end - width(index), end)
+    }
+
+    /// Whether a segment this wide earns a title label alongside its
+    /// duration, or drops to duration-only (`overviewLabelThresholdDegrees`).
+    public static func overviewShowsTitle(spanDegrees: Double) -> Bool {
+        spanDegrees > overviewLabelThresholdDegrees
+    }
+
+    /// Minimum arc length, in points, a wedge needs at the label radius
+    /// before any label is drawn at all — below this even the duration-only
+    /// tier would spill into its neighbour, since a `Text` is laid out at
+    /// its natural width regardless of how much arc it sits on (unlike the
+    /// design's `textPath`, which clips text to the arc's own length).
+    ///
+    /// Measured, not guessed: "88M" — the widest realistic two-digit
+    /// compact-duration string (`DurationFormatter.compact`) — rendered at
+    /// `FlowFont.durationChip`'s underlying system font (`.caption2` bold
+    /// rounded, 11pt at the default Dynamic Type size) comes out to ~25pt
+    /// wide; `Tests/FocusTests.swift`'s `overviewHidesLabelWhenArcTooShort`
+    /// re-measures this on every run so the constant can't quietly go
+    /// stale. The extra few points cover kerning/anti-aliasing variance.
+    public static let overviewMinLabelArcLength: CGFloat = 28
+
+    /// Whether a wedge this wide, at this label radius, has room to draw
+    /// any label without overlapping its neighbour — a third tier below
+    /// `overviewShowsTitle`, demoting duration-only labels to no label.
+    public static func overviewShowsLabel(spanDegrees: Double, labelRadius: CGFloat) -> Bool {
+        let arcLength = labelRadius * CGFloat(spanDegrees * .pi / 180)
+        return arcLength >= overviewMinLabelArcLength
     }
 }

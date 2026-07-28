@@ -21,10 +21,19 @@ run() {
         CODE_SIGNING_ALLOWED=NO "$ACTION" 2>&1)
   local code=$?
   if [ $code -eq 0 ]; then
-    echo "$out" | grep -E "Test Suite .* (passed|failed)|Executed .* tests" | tail -5
+    # The suites are Swift Testing, not XCTest: the XCTest shim always reports
+    # "Executed 0 tests", so match the Swift Testing summary line too or a green
+    # run looks like a run that tested nothing.
+    # The unit suites are Swift Testing and the UI suites are XCTest, and the
+    # XCTest shim always reports "Executed 0 tests" for the Swift Testing ones.
+    # Both summaries are printed separately: filtered into one list, the UI
+    # suite's trailing lines push the Swift Testing count out of sight and a
+    # run that tested nothing looks identical to a passing one.
+    echo "$out" | grep -E "Test run with .* tests" | tail -2
+    echo "$out" | grep -E "Test Suite .* (passed|failed)|Executed .* tests" | tail -3
     echo "✅ $label $ACTION SUCCEEDED"
   else
-    echo "$out" | grep -E "error:|failed:|XCTAssert|Testing failure|\*\* .* FAILED \*\*" | sort -u | head -40
+    echo "$out" | grep -E "error:|failed:|XCTAssert|Testing failure|recorded an issue|✘|\*\* .* FAILED \*\*" | sort -u | head -40
     echo "❌ $label $ACTION FAILED"
   fi
   return $code

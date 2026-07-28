@@ -32,6 +32,19 @@ final class ScreenshotTests: XCTestCase {
         add(attachment)
     }
 
+    /// Pick a wheel visibility chip by its accessibility label. The chip's own
+    /// text is a bare "2" or "All", which collides with other content, so the
+    /// spoken label is queried instead.
+    private func selectWheelMode(_ app: XCUIApplication, _ mode: String) {
+        let chip = app.buttons["\(mode) tasks visible"].firstMatch
+        guard chip.waitForExistence(timeout: 10) else {
+            XCTFail("Wheel mode chip \(mode) not found")
+            return
+        }
+        chip.tap()
+        Thread.sleep(forTimeInterval: 2.5)
+    }
+
     private func tapTab(_ app: XCUIApplication, _ label: String) -> Bool {
         // The tab bar is the custom glass FlowTabBar, not a system tab bar, so
         // its items surface as plain buttons. Fall back for the Mac idiom.
@@ -78,7 +91,14 @@ final class ScreenshotTests: XCTestCase {
         }
 
         if tapTab(app, "Focus") {
+            // The wheel mode is persisted in settings and survives a re-seed,
+            // so without choosing one here the shot silently captures whichever
+            // dial the previous run happened to leave selected.
+            selectWheelMode(app, "All")
             capture(app, named: "iphone-focus-wheel")
+
+            selectWheelMode(app, "2")
+            capture(app, named: "iphone-focus-wheel-close")
 
             // Drag the lower card up. Window-relative coordinates are used
             // because the grab handle itself is not a hit-testable element.

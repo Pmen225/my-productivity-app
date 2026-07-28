@@ -1,6 +1,10 @@
+import CoreGraphics
 import Foundation
 import SwiftData
 import Testing
+#if canImport(UIKit)
+import UIKit
+#endif
 @testable import Flowmap
 
 @Suite("Focus timing")
@@ -271,5 +275,86 @@ struct FocusWheelGeometryTests {
         #expect(FocusWheelGeometry.visibleCount(for: .two, queueCount: 9) == 2)
         // An empty queue still draws one ring rather than dividing by zero.
         #expect(FocusWheelGeometry.visibleCount(for: .all, queueCount: 0) == 1)
+    }
+
+    @Test("Overview spans divide the full circle proportionally to duration")
+    func overviewSpansSumFullCircle() {
+        let durations = [30, 60, 10, 20]
+        let total = Double(durations.reduce(0, +))
+
+        var summedSpan = 0.0
+        for index in durations.indices {
+            let span = FocusWheelGeometry.overviewSpan(index: index, durations: durations)
+            let width = span.end - span.start
+            summedSpan += width
+            // Each item's own share matches its proportion of total duration.
+            let expected = 360 * Double(durations[index]) / total
+            #expect(abs(width - expected) < 0.0001)
+        }
+        #expect(abs(summedSpan - 360) < 0.0001)
+    }
+
+    @Test("Overview segments earn a title only above the 26° threshold")
+    func overviewLabelTierByThreshold() {
+        // Above the threshold: both title and duration tiers show.
+        #expect(FocusWheelGeometry.overviewShowsTitle(spanDegrees: 27) == true)
+        // At or below the threshold: title is demoted, duration-only remains.
+        #expect(FocusWheelGeometry.overviewShowsTitle(spanDegrees: 26) == false)
+        #expect(FocusWheelGeometry.overviewShowsTitle(spanDegrees: 10) == false)
+    }
+
+    @Test("The ruler counts minutes remaining: full duration on the left, zero on the right")
+    func rulerCountsMinutesRemaining() {
+        let halfAngle = 40.0
+        let totalMinutes = 45
+        let span = FocusWheelGeometry.dialActiveSpan(halfAngle: halfAngle)
+
+        let fullDurationAngle = FocusWheelGeometry.dialTickAngle(minutesRemaining: totalMinutes, totalMinutes: totalMinutes, halfAngle: halfAngle)
+        let zeroAngle = FocusWheelGeometry.dialTickAngle(minutesRemaining: 0, totalMinutes: totalMinutes, halfAngle: halfAngle)
+
+        // The full duration sits at the span's own LEFT end, zero at its RIGHT end.
+        #expect(abs(fullDurationAngle - span.end) < 0.0001)
+        #expect(abs(zeroAngle - span.start) < 0.0001)
+
+        // Verified via actual point geometry, not by eye: in screen space
+        // (0°=east, 90°=south) an angle past 90° renders left of centre, and
+        // one short of 90° renders right of centre.
+        let centre = CGPoint(x: 100, y: 100)
+        let fullDurationPoint = FocusWheelGeometry.point(centre: centre, radius: 50, angle: fullDurationAngle)
+        let zeroPoint = FocusWheelGeometry.point(centre: centre, radius: 50, angle: zeroAngle)
+        #expect(fullDurationPoint.x < centre.x)
+        #expect(zeroPoint.x > centre.x)
+    }
+
+    @Test("Overview labels disappear once a wedge is too narrow to hold one, rather than overlapping its neighbour")
+    func overviewHidesLabelWhenArcTooShort() {
+        let labelRadius: CGFloat = 100
+        let threshold = FocusWheelGeometry.overviewMinLabelArcLength
+
+        // Just under the threshold: no label at all.
+        let tinySpan = Double((threshold - 1) / labelRadius) * 180 / .pi
+        #expect(FocusWheelGeometry.overviewShowsLabel(spanDegrees: tinySpan, labelRadius: labelRadius) == false)
+
+        // Comfortably over it: the label is drawn.
+        let roomySpan = Double((threshold + 10) / labelRadius) * 180 / .pi
+        #expect(FocusWheelGeometry.overviewShowsLabel(spanDegrees: roomySpan, labelRadius: labelRadius) == true)
+
+        #if canImport(UIKit)
+        // The threshold must not be a guess: it has to hold the widest
+        // realistic compact-duration string ("88M", two digits plus unit)
+        // rendered at the ruler's own system font, or narrow wedges would
+        // still clip into their neighbours.
+        // Pinned to 11pt — `.caption2` at the default Dynamic Type size —
+        // rather than `UIFont.preferredFont`, whose size follows the host
+        // simulator's text-size setting and would fail this assertion for a
+        // reason that has nothing to do with the code under test. The
+        // threshold's behaviour at accessibility text sizes is a known gap,
+        // recorded in the handover rather than hidden behind a flaky test.
+        let base = UIFont.systemFont(ofSize: 11, weight: .bold)
+        let rounded = base.fontDescriptor.withDesign(.rounded) ?? base.fontDescriptor
+        let font = UIFont(descriptor: rounded, size: 11)
+        let measuredWidth = NSAttributedString(string: "88M", attributes: [.font: font]).size().width
+        #expect(threshold >= CGFloat(measuredWidth))
+        #endif
     }
 }
