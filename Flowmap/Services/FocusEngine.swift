@@ -433,6 +433,13 @@ public final class FocusEngine {
     /// the active session, if any is newly due. Driven by the app's existing
     /// tick — this adds no timer of its own.
     public func checkVoiceAnnouncements(now: Date = Date()) {
+        // A gate left sitting has no running session, so its reminder is
+        // checked before the running guard, not after it.
+        guard pendingGate == nil else {
+            voiceService?.nagUnresolvedGate(now: now, settings: settings)
+            return
+        }
+        voiceService?.gateResolved()
         guard let session = activeSession, session.isRunning else { return }
         // The app's ticker fires once a second, so one tick per call is one
         // tick per second — no second timer needed to pace the sound.

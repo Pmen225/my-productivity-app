@@ -20,6 +20,9 @@ public final class FocusVoiceService {
     /// share this service because they share the schedule — a second timer
     /// deciding when to show a banner would drift out of step with the voice.
     private let moments: FlowMomentService?
+    /// When the unresolved-gate reminder last went out. Exposed for the test
+    /// that pins the interval — the speech itself leaves nothing to assert on.
+    private(set) var lastGateNagAt: Date?
 
     public init(moments: FlowMomentService? = nil) {
         self.moments = moments
@@ -91,6 +94,41 @@ public final class FocusVoiceService {
             // than repeating a countdown the banner already shows.
             "Wind down. Note what you learned, and set up the next step."
         }
+    }
+
+    // MARK: - Gate nag
+
+    /// How long a gate is left sitting before the reminder repeats.
+    static let gateNagInterval: TimeInterval = 18
+
+    /// Reminds someone stuck on a clock-in or plan gate that the work is not
+    /// lost if they move on.
+    ///
+    /// The first call only starts the clock — arriving at a dialog and being
+    /// talked at immediately would read as nagging rather than reassurance.
+    public func nagUnresolvedGate(now: Date, settings: AppSettings) {
+        guard let last = lastGateNagAt else {
+            lastGateNagAt = now
+            return
+        }
+        guard now.timeIntervalSince(last) >= Self.gateNagInterval else { return }
+        lastGateNagAt = now
+        moments?.show(
+            .notif(
+                title: "Still here?",
+                subtitle: "You will have another chance to complete the task."
+            )
+        )
+        guard settings.focusVoiceEnabled else { return }
+        speak(
+            "You will have another chance to complete the task. Move on to the next task.",
+            settings: settings
+        )
+    }
+
+    /// Called when no gate is pending, so the next one starts its own clock.
+    public func gateResolved() {
+        lastGateNagAt = nil
     }
 
     /// The same milestone as a banner: how long is left and what the task is,
