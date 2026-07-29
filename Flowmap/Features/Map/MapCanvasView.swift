@@ -22,6 +22,9 @@ struct MapCanvasView: View {
     @State private var isSearchPresented = false
     @GestureState private var pinchDelta: CGFloat = 1
     @GestureState private var panDelta: CGSize = .zero
+    /// Persisted, so the canvas hint is shown once in the app's life rather
+    /// than on every launch.
+    @AppStorage("flowmap.hasSeenMapCanvasHint") private var hasSeenCanvasHint = false
 
     private var metrics: MapLayout.Metrics { .shared }
     private let margin: CGFloat = 160
@@ -41,6 +44,9 @@ struct MapCanvasView: View {
                     )
             }
             .simultaneousGesture(pinchGesture)
+            // Ahead of the pan gesture in the chain, so a quick double tap is
+            // read as a reset rather than two aborted drags.
+            .simultaneousGesture(TapGesture(count: 2).onEnded { resetViewport() })
             .onAppear {
                 viewportSize = proxy.size
                 // A map that has never been positioned opens fitted, rather than
@@ -73,6 +79,7 @@ struct MapCanvasView: View {
             .overlay(alignment: .center) {
                 if viewModel.map.nodeCount == 0 { emptyState }
             }
+            .overlay(alignment: .bottom) { canvasHint }
             .overlay(alignment: .bottomTrailing) { canvasControls }
             .overlay(alignment: .top) { if isSearchPresented { searchBar } }
         }
@@ -255,6 +262,7 @@ struct MapCanvasView: View {
             }
             .onEnded { value in
                 guard draggingNodeID == nil else { return }
+                hasSeenCanvasHint = true
                 userAdjustedCanvas = true
                 viewModel.panOffset.width += value.translation.width
                 viewModel.panOffset.height += value.translation.height
@@ -267,9 +275,45 @@ struct MapCanvasView: View {
             .updating($pinchDelta) { value, state, _ in state = value }
             .onEnded { value in
                 userAdjustedCanvas = true
-                viewModel.zoom = min(max(viewModel.zoom * value, 0.25), 3)
+                viewModel.zoom = min(max(viewModel.zoom * value, Self.minimumZoom), Self.maximumZoom)
                 viewModel.persistCanvasState()
             }
+    }
+
+    /// The mock's clamp (`707-723`). The app had 0.25–3, which let the tree
+    /// shrink past legibility at the bottom and stopped short of the mock's
+    /// close-in reading at the top.
+    static let minimumZoom: CGFloat = 0.5
+    static let maximumZoom: CGFloat = 3.5
+
+    /// Double-tap anywhere on the canvas puts pan and zoom back where they
+    /// started — the way out of being lost that the mock gives, and the
+    /// reason no "reset view" button is needed.
+    private func resetViewport() {
+        hasSeenCanvasHint = true
+        userAdjustedCanvas = false
+        viewModel.zoom = 1
+        viewModel.panOffset = .zero
+        viewModel.persistCanvasState()
+        viewModel.fitToMap(viewportSize: viewportSize)
+    }
+
+    /// The mock's one-shot onboarding line. Shown once ever, and gone the
+    /// moment the canvas is touched — a hint that keeps reappearing stops
+    /// being a hint.
+    @ViewBuilder
+    private var canvasHint: some View {
+        if !hasSeenCanvasHint, viewModel.map.nodeCount > 0 {
+            Text("Pinch to zoom · drag to pan · hold a node to delete")
+                .font(FlowFont.caption)
+                .foregroundStyle(.white)
+                .padding(.horizontal, FlowSpacing.l)
+                .padding(.vertical, FlowSpacing.s)
+                .background(FlowTheme.popoverSurface, in: Capsule())
+                .padding(.bottom, FlowSpacing.xxxl * 2)
+                .allowsHitTesting(false)
+                .transition(.opacity)
+        }
     }
 
     // MARK: - Context menu
@@ -331,7 +375,7 @@ struct MapCanvasView: View {
             Divider().frame(width: 20)
 
             Button(action: {
-                viewModel.zoom = min(viewModel.zoom + 0.15, 3)
+                viewModel.zoom = min(viewModel.zoom + 0.15, Self.maximumZoom)
                 viewModel.persistCanvasState()
             }) {
                 Image(systemName: "plus.magnifyingglass")
@@ -340,7 +384,7 @@ struct MapCanvasView: View {
             .accessibilityLabel("Zoom in")
 
             Button(action: {
-                viewModel.zoom = max(viewModel.zoom - 0.15, 0.25)
+                viewModel.zoom = max(viewModel.zoom - 0.15, Self.minimumZoom)
                 viewModel.persistCanvasState()
             }) {
                 Image(systemName: "minus.magnifyingglass")
@@ -371,6 +415,10 @@ struct MapCanvasView: View {
         )
         .shadow(color: FlowTheme.shadow(scheme), radius: 8, y: 2)
         .padding(FlowSpacing.l)
+        // KNOWN PROBLEM: the canvas draws under the now-visible tab bar, so
+        // the bottom two buttons of this stack are cut off. Moving it, padding
+        // it and laying it out as a row were all tried and all made it worse —
+        // it needs fewer controls or a menu, not a different corner.
     }
 
     // MARK: - Search bar

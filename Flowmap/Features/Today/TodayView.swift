@@ -172,7 +172,14 @@ struct TodayView: View {
                 isPaused: session.isPaused,
                 onTogglePause: { flow?.focusEngine.togglePause(now: now) },
                 onComplete: { flow?.focusEngine.completeCurrentTask(now: now) },
-                onOpen: nil
+                // The mock's `goFocus`: the whole card is a way back to the
+                // task it is describing, not just a readout of it.
+                onOpen: {
+                    NotificationCenter.default.post(
+                        name: .flowmapOpenDeepLink,
+                        object: DeepLinkRequest(destination: .focus)
+                    )
+                }
             )
         }
     }
