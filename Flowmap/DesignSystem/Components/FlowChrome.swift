@@ -519,7 +519,7 @@ public enum FlowCreateKind: String, CaseIterable, Identifiable, Sendable {
 }
 
 /// One project chip: its colour dot and label.
-public struct FlowCreateProjectOption: Identifiable {
+public struct FlowCreateChipOption: Identifiable {
     public let id: UUID
     public let title: String
     public let colour: ColourToken
@@ -550,8 +550,11 @@ public struct FlowCreateSheet: View {
     /// is pressed, so an abandoned sheet leaves nothing behind.
     @Binding private var subtaskTitles: [String]
     @Binding private var note: String
+    /// The goal a new project is being filed under, if any.
+    @Binding private var initiativeID: UUID?
     private let durations: [Int]
-    private let projects: [FlowCreateProjectOption]
+    private let projects: [FlowCreateChipOption]
+    private let initiatives: [FlowCreateChipOption]
     /// Hidden for kinds where a duration and a parent project make no sense
     /// — a project itself is not scheduled and does not belong to another.
     private let showsDurationAndProject: Bool
@@ -569,8 +572,10 @@ public struct FlowCreateSheet: View {
         projectID: Binding<UUID?>,
         subtaskTitles: Binding<[String]>,
         note: Binding<String>,
+        initiativeID: Binding<UUID?>,
         durations: [Int] = FlowDurationWheel.defaultOptions,
-        projects: [FlowCreateProjectOption],
+        projects: [FlowCreateChipOption],
+        initiatives: [FlowCreateChipOption],
         showsDurationAndProject: Bool = true,
         onClose: @escaping () -> Void,
         onCreate: @escaping () -> Void
@@ -581,6 +586,8 @@ public struct FlowCreateSheet: View {
         self._projectID = projectID
         self._subtaskTitles = subtaskTitles
         self._note = note
+        self._initiativeID = initiativeID
+        self.initiatives = initiatives
         self.durations = durations
         self.projects = projects
         self.showsDurationAndProject = showsDurationAndProject
@@ -604,6 +611,11 @@ public struct FlowCreateSheet: View {
             if kind == .task {
                 subtasksSection
                 noteSection
+            }
+            // A project files under a goal; a task reaches its goal through
+            // whichever project it belongs to, so it does not ask twice.
+            if kind == .project {
+                initiativeSection
             }
             if let explanation = kind.explanation {
                 Text(explanation)
@@ -743,14 +755,51 @@ public struct FlowCreateSheet: View {
         }
     }
 
-    private func projectChip(_ project: FlowCreateProjectOption) -> some View {
-        let isSelected = project.id == projectID
-        return Button {
+    /// The mock's `INITIATIVE` row: the goals a new project can be filed
+    /// under, with an explicit `None` rather than a nothing-selected state the
+    /// user has to infer.
+    private var initiativeSection: some View {
+        VStack(alignment: .leading, spacing: FlowSpacing.s) {
+            FlowEyebrow("Initiative")
+            FlowChipWrap(spacing: FlowSpacing.s) {
+                chip(title: "None", colour: nil, isSelected: initiativeID == nil) {
+                    animated { initiativeID = nil }
+                }
+                ForEach(initiatives) { initiative in
+                    chip(
+                        title: initiative.title,
+                        colour: initiative.colour,
+                        isSelected: initiative.id == initiativeID
+                    ) {
+                        animated { initiativeID = initiative.id }
+                    }
+                }
+            }
+        }
+    }
+
+    private func projectChip(_ project: FlowCreateChipOption) -> some View {
+        chip(
+            title: project.title,
+            colour: project.colour,
+            isSelected: project.id == projectID
+        ) {
             select(project: project.id)
-        } label: {
+        }
+    }
+
+    private func chip(
+        title: String,
+        colour: ColourToken?,
+        isSelected: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
             HStack(spacing: FlowSpacing.xs) {
-                Circle().fill(project.colour.base).frame(width: 8, height: 8)
-                Text(project.title).font(FlowFont.secondary)
+                if let colour {
+                    Circle().fill(colour.base).frame(width: 8, height: 8)
+                }
+                Text(title).font(FlowFont.secondary)
             }
             .padding(.horizontal, FlowSpacing.m)
             // HIG override 1: same reasoning as the duration chips above.

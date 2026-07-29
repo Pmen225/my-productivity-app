@@ -18,6 +18,8 @@ public final class Project {
     public var updatedAt: Date = Date()
 
     public var workspace: Workspace?
+    /// The goal this project feeds, if any. The inverse lives on `Initiative`.
+    public var initiative: Initiative?
 
     @Relationship(deleteRule: .nullify, inverse: \FlowTask.project)
     public var tasks: [FlowTask]?

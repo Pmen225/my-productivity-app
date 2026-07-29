@@ -16,6 +16,9 @@ public enum BackupService {
         public var exportedAt: Date
         public var workspaces: [WorkspaceDTO]
         public var lists: [TaskListDTO]
+        /// Optional so an archive written before initiatives existed still
+        /// decodes — a missing key means "none", not a corrupt file.
+        public var initiatives: [InitiativeDTO]?
         public var projects: [ProjectDTO]
         public var tasks: [TaskDTO]
         public var segments: [SegmentDTO]
@@ -37,11 +40,19 @@ public enum BackupService {
         public var workspaceID: UUID?, updatedAt: Date
     }
 
+    public struct InitiativeDTO: Codable, Sendable {
+        public var id: UUID, title: String, summary: String
+        public var colourToken: String, iconName: String, sortOrder: Int
+        public var isArchived: Bool, workspaceID: UUID?, updatedAt: Date
+    }
+
     public struct ProjectDTO: Codable, Sendable {
         public var id: UUID, title: String, summary: String, statusRaw: String
         public var priorityRaw: String, startDate: Date?, dueDate: Date?
         public var colourToken: String, iconName: String, sortOrder: Int
         public var workspaceID: UUID?, updatedAt: Date
+        /// Optional, and absent from archives written before initiatives.
+        public var initiativeID: UUID?
     }
 
     public struct TaskDTO: Codable, Sendable {
@@ -148,6 +159,14 @@ public enum BackupService {
                     workspaceID: $0.workspace?.id, updatedAt: $0.updatedAt
                 )
             },
+            initiatives: all(Initiative.self).map {
+                InitiativeDTO(
+                    id: $0.id, title: $0.title, summary: $0.summary,
+                    colourToken: $0.colourToken, iconName: $0.iconName,
+                    sortOrder: $0.sortOrder, isArchived: $0.isArchived,
+                    workspaceID: $0.workspace?.id, updatedAt: $0.updatedAt
+                )
+            },
             projects: all(Project.self).map {
                 ProjectDTO(
                     id: $0.id, title: $0.title, summary: $0.summary,
@@ -155,7 +174,7 @@ public enum BackupService {
                     startDate: $0.startDate, dueDate: $0.dueDate,
                     colourToken: $0.colourToken, iconName: $0.iconName,
                     sortOrder: $0.sortOrder, workspaceID: $0.workspace?.id,
-                    updatedAt: $0.updatedAt
+                    updatedAt: $0.updatedAt, initiativeID: $0.initiative?.id
                 )
             },
             tasks: all(FlowTask.self).map {
@@ -313,6 +332,7 @@ public enum BackupService {
 
         var workspaces = index(Workspace.self) { $0.id }
         var lists = index(TaskList.self) { $0.id }
+        var initiatives = index(Initiative.self) { $0.id }
         var projects = index(Project.self) { $0.id }
         var tasks = index(FlowTask.self) { $0.id }
         var notes = index(Note.self) { $0.id }
@@ -376,6 +396,23 @@ public enum BackupService {
             )
         }
 
+        // Before projects, so a project's goal is already there to link to.
+        for dto in archive.initiatives ?? [] {
+            _ = merge(
+                existing: initiatives[dto.id], incomingDate: dto.updatedAt,
+                currentDate: { $0.updatedAt },
+                apply: { model in
+                    model.id = dto.id; model.title = dto.title; model.summary = dto.summary
+                    model.colourToken = dto.colourToken; model.iconName = dto.iconName
+                    model.sortOrder = dto.sortOrder; model.isArchived = dto.isArchived
+                    model.workspace = dto.workspaceID.flatMap { workspaces[$0] }
+                    model.updatedAt = dto.updatedAt
+                    initiatives[dto.id] = model
+                },
+                create: { Initiative(title: dto.title) }
+            )
+        }
+
         for dto in archive.projects {
             _ = merge(
                 existing: projects[dto.id], incomingDate: dto.updatedAt,
@@ -387,6 +424,7 @@ public enum BackupService {
                     model.colourToken = dto.colourToken; model.iconName = dto.iconName
                     model.sortOrder = dto.sortOrder
                     model.workspace = dto.workspaceID.flatMap { workspaces[$0] }
+                    model.initiative = dto.initiativeID.flatMap { initiatives[$0] }
                     model.updatedAt = dto.updatedAt
                     projects[dto.id] = model
                 },

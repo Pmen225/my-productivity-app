@@ -96,6 +96,19 @@ final class ScreenshotTests: XCTestCase {
                 Thread.sleep(forTimeInterval: 2)
                 capture(app, named: "iphone-new-sheet")
 
+                // The Project kind swaps the task's subtasks and note for the
+                // INITIATIVE chips — a different sheet worth its own shot.
+                let projectKind = app.buttons["Project"].firstMatch
+                if projectKind.waitForExistence(timeout: 5) {
+                    projectKind.tap()
+                    Thread.sleep(forTimeInterval: 1)
+                    capture(app, named: "iphone-new-sheet-project")
+                    app.buttons["Task"].firstMatch.tap()
+                    Thread.sleep(forTimeInterval: 1)
+                } else {
+                    XCTFail("Project kind segment not found in the New sheet")
+                }
+
                 // Creating a task raises the HUD pill over whatever screen the
                 // sheet was covering. It is the one moment that can be
                 // provoked deterministically, so it is what proves the moment

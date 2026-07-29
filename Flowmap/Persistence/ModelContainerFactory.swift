@@ -11,6 +11,7 @@ public enum ModelContainerFactory {
         Schema([
             Workspace.self,
             TaskList.self,
+            Initiative.self,
             Project.self,
             FlowTask.self,
             TaskSegment.self,

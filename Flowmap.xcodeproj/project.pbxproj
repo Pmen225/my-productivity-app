@@ -43,6 +43,7 @@
 		2BE0B7DA91D9C890DFAC0972 /* GoogleOAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 015E051EF8CD81D0B32913D9 /* GoogleOAuth.swift */; };
 		2E7ABCA5900842AC26F437CD /* SeedData.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0FAB11E09F545922FCFD24E /* SeedData.swift */; };
 		2E965BD09B3B3B69DBC00521 /* TodayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3AEB805F6CB4CB81E1D2B34 /* TodayView.swift */; };
+		2FB2FC2461C9A79647E3170B /* Initiative.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000AB24E52FD4C0D5866003B /* Initiative.swift */; };
 		3122B8E3A06EA501A6325781 /* GamificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85B4135C8F542311B9A1D8BD /* GamificationService.swift */; };
 		332A3B718715C56035C5A7B9 /* FocusWheelSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4564C4E8A79E9FED86048C7 /* FocusWheelSettingsSection.swift */; };
 		3487C3868E483B785EFDBDBE /* GoogleCalendarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06EE1F6A498560488D7AEFCE /* GoogleCalendarTests.swift */; };
@@ -97,6 +98,7 @@
 		7DA34843A1D6F75CEB639D9F /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63721D7CF6952E0644E1108B /* AppSettings.swift */; };
 		7E1215C1A9A90D6EB3168ABF /* FlowTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CCB33BFB3A5B7C6BDCD1009 /* FlowTheme.swift */; };
 		7E66B4C47F0D60559BB4412A /* ProjectsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECA435BB3B3F96C9BB8066FA /* ProjectsScreen.swift */; };
+		7EC33E90FC28AFEA2DCB3DDF /* InitiativeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6D6B4ED6EA113DC7F2DE427 /* InitiativeTests.swift */; };
 		8059C35D9298E67115CA40CC /* Typography.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83B3648432B82B48EC26C361 /* Typography.swift */; };
 		81F1144A50E60DF8825419EE /* FocusScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96F995AA9674AB820F917F44 /* FocusScreen.swift */; };
 		86DE4BEBE5C4EAE1FD26C314 /* ReviewRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86304997C9D32819EBDD206F /* ReviewRegressionTests.swift */; };
@@ -221,6 +223,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		000AB24E52FD4C0D5866003B /* Initiative.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Initiative.swift; sourceTree = "<group>"; };
 		00E639C60CF01D64FE44F5A3 /* ProjectDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectDetailView.swift; sourceTree = "<group>"; };
 		015E051EF8CD81D0B32913D9 /* GoogleOAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleOAuth.swift; sourceTree = "<group>"; };
 		01F38906D636F34FE49BBF21 /* GateCopyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GateCopyTests.swift; sourceTree = "<group>"; };
@@ -340,6 +343,7 @@
 		B4564C4E8A79E9FED86048C7 /* FocusWheelSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusWheelSettingsSection.swift; sourceTree = "<group>"; };
 		B480BF47496357CFB1243A61 /* TaskListScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskListScreen.swift; sourceTree = "<group>"; };
 		B696B9FB5CBCD35EF31542F2 /* CalendarProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarProvider.swift; sourceTree = "<group>"; };
+		B6D6B4ED6EA113DC7F2DE427 /* InitiativeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InitiativeTests.swift; sourceTree = "<group>"; };
 		B84AE4B1754CC03898330516 /* AssistantSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantSettingsSection.swift; sourceTree = "<group>"; };
 		BA3A937A96DCAC536301478D /* FlowmapIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowmapIntents.swift; sourceTree = "<group>"; };
 		BA761013D82B313562E967A6 /* MapNodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapNodeView.swift; sourceTree = "<group>"; };
@@ -409,6 +413,7 @@
 				01F38906D636F34FE49BBF21 /* GateCopyTests.swift */,
 				3CB6A1136C912E0B706FA69C /* GateNagTests.swift */,
 				06EE1F6A498560488D7AEFCE /* GoogleCalendarTests.swift */,
+				B6D6B4ED6EA113DC7F2DE427 /* InitiativeTests.swift */,
 				E9ACCD28558625756A7EC6F9 /* MomentTests.swift */,
 				13DAD95BC2D214E0815A432A /* PrioritiseDuelTests.swift */,
 				86304997C9D32819EBDD206F /* ReviewRegressionTests.swift */,
@@ -501,6 +506,7 @@
 				0445857E5428A7957338906D /* DurationFormatter.swift */,
 				C7A5B04286EF445FCEB14B8E /* FlowTask.swift */,
 				AD971E8BEEB1BA04AC552EF3 /* FocusSession.swift */,
+				000AB24E52FD4C0D5866003B /* Initiative.swift */,
 				DD844E3158685B395C00397C /* MapDocument.swift */,
 				375E452CBC16B13A4BC4CF71 /* MapNode.swift */,
 				FC66AA55FDE1BFF65B1AFB86 /* Note.swift */,
@@ -952,6 +958,7 @@
 				FB239D9D4F3AC978005FB0AB /* GateCopyTests.swift in Sources */,
 				9A4BDF5974AC5AB8B1490DE6 /* GateNagTests.swift in Sources */,
 				3487C3868E483B785EFDBDBE /* GoogleCalendarTests.swift in Sources */,
+				7EC33E90FC28AFEA2DCB3DDF /* InitiativeTests.swift in Sources */,
 				D334D573103B151CE47EC1F4 /* MomentTests.swift in Sources */,
 				734B624565723171BB7CDE4B /* PrioritiseDuelTests.swift in Sources */,
 				86DE4BEBE5C4EAE1FD26C314 /* ReviewRegressionTests.swift in Sources */,
@@ -1028,6 +1035,7 @@
 				6F30178E6B9FAAEDBF61C5E5 /* GlobalSearchView.swift in Sources */,
 				7528233C3F1BA3E8C1E5BA1E /* GoogleCalendarProvider.swift in Sources */,
 				2BE0B7DA91D9C890DFAC0972 /* GoogleOAuth.swift in Sources */,
+				2FB2FC2461C9A79647E3170B /* Initiative.swift in Sources */,
 				35BD96DF37AE470EFB43C8C6 /* KeychainService.swift in Sources */,
 				D59989588633EDF66F4EB74E /* ListEllipsisMenu.swift in Sources */,
 				55E074FAF43279790C9E2B74 /* MacRootView.swift in Sources */,

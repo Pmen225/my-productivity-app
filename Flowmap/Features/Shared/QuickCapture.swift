@@ -159,6 +159,7 @@ struct QuickCaptureView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \Project.sortOrder) private var projects: [Project]
+    @Query(sort: \Initiative.sortOrder) private var initiatives: [Initiative]
 
     @State private var kind: FlowCreateKind = .task
     @State private var title = ""
@@ -166,9 +167,14 @@ struct QuickCaptureView: View {
     @State private var projectID: UUID?
     @State private var subtaskTitles: [String] = []
     @State private var note = ""
+    @State private var initiativeID: UUID?
 
-    private var projectOptions: [FlowCreateProjectOption] {
-        projects.map { FlowCreateProjectOption(id: $0.id, title: $0.title, colour: $0.colour) }
+    private var projectOptions: [FlowCreateChipOption] {
+        projects.map { FlowCreateChipOption(id: $0.id, title: $0.title, colour: $0.colour) }
+    }
+
+    private var initiativeOptions: [FlowCreateChipOption] {
+        initiatives.map { FlowCreateChipOption(id: $0.id, title: $0.title, colour: $0.colour) }
     }
 
     var body: some View {
@@ -179,17 +185,17 @@ struct QuickCaptureView: View {
             projectID: $projectID,
             subtaskTitles: $subtaskTitles,
             note: $note,
+            initiativeID: $initiativeID,
             projects: projectOptions,
-            showsDurationAndProject: kind == .task || kind == .initiative,
+            initiatives: initiativeOptions,
+            showsDurationAndProject: kind == .task,
             onClose: { dismiss() },
             onCreate: capture
         )
         .onAppear { minutes = flow?.settings.defaultTaskMinutes ?? 30 }
     }
 
-    /// `.project` makes a `Project`; `.task` and `.initiative` both make a
-    /// `FlowTask` — the model layer has no separate "initiative" entity yet,
-    /// so that segment shares the task path until one exists.
+    /// One kind, one entity: a task, a project, or the goal those hang off.
     private func capture() {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         // The mock answers an empty name with a "Give it a name first" pill.
@@ -199,7 +205,7 @@ struct QuickCaptureView: View {
         guard !trimmed.isEmpty else { return }
 
         switch kind {
-        case .task, .initiative:
+        case .task:
             let project = projects.first { $0.id == projectID }
             let task = FlowTask(
                 title: trimmed,
@@ -215,14 +221,19 @@ struct QuickCaptureView: View {
             flow?.moments.show(.hud("Task added — Inbox"))
         case .project:
             let project = Project(title: trimmed, sortOrder: projects.count)
+            project.initiative = initiatives.first { $0.id == initiativeID }
             context.insert(project)
             flow?.moments.show(.hud("Project added"))
+        case .initiative:
+            context.insert(Initiative(title: trimmed, sortOrder: initiatives.count))
+            flow?.moments.show(.hud("Initiative added"))
         }
         try? context.save()
 
         title = ""
         subtaskTitles = []
         note = ""
+        initiativeID = nil
         dismiss()
     }
 
