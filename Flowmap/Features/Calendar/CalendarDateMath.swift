@@ -1,11 +1,12 @@
+import CoreGraphics
 import Foundation
 
 /// Pure date-grid maths for the calendar views.
 ///
 /// Every boundary here comes from `Calendar`, never from adding a fixed
 /// number of seconds — a day is not always 86,400 seconds across a
-/// daylight-saving transition. Keeping that logic in one place means the
-/// Day/Week/Month/Agenda views never have to reason about it themselves.
+/// daylight-saving transition. Keeping that logic in one place means the grid
+/// and the two panel pages never have to reason about it themselves.
 public enum CalendarDateMath {
     /// One cell in a month grid, identified by its start-of-day instant —
     /// never by array index, so navigating months never crashes or
@@ -43,6 +44,25 @@ public enum CalendarDateMath {
     public static func weekDays(containing date: Date, calendar: Calendar) -> [Date] {
         let start = calendar.dateInterval(of: .weekOfYear, for: date)?.start ?? calendar.startOfDay(for: date)
         return (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: start) }
+    }
+
+    /// The `[start, end)` instant range covering `date`'s week, respecting
+    /// `firstWeekday`. The Weekly Plan page's window.
+    public static func weekInterval(containing date: Date, calendar: Calendar) -> DateInterval {
+        calendar.dateInterval(of: .weekOfYear, for: date)
+            ?? DateInterval(start: calendar.startOfDay(for: date), duration: 7 * 86400)
+    }
+
+    /// How many months a horizontal drag across the month grid should step.
+    ///
+    /// This is the whole of the vertical-versus-horizontal conflict decision 17
+    /// asks to be settled: a drag that travels further down the screen than
+    /// across it belongs to whatever is scrolling underneath, so it steps
+    /// nothing. The ±50pt threshold is the mock's.
+    public static func monthStep(forDrag translation: CGSize, threshold: CGFloat = 50) -> Int {
+        guard abs(translation.width) >= threshold,
+              abs(translation.width) > abs(translation.height) else { return 0 }
+        return translation.width < 0 ? 1 : -1
     }
 
     /// A complete-weeks grid for the month containing `date`. Leading and

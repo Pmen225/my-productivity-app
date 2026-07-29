@@ -15,6 +15,20 @@ public enum FlowSpacing {
     /// Standard screen inset.
     public static let screen: CGFloat = 20
 
+    /// Space the FAB and the Assistant orb reserve at the bottom of the screens
+    /// they float over, so the last row of a list is reachable instead of
+    /// sitting under them. The mock leans on an idle-fade for this; a native tab
+    /// bar does not fade, so the room is reserved outright — the stack's own
+    /// height, plus the gap it is padded off the bottom by, plus a breath so the
+    /// last row does not touch the orb.
+    ///
+    /// Shared rather than private to the phone shell: a scroll view nested
+    /// inside a paging `TabView` never sees the shell's `.contentMargins`, so it
+    /// has to reserve the same room itself.
+    public static let floatingControlsInset =
+        FlowControlSize.create + FlowSpacing.m + FlowControlSize.secondary
+            + FlowSpacing.xxxl + FlowSpacing.l
+
     /// Minimum gap the focus card must keep from the wheel at rest.
     public static let wheelCardGap: CGFloat = 24
 }

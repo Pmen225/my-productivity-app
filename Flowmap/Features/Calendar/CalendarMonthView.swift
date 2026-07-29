@@ -1,9 +1,10 @@
 import SwiftData
 import SwiftUI
 
-/// Month view is for navigation, not dense editing: each cell shows a day
-/// number, a busy dot if anything is scheduled, and — when it fits — a small
-/// count. Tapping a day jumps into Day view for that date.
+/// The month grid: a weekday row and one cell per day, each showing the day
+/// number and a busy dot if anything is scheduled. It is the fixed top half of
+/// the Calendar page — the panel underneath shows what the selected day holds,
+/// so tapping a cell only moves the selection.
 struct CalendarMonthView: View {
     @Environment(\.flow) private var flow
     @Environment(\.colorScheme) private var scheme
@@ -11,6 +12,8 @@ struct CalendarMonthView: View {
 
     let anchorDate: Date
     let onSelectDay: (Date) -> Void
+    /// Called with -1 / +1 when the grid is dragged sideways past the threshold.
+    let onStepMonth: (Int) -> Void
 
     private var calendar: Calendar {
         CalendarDateMath.calendar(firstWeekday: flow?.settings.firstWeekday ?? 2)
@@ -34,35 +37,46 @@ struct CalendarMonthView: View {
     private let columns = Array(repeating: GridItem(.flexible(), spacing: FlowSpacing.xs), count: 7)
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: FlowSpacing.m) {
-                // Single-letter symbols can repeat (Tue/Thu, Sat/Sun both
-                // read "T"/"S"), so the row is indexed by position, never by
-                // the string itself.
-                HStack(spacing: FlowSpacing.xs) {
-                    ForEach(0..<weekdaySymbols.count, id: \.self) { index in
-                        Text(weekdaySymbols[index].uppercased())
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .kerning(1)
-                            .foregroundStyle(FlowTheme.tertiaryText(scheme))
-                            .frame(maxWidth: .infinity)
-                    }
+        VStack(alignment: .leading, spacing: FlowSpacing.m) {
+            // Single-letter symbols can repeat (Tue/Thu, Sat/Sun both
+            // read "T"/"S"), so the row is indexed by position, never by
+            // the string itself.
+            HStack(spacing: FlowSpacing.xs) {
+                ForEach(0..<weekdaySymbols.count, id: \.self) { index in
+                    Text(weekdaySymbols[index].uppercased())
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .kerning(1)
+                        .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                        .frame(maxWidth: .infinity)
                 }
-
-                LazyVGrid(columns: columns, spacing: FlowSpacing.xs) {
-                    // `cells` is recomputed fresh every render from `anchorDate`;
-                    // stable date identity keeps SwiftUI's diff correct even
-                    // though the whole array is replaced on every navigation.
-                    ForEach(cells) { cell in
-                        dayCell(cell)
-                    }
-                }
-
-                agendaSection
             }
-            .padding(.horizontal, FlowSpacing.screen)
-            .padding(.vertical, FlowSpacing.m)
+
+            LazyVGrid(columns: columns, spacing: FlowSpacing.xs) {
+                // `cells` is recomputed fresh every render from `anchorDate`;
+                // stable date identity keeps SwiftUI's diff correct even
+                // though the whole array is replaced on every navigation.
+                ForEach(cells) { cell in
+                    dayCell(cell)
+                }
+            }
         }
+        .padding(.horizontal, FlowSpacing.screen)
+        .padding(.vertical, FlowSpacing.m)
+        // The gaps between cells have to carry the drag too, or a swipe that
+        // starts between two days is swallowed.
+        .contentShape(Rectangle())
+        .gesture(monthSwipe)
+    }
+
+    /// Mock row 6. `minimumDistance` is what keeps a tap on a day cell from
+    /// ever being read as a drag; the direction test lives in
+    /// `CalendarDateMath.monthStep(forDrag:)`.
+    private var monthSwipe: some Gesture {
+        DragGesture(minimumDistance: 20)
+            .onEnded { value in
+                let step = CalendarDateMath.monthStep(forDrag: value.translation)
+                if step != 0 { onStepMonth(step) }
+            }
     }
 
     private func dayCell(_ cell: CalendarDateMath.DayCell) -> some View {
@@ -127,40 +141,5 @@ struct CalendarMonthView: View {
         formatter.dateStyle = .full
         let dayText = formatter.string(from: date)
         return busyCount > 0 ? "\(dayText), \(busyCount) scheduled" : dayText
-    }
-
-    // MARK: - Agenda
-
-    /// The selected day's segments and external events, chronologically
-    /// merged — mirrors what `CalendarAgendaView` shows per day, just for the
-    /// one day currently in focus and without its section header.
-    private var agendaItems: [AgendaLineItem] {
-        let interval = CalendarDateMath.dayInterval(containing: anchorDate, calendar: calendar)
-        let segments = allSegments
-            .filter { $0.state.occupiesTimeline }
-            .filter { $0.startDate < interval.end && $0.endDate > interval.start }
-            .map(AgendaLineItem.segment)
-        let events = (flow?.calendarService.events ?? [])
-            .filter { $0.start < interval.end && $0.end > interval.start }
-            .map(AgendaLineItem.event)
-        return (segments + events).sorted { $0.start < $1.start }
-    }
-
-    @ViewBuilder
-    private var agendaSection: some View {
-        VStack(alignment: .leading, spacing: FlowSpacing.s) {
-            FlowEyebrow("AGENDA")
-            if agendaItems.isEmpty {
-                Text("Nothing scheduled")
-                    .font(FlowFont.secondary)
-                    .foregroundStyle(FlowTheme.secondaryText(scheme))
-                    .padding(.vertical, FlowSpacing.xs)
-            } else {
-                ForEach(agendaItems) { item in
-                    CalendarAgendaRow(item: item)
-                }
-            }
-        }
-        .padding(.top, FlowSpacing.s)
     }
 }

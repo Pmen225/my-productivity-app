@@ -226,13 +226,90 @@ final class ScreenshotTests: XCTestCase {
         if tapTab(app, "Calendar") {
             capture(app, named: "iphone-calendar")
 
-            let monthMode = app.buttons["Month"].firstMatch
-            if monthMode.waitForExistence(timeout: 5) {
-                monthMode.tap()
-                Thread.sleep(forTimeInterval: 2)
-                capture(app, named: "iphone-calendar-month")
+            // A day cell still takes a tap: the grid's own drag recogniser sits
+            // over these buttons, and one that swallowed them would leave the
+            // panel stuck on today with nothing failing. Today has a full plan
+            // and the 1st does not, so the empty state appearing is the proof
+            // the selection actually moved.
+            // Two spellings so the step does not hinge on the simulator's
+            // region: the cell's label is a full-style date, ", 1 July 2026"
+            // in en_GB and "July 1, 2026" in en_US. The leading comma keeps
+            // "31 July 2026" from matching.
+            let firstOfMonth = app.buttons.matching(
+                NSPredicate(
+                    format: "label CONTAINS[c] ', 1 July 2026' OR label CONTAINS[c] 'July 1, 2026'"
+                )
+            ).firstMatch
+            if firstOfMonth.waitForExistence(timeout: 5) {
+                firstOfMonth.tap()
+                XCTAssertTrue(
+                    app.staticTexts["Nothing planned."].waitForExistence(timeout: 5),
+                    "Tapping a day cell did not move the agenda to that day"
+                )
+                app.buttons["Today"].firstMatch.tap()
+                Thread.sleep(forTimeInterval: 1)
             } else {
-                XCTFail("Month mode control not found")
+                XCTFail("Day cell not found in the month grid")
+            }
+
+            // Decision 17's gesture. Driven as a coordinate drag across the
+            // grid itself rather than a window-wide swipe, which would land on
+            // the paging panel underneath and flip its page instead. The header
+            // is asserted, not just photographed — a gesture that quietly does
+            // nothing still produces a plausible-looking picture.
+            let grid = app.windows.firstMatch
+            grid.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.33))
+                .press(
+                    forDuration: 0.05,
+                    thenDragTo: grid.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.33))
+                )
+            Thread.sleep(forTimeInterval: 1)
+            let steppedMonth = app.buttons.matching(
+                NSPredicate(format: "label CONTAINS[c] 'choose month'")
+            ).firstMatch
+            XCTAssertTrue(
+                steppedMonth.label.contains("August"),
+                "Dragging the month grid sideways did not step the month: \(steppedMonth.label)"
+            )
+            capture(app, named: "iphone-calendar-next-month")
+
+            // "Today" only exists once you have navigated away, which is why it
+            // is tapped here rather than on the first capture.
+            app.buttons["Today"].firstMatch.tap()
+            Thread.sleep(forTimeInterval: 1)
+
+            // Scrolled to the end, to prove the day's last row clears the tab
+            // bar, the FAB and the orb rather than sitting under them.
+            app.swipeUp()
+            app.swipeUp()
+            Thread.sleep(forTimeInterval: 1)
+            capture(app, named: "iphone-calendar-agenda-bottom")
+
+            // The panel's second page. Driven from its dot rather than a
+            // coordinate swipe, so the capture can't photograph page one
+            // because a drag was eaten by the page's own scroll view.
+            let weeklyPlanDot = app.buttons["WEEKLY PLAN"].firstMatch
+            if weeklyPlanDot.waitForExistence(timeout: 5) {
+                weeklyPlanDot.tap()
+                Thread.sleep(forTimeInterval: 2)
+                capture(app, named: "iphone-calendar-weekly-plan")
+                app.buttons["AGENDA"].firstMatch.tap()
+                Thread.sleep(forTimeInterval: 1)
+            } else {
+                XCTFail("Weekly Plan page control not found")
+            }
+
+            // The month/year jump panel, opened from the header title.
+            let monthTitle = app.buttons.matching(
+                NSPredicate(format: "label CONTAINS[c] 'choose month'")
+            ).firstMatch
+            if monthTitle.waitForExistence(timeout: 5) {
+                monthTitle.tap()
+                Thread.sleep(forTimeInterval: 2)
+                capture(app, named: "iphone-calendar-month-picker")
+                monthTitle.tap()
+            } else {
+                XCTFail("Month/year picker control not found")
             }
         }
 
