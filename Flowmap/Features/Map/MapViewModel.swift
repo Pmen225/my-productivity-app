@@ -50,6 +50,11 @@ public final class MapViewModel {
     public var focusBranchID: UUID?
     public var pendingDeletion: MapNode?
     public var searchQuery: String = ""
+    public var isSearchPresented: Bool = false
+    /// The canvas's current size, published here so the toolbar's canvas menu
+    /// can drive `fitToMap`/`centreOnSelection` without the canvas having to
+    /// own a floating control of its own.
+    public var viewportSize: CGSize = .zero
 
     public init(map: MapDocument, context: ModelContext) {
         self.map = map

@@ -11,7 +11,6 @@ struct MapCanvasView: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @State private var viewportSize: CGSize = .zero
     /// Guards the one-time fit so reappearing does not throw away the user's pan.
     @State private var hasFitted = false
     /// Once the user pans or zooms by hand, automatic re-fitting stops.
@@ -19,7 +18,6 @@ struct MapCanvasView: View {
     @State private var draggingNodeID: UUID?
     @State private var dragTranslation: CGSize = .zero
     @State private var renamingNodeID: UUID?
-    @State private var isSearchPresented = false
     @GestureState private var pinchDelta: CGFloat = 1
     @GestureState private var panDelta: CGSize = .zero
     /// Persisted, so the canvas hint is shown once in the app's life rather
@@ -48,7 +46,7 @@ struct MapCanvasView: View {
             // read as a reset rather than two aborted drags.
             .simultaneousGesture(TapGesture(count: 2).onEnded { resetViewport() })
             .onAppear {
-                viewportSize = proxy.size
+                viewModel.viewportSize = proxy.size
                 // A map that has never been positioned opens fitted, rather than
                 // with the tree running off the edge of the canvas.
                 //
@@ -68,7 +66,7 @@ struct MapCanvasView: View {
                     viewModel.fitToMap(viewportSize: proxy.size)
                 }
             }
-            .onChange(of: proxy.size) { _, newValue in viewportSize = newValue }
+            .onChange(of: proxy.size) { _, newValue in viewModel.viewportSize = newValue }
             // SwiftData faults child relationships in lazily, so the node set
             // can keep growing for a few runloop turns after the deferred fit —
             // each growth re-fits until the user takes the canvas over.
@@ -80,8 +78,7 @@ struct MapCanvasView: View {
                 if viewModel.map.nodeCount == 0 { emptyState }
             }
             .overlay(alignment: .bottom) { canvasHint }
-            .overlay(alignment: .bottomTrailing) { canvasControls }
-            .overlay(alignment: .top) { if isSearchPresented { searchBar } }
+            .overlay(alignment: .top) { if viewModel.isSearchPresented { searchBar } }
         }
         .clipped()
     }
@@ -295,7 +292,7 @@ struct MapCanvasView: View {
         viewModel.zoom = 1
         viewModel.panOffset = .zero
         viewModel.persistCanvasState()
-        viewModel.fitToMap(viewportSize: viewportSize)
+        viewModel.fitToMap(viewportSize: viewModel.viewportSize)
     }
 
     /// The mock's one-shot onboarding line. Shown once ever, and gone the
@@ -358,67 +355,9 @@ struct MapCanvasView: View {
 
     // MARK: - Floating controls
 
-    private var canvasControls: some View {
-        VStack(spacing: FlowSpacing.s) {
-            Button(action: { isSearchPresented.toggle() }) {
-                Image(systemName: "magnifyingglass")
-                    .mapMinimumHitTarget()
-            }
-            .accessibilityLabel("Search ideas")
-
-            Button(action: { viewModel.isCompact.toggle() }) {
-                Image(systemName: viewModel.isCompact ? "rectangle.expand.vertical" : "rectangle.compress.vertical")
-                    .mapMinimumHitTarget()
-            }
-            .accessibilityLabel(viewModel.isCompact ? "Turn off compact mode" : "Turn on compact mode")
-
-            Divider().frame(width: 20)
-
-            Button(action: {
-                viewModel.zoom = min(viewModel.zoom + 0.15, Self.maximumZoom)
-                viewModel.persistCanvasState()
-            }) {
-                Image(systemName: "plus.magnifyingglass")
-                    .mapMinimumHitTarget()
-            }
-            .accessibilityLabel("Zoom in")
-
-            Button(action: {
-                viewModel.zoom = max(viewModel.zoom - 0.15, Self.minimumZoom)
-                viewModel.persistCanvasState()
-            }) {
-                Image(systemName: "minus.magnifyingglass")
-                    .mapMinimumHitTarget()
-            }
-            .accessibilityLabel("Zoom out")
-
-            Button(action: { viewModel.fitToMap(viewportSize: viewportSize) }) {
-                Image(systemName: "arrow.up.left.and.arrow.down.right")
-                    .mapMinimumHitTarget()
-            }
-            .accessibilityLabel("Fit map")
-
-            Button(action: { viewModel.centreOnSelection(viewportSize: viewportSize) }) {
-                Image(systemName: "scope")
-                    .mapMinimumHitTarget()
-            }
-            .disabled(viewModel.selectedNode == nil)
-            .accessibilityLabel("Centre selection")
-        }
-        .buttonStyle(.plain)
-        .font(.system(size: 16, weight: .semibold))
-        .foregroundStyle(FlowTheme.primaryText(scheme))
-        .padding(FlowSpacing.s)
-        .background(
-            RoundedRectangle(cornerRadius: FlowRadius.medium, style: .continuous)
-                .fill(FlowTheme.surface(scheme))
-        )
-        .shadow(color: FlowTheme.shadow(scheme), radius: 8, y: 2)
-        .padding(FlowSpacing.l)
-        // KNOWN PROBLEM: the canvas draws under the now-visible tab bar, so
-        // the bottom two buttons of this stack are cut off. Moving it, padding
-        // it and laying it out as a row were all tried and all made it worse —
-        // it needs fewer controls or a menu, not a different corner.
+    private func zoom(by delta: CGFloat) {
+        viewModel.zoom = min(max(viewModel.zoom + delta, Self.minimumZoom), Self.maximumZoom)
+        viewModel.persistCanvasState()
     }
 
     // MARK: - Search bar

@@ -113,13 +113,61 @@ public struct MapDetailView: View {
             }
             .accessibilityLabel("Add idea")
 
-            #if !os(macOS)
-            Button(action: { isInspectorPresented = true }) {
-                Image(systemName: "info.circle")
+            // The canvas used to float this cluster over its own bottom-left
+            // corner. It drew under the tab bar and lost its lower buttons the
+            // moment that bar became visible, and no amount of re-anchoring
+            // fixed it — a toolbar item cannot be occluded by anything.
+            // Zoom in/out are gone rather than moved: pinch zooms, and a
+            // double tap on the canvas resets.
+            Menu {
+                Button {
+                    viewModel.isSearchPresented.toggle()
+                } label: {
+                    Label("Search ideas", systemImage: "magnifyingglass")
+                }
+
+                Button {
+                    viewModel.isCompact.toggle()
+                } label: {
+                    Label(
+                        viewModel.isCompact ? "Turn off compact mode" : "Turn on compact mode",
+                        systemImage: viewModel.isCompact
+                            ? "rectangle.expand.vertical"
+                            : "rectangle.compress.vertical"
+                    )
+                }
+
+                Section {
+                    Button {
+                        viewModel.fitToMap(viewportSize: viewModel.viewportSize)
+                    } label: {
+                        Label("Fit map", systemImage: "arrow.up.left.and.arrow.down.right")
+                    }
+
+                    Button {
+                        viewModel.centreOnSelection(viewportSize: viewModel.viewportSize)
+                    } label: {
+                        Label("Centre selection", systemImage: "scope")
+                    }
+                    .disabled(viewModel.selectedNode == nil)
+
+                    // In here rather than beside the toolbar's other buttons:
+                    // a fifth trailing item squeezes the `Map | Outline | ⋯`
+                    // chip out of the nav bar's centre entirely. Like Centre
+                    // selection, this one needs a selected node anyway.
+                    #if !os(macOS)
+                    Button {
+                        isInspectorPresented = true
+                    } label: {
+                        Label("Idea details", systemImage: "info.circle")
+                    }
+                    .disabled(viewModel.selectedNode == nil)
+                    #endif
+                }
+            } label: {
+                Image(systemName: "slider.horizontal.3")
             }
-            .disabled(viewModel.selectedNode == nil)
-            .accessibilityLabel("Idea details")
-            #endif
+            .accessibilityLabel("Canvas controls")
         }
     }
 
