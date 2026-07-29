@@ -164,6 +164,8 @@ struct QuickCaptureView: View {
     @State private var title = ""
     @State private var minutes = 30
     @State private var projectID: UUID?
+    @State private var subtaskTitles: [String] = []
+    @State private var note = ""
 
     private var projectOptions: [FlowCreateProjectOption] {
         projects.map { FlowCreateProjectOption(id: $0.id, title: $0.title, colour: $0.colour) }
@@ -175,6 +177,8 @@ struct QuickCaptureView: View {
             title: $title,
             minutes: $minutes,
             projectID: $projectID,
+            subtaskTitles: $subtaskTitles,
+            note: $note,
             projects: projectOptions,
             showsDurationAndProject: kind == .task || kind == .initiative,
             onClose: { dismiss() },
@@ -204,6 +208,8 @@ struct QuickCaptureView: View {
                 project: project
             )
             context.insert(task)
+            attachSubtasks(to: task)
+            attachNote(to: task)
             // The mock says "Task added — Inbox + map"; nothing here puts it on
             // the map, so the pill claims only what actually happened.
             flow?.moments.show(.hud("Task added — Inbox"))
@@ -215,6 +221,25 @@ struct QuickCaptureView: View {
         try? context.save()
 
         title = ""
+        subtaskTitles = []
+        note = ""
         dismiss()
+    }
+
+    private func attachSubtasks(to task: FlowTask) {
+        for (index, subtaskTitle) in subtaskTitles.enumerated() {
+            context.insert(Subtask(title: subtaskTitle, sortOrder: index, task: task))
+        }
+    }
+
+    /// The sheet's note is one paragraph, so it becomes a `Note` with a single
+    /// block — the same shape the notes screen writes, rather than a second
+    /// way of storing text on a task.
+    private func attachNote(to task: FlowTask) {
+        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let attached = Note(title: task.title, task: task)
+        context.insert(attached)
+        context.insert(NoteBlock(type: .paragraph, text: trimmed, note: attached))
     }
 }

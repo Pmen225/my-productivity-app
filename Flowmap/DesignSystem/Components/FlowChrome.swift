@@ -462,6 +462,26 @@ public struct FlowPopoverMenu<ID: Hashable>: View {
     }
 }
 
+/// The create sheet's text-input shape: surface fill, hairline border, the
+/// mock's 12pt corner. Shared by the name, subtask and note fields so they
+/// cannot drift apart.
+private struct FieldChrome: ViewModifier {
+    let scheme: ColorScheme
+
+    func body(content: Content) -> some View {
+        content
+            .padding(FlowSpacing.m)
+            .background(
+                RoundedRectangle(cornerRadius: FlowRadius.small, style: .continuous)
+                    .fill(FlowTheme.surface(scheme))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: FlowRadius.small, style: .continuous)
+                    .strokeBorder(FlowTheme.separatorStrong(scheme), lineWidth: 1)
+            )
+    }
+}
+
 // MARK: - Create sheet
 
 /// What a `FlowCreateSheet` is making.
@@ -525,6 +545,11 @@ public struct FlowCreateSheet: View {
     @Binding private var title: String
     @Binding private var minutes: Int
     @Binding private var projectID: UUID?
+    /// Subtask titles typed here before the task exists. Plain strings rather
+    /// than `Subtask` models: nothing is inserted into the store until Create
+    /// is pressed, so an abandoned sheet leaves nothing behind.
+    @Binding private var subtaskTitles: [String]
+    @Binding private var note: String
     private let durations: [Int]
     private let projects: [FlowCreateProjectOption]
     /// Hidden for kinds where a duration and a parent project make no sense
@@ -533,11 +558,17 @@ public struct FlowCreateSheet: View {
     private let onClose: () -> Void
     private let onCreate: () -> Void
 
+    /// The subtask being typed. Local, because a half-typed row is not part of
+    /// what the sheet is making until return commits it.
+    @State private var draftSubtask = ""
+
     public init(
         kind: Binding<FlowCreateKind>,
         title: Binding<String>,
         minutes: Binding<Int>,
         projectID: Binding<UUID?>,
+        subtaskTitles: Binding<[String]>,
+        note: Binding<String>,
         durations: [Int] = FlowDurationWheel.defaultOptions,
         projects: [FlowCreateProjectOption],
         showsDurationAndProject: Bool = true,
@@ -548,6 +579,8 @@ public struct FlowCreateSheet: View {
         self._title = title
         self._minutes = minutes
         self._projectID = projectID
+        self._subtaskTitles = subtaskTitles
+        self._note = note
         self.durations = durations
         self.projects = projects
         self.showsDurationAndProject = showsDurationAndProject
@@ -565,6 +598,12 @@ public struct FlowCreateSheet: View {
                 if !projects.isEmpty {
                     projectSection
                 }
+            }
+            // Only a task breaks into subtasks and carries a note — a project
+            // or an initiative is the thing those hang off, not a unit of work.
+            if kind == .task {
+                subtasksSection
+                noteSection
             }
             if let explanation = kind.explanation {
                 Text(explanation)
@@ -628,16 +667,59 @@ public struct FlowCreateSheet: View {
     private var titleField: some View {
         TextField(kind.namePlaceholder, text: $title)
             .font(FlowFont.body)
-            .padding(FlowSpacing.m)
-            .background(
-                RoundedRectangle(cornerRadius: FlowRadius.small, style: .continuous)
-                    .fill(FlowTheme.surface(scheme))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: FlowRadius.small, style: .continuous)
-                    .strokeBorder(FlowTheme.separatorStrong(scheme), lineWidth: 1)
-            )
+            .modifier(FieldChrome(scheme: scheme))
             .accessibilityLabel("\(kind.title) name")
+    }
+
+    /// The mock's `SUBTASKS` block: what is already listed, each removable,
+    /// then one input that adds a row on return and stays ready for the next.
+    private var subtasksSection: some View {
+        VStack(alignment: .leading, spacing: FlowSpacing.s) {
+            FlowEyebrow("Subtasks")
+            ForEach(Array(subtaskTitles.enumerated()), id: \.offset) { index, subtask in
+                HStack(spacing: FlowSpacing.s) {
+                    Text(subtask)
+                        .font(FlowFont.secondary)
+                        .foregroundStyle(FlowTheme.primaryText(scheme))
+                    Spacer(minLength: 0)
+                    Button {
+                        subtaskTitles.remove(at: index)
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(FlowTheme.secondaryText(scheme))
+                            // HIG override 1 again: small glyph, grown target.
+                            .flowHitTarget()
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Remove \(subtask)")
+                }
+            }
+            TextField("Add a subtask + return…", text: $draftSubtask)
+                .font(FlowFont.secondary)
+                .submitLabel(.done)
+                .onSubmit(addDraftSubtask)
+                .modifier(FieldChrome(scheme: scheme))
+                .accessibilityLabel("Add a subtask")
+        }
+    }
+
+    private var noteSection: some View {
+        VStack(alignment: .leading, spacing: FlowSpacing.s) {
+            FlowEyebrow("Note")
+            TextField("Optional note — attaches to this task…", text: $note, axis: .vertical)
+                .font(FlowFont.secondary)
+                .lineLimit(1...4)
+                .modifier(FieldChrome(scheme: scheme))
+                .accessibilityLabel("Note")
+        }
+    }
+
+    private func addDraftSubtask() {
+        let trimmed = draftSubtask.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        subtaskTitles.append(trimmed)
+        draftSubtask = ""
     }
 
     /// The mock puts the label beside the wheel, not above it as an eyebrow.
