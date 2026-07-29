@@ -16,6 +16,12 @@ struct PrioritiseDuelView: View {
     @Environment(\.flow) private var flow
     @Environment(\.modelContext) private var context
     @Environment(\.colorScheme) private var scheme
+
+    /// The mockup counts the duels in words beside the bar, so the progress
+    /// is readable without interpreting a bar's fill.
+    static func duelCounter(index: Int, total: Int) -> String {
+        "\(min(index + 1, total)) of \(total)"
+    }
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -86,18 +92,23 @@ struct PrioritiseDuelView: View {
         let pair = pairs[currentPairIndex]
         return VStack(spacing: FlowSpacing.xl) {
             VStack(spacing: FlowSpacing.s) {
+                FlowEyebrow("Prioritise", tint: FlowTheme.accent)
                 Text("Which comes first?")
                     .font(FlowFont.sectionTitle)
                     .foregroundStyle(FlowTheme.primaryText(scheme))
                 ProgressView(value: Double(currentPairIndex), total: Double(pairs.count))
                     .tint(FlowTheme.accentFill)
+                    .accessibilityHidden(true)
+                Text(Self.duelCounter(index: currentPairIndex, total: pairs.count))
+                    .font(FlowFont.caption)
+                    .foregroundStyle(FlowTheme.tertiaryText(scheme))
                     .accessibilityLabel("Duel \(currentPairIndex + 1) of \(pairs.count)")
             }
 
             if let first = tasksByID[pair.first], let second = tasksByID[pair.second] {
                 VStack(spacing: FlowSpacing.m) {
                     choiceButton(for: first, against: second)
-                    Text("vs")
+                    Text("or")
                         .font(FlowFont.caption)
                         .foregroundStyle(FlowTheme.tertiaryText(scheme))
                     choiceButton(for: second, against: first)
@@ -145,10 +156,13 @@ struct PrioritiseDuelView: View {
 
     private var revealStage: some View {
         VStack(spacing: FlowSpacing.l) {
-            Text("Here's the order")
-                .font(FlowFont.sectionTitle)
-                .foregroundStyle(FlowTheme.primaryText(scheme))
-                .padding(.top, FlowSpacing.m)
+            VStack(spacing: FlowSpacing.s) {
+                FlowEyebrow("Your order", tint: FlowTheme.accent)
+                Text("Decision made.")
+                    .font(FlowFont.sectionTitle)
+                    .foregroundStyle(FlowTheme.primaryText(scheme))
+            }
+            .padding(.top, FlowSpacing.m)
 
             ScrollView {
                 VStack(spacing: FlowSpacing.s) {

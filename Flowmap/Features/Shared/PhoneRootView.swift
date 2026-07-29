@@ -2,76 +2,85 @@
 import SwiftData
 import SwiftUI
 
-/// The iPhone shell: five calm destinations, with the Assistant reachable in one
-/// tap from a floating orb rather than eating a sixth tab.
+/// The iPhone shell: a real, native tab bar with exactly five destinations —
+/// Plan, Focus, Map + Today, Calendar, Settings — restyled with `FlowTheme`.
+///
+/// Decision 1b (2026-07-29) reverses the `≡` glass menu subtask 37 built.
+/// That menu still switched tabs through a hidden 7-tag `TabView`, and iOS
+/// collapses any `TabView` past 5 tags into a stock system "More" list
+/// regardless of `.toolbar(.hidden, for: .tabBar)` — confirmed the hard way
+/// on Stats/Settings. Capping this `TabView` at exactly 5 tags and letting it
+/// draw its own chrome (instead of hiding it behind a custom overlay) avoids
+/// the bug and gives a genuinely native tab bar, not a web-style hamburger.
 struct PhoneRootView: View {
     @Environment(\.flow) private var flow
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @State private var tab: DeepLink = .today
+    @Query private var allTasks: [FlowTask]
+
+    // The mockup's launch screen is Focus (`00-initial.png`).
+    @State private var tab: DeepLink = .focus
     @State private var showingAssistant = false
     @State private var showingSearch = false
     @State private var showingCapture = false
+    // Today is no longer a tab (decision 1b) — it stays reachable by deep
+    // link and notification, presented as a sheet, until T3 folds it into
+    // the Map page as a pane.
+    @State private var showingToday = false
+    // Stats also isn't a tab — it's a chart-icon push on Plan's own
+    // NavigationStack. Owned here so the deep-link handler can drive it from
+    // outside Plan/LibraryView.
+    @State private var pushStats = false
 
-    /// Tab order and icon for the floating tab bar. Labels come from
-    /// `DeepLink.title` so the chrome and the deep-link vocabulary never drift.
-    private static let tabOrder: [(DeepLink, systemImage: String)] = [
-        (.today, "sun.max"),
-        (.map, "point.topleft.down.to.point.bottomright.curvepath"),
-        (.calendar, "calendar"),
-        (.focus, "timer"),
-        (.library, "square.stack"),
-    ]
+    private var inboxCount: Int {
+        SmartView.inbox.matches(allTasks).count
+    }
 
     var body: some View {
         ZStack(alignment: .bottom) {
             TabView(selection: $tab) {
                 NavigationStack {
-                    TodayView()
+                    LibraryView(showingAssistant: $showingAssistant, pushStats: $pushStats, onSearchResult: navigate(to:))
                 }
-                .tabItem { Label("Today", systemImage: "sun.max") }
-                .tag(DeepLink.today)
-                .toolbar(.hidden, for: .tabBar)
-
-                NavigationStack {
-                    MapListView()
-                }
-                .tabItem {
-                    Label("Map", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
-                }
-                .tag(DeepLink.map)
-                .toolbar(.hidden, for: .tabBar)
-
-                NavigationStack {
-                    CalendarRootView()
-                }
-                .tabItem { Label("Calendar", systemImage: "calendar") }
-                .tag(DeepLink.calendar)
-                .toolbar(.hidden, for: .tabBar)
+                .tabItem { Label("Plan", systemImage: "square.stack") }
+                .tag(DeepLink.library)
+                .badge(inboxCount > 0 ? "\(inboxCount)" : nil)
 
                 NavigationStack {
                     FocusScreen()
                 }
                 .tabItem { Label("Focus", systemImage: "timer") }
                 .tag(DeepLink.focus)
-                .toolbar(.hidden, for: .tabBar)
 
                 NavigationStack {
-                    LibraryView(showingAssistant: $showingAssistant, onSearchResult: navigate(to:))
+                    MapListView()
                 }
-                .tabItem { Label("Library", systemImage: "square.stack") }
-                .tag(DeepLink.library)
-                .toolbar(.hidden, for: .tabBar)
-            }
+                .tabItem {
+                    Label("Map + Today", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
+                }
+                .tag(DeepLink.map)
 
-            FlowTabBar(
-                selection: $tab,
-                items: Self.tabOrder.map {
-                    FlowTabBarItem(id: $0.0, title: $0.0.title, systemImage: $0.systemImage)
+                NavigationStack {
+                    CalendarRootView()
                 }
-            )
-            .padding(.horizontal, FlowSpacing.screen)
-            .padding(.bottom, FlowSpacing.xs)
+                .tabItem { Label("Calendar", systemImage: "calendar") }
+                .tag(DeepLink.calendar)
+
+                NavigationStack {
+                    SettingsScreen()
+                }
+                .tabItem { Label("Settings", systemImage: "gearshape") }
+                .tag(DeepLink.settings)
+            }
+            // The system bar now actually renders — restyled, not hidden.
+            // The `.ultraThinMaterial` matches the base layer `.flowGlass()`
+            // uses everywhere else in the chrome (see `GlassBackground` in
+            // `FlowSurfaces.swift`); the accent tint matches `FlowTabBar`'s
+            // restored-but-unused styling in `FlowChrome.swift`.
+            .tint(FlowTheme.accent)
+            .toolbarBackground(.ultraThinMaterial, for: .tabBar)
+            .toolbarBackground(.visible, for: .tabBar)
         }
         // Focus fills the space above the tab bar with its own card, so the
         // floating controls would sit on top of it. The Assistant and quick
@@ -83,6 +92,8 @@ struct PhoneRootView: View {
                     assistantOrb
                 }
                 .padding(.trailing, FlowSpacing.screen)
+                // Clears the now-visible native tab bar rather than a
+                // floating one, so the FAB stack sits above its safe area.
                 .padding(.bottom, FlowSpacing.xxxl)
             }
         }
@@ -98,11 +109,22 @@ struct PhoneRootView: View {
                 .presentationDragIndicator(.hidden)
                 .presentationCornerRadius(FlowRadius.large)
         }
+        // Today: sheet, not full-screen cover — matches the ambient idiom
+        // this shell already uses for Assistant/Search/Quick capture, and it
+        // is an interim, deep-link-only destination until T3 folds it into
+        // Map + Today.
+        .sheet(isPresented: $showingToday) {
+            NavigationStack { TodayView() }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .flowmapOpenDeepLink)) { notification in
             guard let request = notification.object as? DeepLinkRequest else { return }
             switch request.destination {
             case .assistant: showingAssistant = true
             case .inbox: tab = .library
+            case .today: showingToday = true
+            case .stats:
+                tab = .library
+                pushStats = true
             default: tab = request.destination
             }
         }
@@ -152,6 +174,11 @@ struct LibraryView: View {
     @Query(sort: \TaskList.sortOrder) private var lists: [TaskList]
 
     @Binding var showingAssistant: Bool
+    /// Stats dropped off the tab bar (decision 1b) and is reached instead by
+    /// a chart-icon push on this screen's own `NavigationStack`. Owned by
+    /// `PhoneRootView` so its deep-link handler can drive the push from
+    /// outside Plan too.
+    @Binding var pushStats: Bool
     /// Routes a chosen search result, so a Library search behaves like the
     /// shell's own — selecting a result must actually go somewhere.
     let onSearchResult: (SearchResult) -> Void
@@ -210,7 +237,12 @@ struct LibraryView: View {
         .background(FlowTheme.background(scheme).ignoresSafeArea())
         .flowScreenTitle("Library")
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
+            // Left at trailing, where subtask 37's `≡` build put it — that
+            // rationale (the floating `≡` owning the top-left corner) no
+            // longer applies now the tab bar is back, but there is no design
+            // authority for a specific placement here, so it stays rather
+            // than guess. Open question, see closing handover.
+            ToolbarItem(placement: .topBarTrailing) {
                 Button { showingSearch = true } label: { Image(systemName: "magnifyingglass") }
                     .accessibilityLabel("Search")
             }
@@ -218,6 +250,16 @@ struct LibraryView: View {
                 Button { showingCapture = true } label: { Image(systemName: "plus") }
                     .accessibilityLabel("Quick capture")
             }
+            // Stats: decision 1b drops it off the tab bar; reached instead
+            // by this chart-icon push, normal `NavigationLink` behaviour, not
+            // a tab and not a sheet.
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { pushStats = true } label: { Image(systemName: "chart.bar") }
+                    .accessibilityLabel("Stats")
+            }
+        }
+        .navigationDestination(isPresented: $pushStats) {
+            ProgressScreen()
         }
         .sheet(isPresented: $showingSearch) {
             GlobalSearchView { result in onSearchResult(result) }

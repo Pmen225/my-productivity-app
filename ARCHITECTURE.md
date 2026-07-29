@@ -10,7 +10,7 @@ divergences are handled at the shell level.
 ```
 FlowmapApp
 └── RootView
-    ├── PhoneRootView   (iOS)    five-item tab bar + Assistant orb
+    ├── PhoneRootView   (iOS)    five-tab bar (Plan/Focus/Map+Today/Calendar/Settings) + create FAB + Assistant orb
     └── MacRootView     (macOS)  NavigationSplitView: Plan / Build / Review / AI
 ```
 

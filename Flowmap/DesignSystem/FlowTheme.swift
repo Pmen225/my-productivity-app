@@ -170,6 +170,10 @@ public enum FlowTheme {
         scheme == .dark ? Color(hex: 0xD07E4C) : Color(hex: 0xA5591F)
     }
 
+    /// Delete. A deeper, redder clay so a destructive action reads as its own
+    /// thing beside the accent rather than as more of the same.
+    public static let destructive = Color(hex: 0xB4543A)
+
     /// The accent pressed into a smaller space — eyebrows over a tinted card,
     /// where the full-strength clay would vibrate.
     public static let accentDeep = Color(hex: 0xA5591F)

@@ -3,6 +3,15 @@ import SwiftUI
 // MARK: - Floating tab bar
 
 /// One entry in a `FlowTabBar` — a destination's tag, label and icon.
+///
+/// Decision 1b (2026-07-29) reverses subtask 37's `≡` glass menu back to a
+/// tab bar. `PhoneRootView` now drives the *real* native `TabView`/`.tabItem`
+/// chrome directly (so it stays a genuinely native tab bar, not a custom
+/// overlay hidden behind the system one) and restyles it with
+/// `.tint(FlowTheme.accent)` plus a material `.toolbarBackground`. This type
+/// is restored here — matching its pre-subtask-37 shape exactly — as the
+/// design system's record of the floating-pill styling those native
+/// modifiers are matched to; nothing currently instantiates it.
 public struct FlowTabBarItem<Tag: Hashable>: Identifiable {
     public let id: Tag
     public let title: String
@@ -165,29 +174,42 @@ public extension View {
 public struct FlowDialog: View {
     @Environment(\.colorScheme) private var scheme
 
-    private let eyebrow: String
+    private let eyebrow: String?
     private let title: String
     private let message: String
     private let ctaTitle: String
+    private let isDestructive: Bool
+    private let cancelTitle: String?
     private let ctaAction: () -> Void
+    private let cancelAction: (() -> Void)?
 
+    /// `eyebrow` is optional because the mock's delete card has none, and
+    /// `cancelTitle` because most of these dialogs are single-decision.
     public init(
-        eyebrow: String,
+        eyebrow: String? = nil,
         title: String,
         message: String,
         ctaTitle: String,
-        ctaAction: @escaping () -> Void
+        isDestructive: Bool = false,
+        cancelTitle: String? = nil,
+        ctaAction: @escaping () -> Void,
+        cancelAction: (() -> Void)? = nil
     ) {
         self.eyebrow = eyebrow
         self.title = title
         self.message = message
         self.ctaTitle = ctaTitle
+        self.isDestructive = isDestructive
+        self.cancelTitle = cancelTitle
         self.ctaAction = ctaAction
+        self.cancelAction = cancelAction
     }
 
     public var body: some View {
         VStack(alignment: .center, spacing: FlowSpacing.xs) {
-            FlowEyebrow(eyebrow, tint: FlowTheme.accent)
+            if let eyebrow {
+                FlowEyebrow(eyebrow, tint: FlowTheme.accent)
+            }
             Text(title)
                 .font(FlowFont.dialogTitle)
                 .foregroundStyle(FlowTheme.primaryText(scheme))
@@ -200,8 +222,20 @@ public struct FlowDialog: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, FlowSpacing.xxs)
 
-            PrimaryActionButton(ctaTitle, action: ctaAction)
-                .padding(.top, FlowSpacing.m)
+            PrimaryActionButton(
+                ctaTitle,
+                tint: isDestructive ? FlowTheme.destructive : FlowTheme.accentFill,
+                action: ctaAction
+            )
+            .padding(.top, FlowSpacing.m)
+
+            if let cancelTitle {
+                Button(cancelTitle) { cancelAction?() }
+                    .buttonStyle(.plain)
+                    .font(FlowFont.body)
+                    .foregroundStyle(FlowTheme.secondaryText(scheme))
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
         }
         .padding(FlowSpacing.l)
         .frame(maxWidth: 320)
@@ -242,6 +276,83 @@ public extension View {
         @ViewBuilder dialog: () -> DialogContent
     ) -> some View {
         modifier(FlowDialogOverlay(isPresented: isPresented, dialog: dialog()))
+    }
+
+    /// The mock's delete confirmation: one glass card, everywhere, replacing
+    /// the `.confirmationDialog` and `.alert` the app used to mix.
+    ///
+    /// Presented as a sheet rather than an overlay because callers are list
+    /// rows and canvas nodes, whose bounds would clip a centred card.
+    func flowDeleteConfirmation(
+        isPresented: Binding<Bool>,
+        itemTitle: String,
+        hasChildren: Bool,
+        onDelete: @escaping () -> Void
+    ) -> some View {
+        modifier(
+            FlowDeleteConfirmation(
+                isPresented: isPresented,
+                itemTitle: itemTitle,
+                hasChildren: hasChildren,
+                onDelete: onDelete
+            )
+        )
+    }
+}
+
+/// The mock's two delete messages, branched on whether anything hangs off the
+/// item being deleted.
+public enum FlowDeleteMessage {
+    public static func text(hasChildren: Bool) -> String {
+        hasChildren
+            ? "The project and its tasks come off the map, schedule and inbox."
+            : "It comes off the map, schedule and inbox."
+    }
+}
+
+/// See `View.flowDeleteConfirmation(isPresented:itemTitle:hasChildren:onDelete:)`.
+private struct FlowDeleteConfirmation: ViewModifier {
+    @Binding var isPresented: Bool
+    let itemTitle: String
+    let hasChildren: Bool
+    let onDelete: () -> Void
+
+    /// Taken once, when the card opens. Callers whose pending item clears on
+    /// dismissal would otherwise blink the card to `Delete “”?` for the length
+    /// of the closing animation.
+    @State private var shown: (title: String, hasChildren: Bool) = ("", false)
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: isPresented) { _, presenting in
+                if presenting { shown = (itemTitle, hasChildren) }
+            }
+            .sheet(isPresented: $isPresented) { card }
+    }
+
+    private var card: some View {
+        ZStack {
+            FlowTheme.popoverSurface.opacity(0.28)
+                .ignoresSafeArea()
+                .onTapGesture { isPresented = false }
+
+            FlowDialog(
+                title: "Delete “\(shown.title)”?",
+                message: FlowDeleteMessage.text(hasChildren: shown.hasChildren),
+                ctaTitle: "Delete",
+                isDestructive: true,
+                cancelTitle: "Cancel",
+                // Delete first, dismiss second: a caller whose binding clears
+                // its pending item on dismissal would otherwise have nothing
+                // left to delete by the time the action ran.
+                ctaAction: {
+                    onDelete()
+                    isPresented = false
+                },
+                cancelAction: { isPresented = false }
+            )
+        }
+        .presentationBackground(.clear)
     }
 }
 
@@ -366,6 +477,25 @@ public enum FlowCreateKind: String, CaseIterable, Identifiable, Sendable {
         case .initiative: "Initiative"
         }
     }
+
+    /// An initiative is a goal, not a thing with a name, so the mockup prompts
+    /// for one by example instead of the plain `<Kind> name…` pattern.
+    public var namePlaceholder: String {
+        switch self {
+        case .task, .project: "\(title) name…"
+        case .initiative: "Goal — e.g. \"Ship my portfolio\""
+        }
+    }
+
+    /// The mockup explains what the kind will do once created; only the two
+    /// container kinds carry a line.
+    public var explanation: String? {
+        switch self {
+        case .task: nil
+        case .project: "A project becomes a branch on your map. Attached projects feed the initiative's XP and goal bar."
+        case .initiative: "An initiative is the goal at the root of your map. Projects and tasks under it feed its XP — finish them all to complete it."
+        }
+    }
 }
 
 /// One project chip: its colour dot and label.
@@ -408,7 +538,7 @@ public struct FlowCreateSheet: View {
         title: Binding<String>,
         minutes: Binding<Int>,
         projectID: Binding<UUID?>,
-        durations: [Int] = [15, 25, 30, 45, 60],
+        durations: [Int] = FlowDurationWheel.defaultOptions,
         projects: [FlowCreateProjectOption],
         showsDurationAndProject: Bool = true,
         onClose: @escaping () -> Void,
@@ -435,6 +565,12 @@ public struct FlowCreateSheet: View {
                 if !projects.isEmpty {
                     projectSection
                 }
+            }
+            if let explanation = kind.explanation {
+                Text(explanation)
+                    .font(FlowFont.caption)
+                    .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                    .fixedSize(horizontal: false, vertical: true)
             }
             PrimaryActionButton("Create", action: onCreate)
                 .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -490,7 +626,7 @@ public struct FlowCreateSheet: View {
     }
 
     private var titleField: some View {
-        TextField("\(kind.title) name…", text: $title)
+        TextField(kind.namePlaceholder, text: $title)
             .font(FlowFont.body)
             .padding(FlowSpacing.m)
             .background(
@@ -504,37 +640,14 @@ public struct FlowCreateSheet: View {
             .accessibilityLabel("\(kind.title) name")
     }
 
+    /// The mock puts the label beside the wheel, not above it as an eyebrow.
     private var durationSection: some View {
-        VStack(alignment: .leading, spacing: FlowSpacing.s) {
-            FlowEyebrow("Duration")
-            HStack(spacing: FlowSpacing.s) {
-                ForEach(durations, id: \.self) { value in
-                    durationChip(value)
-                }
-            }
+        HStack(spacing: FlowSpacing.m) {
+            Text("Duration")
+                .font(FlowFont.body)
+                .foregroundStyle(FlowTheme.primaryText(scheme))
+            FlowDurationWheel(minutes: $minutes, options: durations)
         }
-    }
-
-    private func durationChip(_ value: Int) -> some View {
-        let isSelected = value == minutes
-        return Button {
-            select(minutes: value)
-        } label: {
-            Text(DurationFormatter.compact(minutes: value))
-                .font(FlowFont.durationChip)
-                .foregroundStyle(isSelected ? .white : FlowTheme.primaryText(scheme))
-                .padding(.horizontal, FlowSpacing.m)
-                // HIG override 1: the mock's chips are visibly shorter than
-                // 44pt; the fill stays chip-sized, the hit area does not.
-                .frame(minHeight: 44)
-                .background(Capsule().fill(isSelected ? FlowTheme.accentFill : FlowTheme.surface(scheme)))
-                .overlay(
-                    Capsule().strokeBorder(FlowTheme.separator(scheme), lineWidth: isSelected ? 0 : 1)
-                )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(DurationFormatter.spoken(minutes: value))
-        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 
     private var projectSection: some View {
@@ -574,10 +687,6 @@ public struct FlowCreateSheet: View {
 
     private func select(kind newKind: FlowCreateKind) {
         animated { kind = newKind }
-    }
-
-    private func select(minutes value: Int) {
-        animated { minutes = value }
     }
 
     private func select(project id: UUID) {

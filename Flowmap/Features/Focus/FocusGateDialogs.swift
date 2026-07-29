@@ -9,6 +9,15 @@ struct PlanGateDialog: View {
     @Environment(\.modelContext) private var context
     @Environment(\.flow) private var flow
 
+    /// The mockup's own gate copy, held as statics so the tests can pin the
+    /// exact wording rather than re-typing it and drifting.
+    static let gateMessage = "Define what \"done\" means. A clear destination stops the endless tweaking."
+    static let blockedMessage = "Write definition done first"
+
+    /// The mockup labels the list `SUBTASKS · N`, so the count travels with
+    /// the eyebrow rather than sitting in a separate badge.
+    static func subtasksEyebrow(count: Int) -> String { "Subtasks · \(count)" }
+
     let task: FlowTask
     let onStart: (String) -> Void
 
@@ -18,10 +27,16 @@ struct PlanGateDialog: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: FlowSpacing.m) {
-            FlowEyebrow("Before you start", tint: FlowTheme.accent)
+            FlowEyebrow("Plan before you start", tint: FlowTheme.accent)
             Text(task.title)
                 .font(FlowFont.dialogTitle)
                 .foregroundStyle(FlowTheme.primaryText(scheme))
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text(Self.gateMessage)
+                .font(FlowFont.secondary)
+                .foregroundStyle(FlowTheme.secondaryText(scheme))
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -29,10 +44,10 @@ struct PlanGateDialog: View {
             subtaskList
 
             if showsBlockedMessage {
-                Text("Write your definition of done first")
+                Text(Self.blockedMessage)
                     .font(FlowFont.caption)
                     .foregroundStyle(FlowTheme.accent)
-                    .accessibilityLabel("Write your definition of done first")
+                    .accessibilityLabel(Self.blockedMessage)
             }
 
             PrimaryActionButton("Start task", action: attemptStart)
@@ -70,7 +85,7 @@ struct PlanGateDialog: View {
     /// checklist model reads identically wherever it is edited.
     private var subtaskList: some View {
         VStack(alignment: .leading, spacing: FlowSpacing.s) {
-            FlowEyebrow("Subtasks")
+            FlowEyebrow(Self.subtasksEyebrow(count: task.orderedSubtasks.count))
             ForEach(task.orderedSubtasks) { subtask in
                 subtaskRow(subtask)
             }
@@ -137,10 +152,10 @@ struct ClockInDialog: View {
 
     var body: some View {
         FlowDialog(
-            eyebrow: "Clock in",
+            eyebrow: "Next up",
             title: task.title,
-            message: "The clock keeps ticking — unfinished work always comes around again.",
-            ctaTitle: "Clock in",
+            message: "Clock in to start the timer. The clock keeps ticking — unfinished work always comes around again.",
+            ctaTitle: "Clock in ▸",
             ctaAction: onClockIn
         )
     }

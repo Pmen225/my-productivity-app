@@ -128,7 +128,9 @@ These need a person looking at the screen.
 Check specifically: the active task is the bottom wheel segment; the pointer is
 stationary; the resting card does not touch the wheel; the expanded card reaches
 at least three fifths of the screen; segment titles and durations stay legible;
-the tab bar and Assistant orb never cover content.
+the tab bar and Assistant orb never cover content. (Known gap, subtask 1.22: the FAB and
+orb currently DO overlap Settings toggles and the Stats "0M FOCUS" tile — confirmed in
+2026-07-29 screenshots, not yet fixed.)
 
 ### Behaviour that needs real hardware or accounts
 

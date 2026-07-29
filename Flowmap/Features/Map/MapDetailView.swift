@@ -75,20 +75,12 @@ public struct MapDetailView: View {
         }
         .navigationTitle(map.title)
         .toolbar { toolbarContent(viewModel) }
-        .alert(
-            "Delete this idea?",
+        .flowDeleteConfirmation(
             isPresented: deleteConfirmationBinding(viewModel),
-            presenting: viewModel.pendingDeletion
-        ) { node in
-            Button("Cancel", role: .cancel) { viewModel.cancelDelete() }
-            Button("Delete", role: .destructive) { viewModel.confirmDelete() }
-        } message: { node in
-            Text(
-                node.hasChildren
-                    ? "\"\(node.title)\" and everything under it will be removed."
-                    : "\"\(node.title)\" will be removed."
-            )
-        }
+            itemTitle: viewModel.pendingDeletion?.title ?? "",
+            hasChildren: viewModel.pendingDeletion?.hasChildren ?? false,
+            onDelete: { viewModel.confirmDelete() }
+        )
     }
 
     @ToolbarContentBuilder

@@ -45,16 +45,31 @@ final class ScreenshotTests: XCTestCase {
         Thread.sleep(forTimeInterval: 2.5)
     }
 
+    /// Taps a real tab bar item by its label. Decision 1b (2026-07-29)
+    /// reverses the `≡` glass menu back to a native `TabView`/`.tabItem`
+    /// bar, so items live in `app.tabBars` — scoping the query there is what
+    /// keeps this safe from the CLAUDE.md trap where a bare
+    /// `app.buttons["Focus"].firstMatch` collided with the demo task titled
+    /// "Focus" on the Today timeline.
     private func tapTab(_ app: XCUIApplication, _ label: String) -> Bool {
-        // The tab bar is the custom glass FlowTabBar, not a system tab bar, so
-        // its items surface as plain buttons. Fall back for the Mac idiom.
-        var button = app.buttons[label].firstMatch
-        if !button.waitForExistence(timeout: 10) {
-            button = app.tabBars.buttons[label]
-            guard button.waitForExistence(timeout: 5) else {
-                XCTFail("Tab \(label) not found")
-                return false
-            }
+        let button = app.tabBars.buttons[label].firstMatch
+        guard button.waitForExistence(timeout: 10) else {
+            XCTFail("Tab \(label) not found")
+            return false
+        }
+        button.tap()
+        Thread.sleep(forTimeInterval: 2.5)
+        return true
+    }
+
+    /// Stats dropped off the tab bar (decision 1b) — it's reached instead by
+    /// the chart-icon button pushed onto Plan's own `NavigationStack`.
+    /// Caller must already be on the Plan tab.
+    private func tapStats(_ app: XCUIApplication) -> Bool {
+        let button = app.navigationBars.buttons["Stats"].firstMatch
+        guard button.waitForExistence(timeout: 10) else {
+            XCTFail("Stats nav-bar button not found")
+            return false
         }
         button.tap()
         Thread.sleep(forTimeInterval: 2.5)
@@ -64,21 +79,31 @@ final class ScreenshotTests: XCTestCase {
     func testCaptureEveryRequiredScreen() {
         let app = launch()
 
-        capture(app, named: "iphone-today")
+        // The app launches on Focus now, so the shot is named for what it is.
+        // There is no Today capture any more: decision 3 makes Today a pane of
+        // the Map page rather than a destination, and T3 builds it.
+        capture(app, named: "iphone-launch")
 
-        // The create sheet — the design's "New" sheet off the + FAB.
-        let fab = app.buttons["New task, project or initiative"].firstMatch
-        if fab.waitForExistence(timeout: 5) {
-            fab.tap()
-            Thread.sleep(forTimeInterval: 2)
-            capture(app, named: "iphone-new-sheet")
-            let close = app.buttons["Close"].firstMatch
-            if close.exists { close.tap() } else { app.swipeDown() }
-            Thread.sleep(forTimeInterval: 1.5)
-        }
-
-        if tapTab(app, "Map") {
+        if tapTab(app, "Map + Today") {
             capture(app, named: "iphone-map")
+
+            // The design's "New" sheet off the + FAB. Captured here, not at
+            // launch, because the FAB is hidden on the Focus tab — which is
+            // now where the app opens.
+            let fab = app.buttons["New task, project or initiative"].firstMatch
+            if fab.waitForExistence(timeout: 5) {
+                fab.tap()
+                Thread.sleep(forTimeInterval: 2)
+                capture(app, named: "iphone-new-sheet")
+                let close = app.buttons["Close"].firstMatch
+                if close.exists { close.tap() } else { app.swipeDown() }
+                Thread.sleep(forTimeInterval: 1.5)
+            } else {
+                // A bare `if` would skip the shot silently and still report a
+                // green run — the trap CLAUDE.md records against this suite.
+                XCTFail("Create FAB not found on the Map screen")
+            }
+
             // The demo workspace ships one map; opening it shows the canvas.
             let weeklyPlan = app.staticTexts["Weekly Plan"].firstMatch
             if weeklyPlan.waitForExistence(timeout: 8) {
@@ -123,26 +148,23 @@ final class ScreenshotTests: XCTestCase {
             }
         }
 
-        if tapTab(app, "Library") {
+        if tapTab(app, "Plan") {
             capture(app, named: "iphone-library")
 
-            let progress = app.buttons["Progress"].firstMatch
-            if progress.waitForExistence(timeout: 5) {
-                progress.tap()
-                Thread.sleep(forTimeInterval: 2)
+            // Stats is a chart-icon push on Plan's own NavigationStack now,
+            // not a tab; Settings is still a tab (decision 1b).
+            if tapStats(app) {
                 capture(app, named: "iphone-stats")
                 app.navigationBars.buttons.firstMatch.tap()
                 Thread.sleep(forTimeInterval: 1)
             }
 
-            let settings = app.buttons["Settings"].firstMatch
-            if settings.waitForExistence(timeout: 5) {
-                settings.tap()
-                Thread.sleep(forTimeInterval: 2)
+            if tapTab(app, "Settings") {
                 capture(app, named: "iphone-settings")
-                app.navigationBars.buttons.firstMatch.tap()
-                Thread.sleep(forTimeInterval: 1)
             }
+
+            // Notes and Assistant stay inside Plan/Library, so hop back.
+            guard tapTab(app, "Plan") else { return }
 
             let notes = app.buttons["Notes"].firstMatch
             if notes.waitForExistence(timeout: 5) {
@@ -212,13 +234,55 @@ final class ScreenshotTests: XCTestCase {
         Thread.sleep(forTimeInterval: 0.8)
     }
 
+    /// The shared glass delete card, reached the way decision 11 says a row is
+    /// deleted: swipe, not a permanent `✕`.
+    func testCaptureDeleteConfirmation() {
+        let app = launch()
+        guard tapTab(app, "Plan") else { return }
+
+        let inboxRow = app.buttons["Inbox"].firstMatch
+        guard inboxRow.waitForExistence(timeout: 8) else {
+            XCTFail("Inbox row not found in Library")
+            return
+        }
+        inboxRow.tap()
+        Thread.sleep(forTimeInterval: 2)
+
+        // Add one, so the row swiped is this test's own rather than whichever
+        // task the demo's auto-plan happened to leave behind.
+        addQuickTask(app, title: "Delete me")
+
+        let target = app.staticTexts["Delete me"].firstMatch
+        guard target.waitForExistence(timeout: 8) else {
+            XCTFail("Task row 'Delete me' not found in the Inbox")
+            return
+        }
+        target.swipeLeft()
+        Thread.sleep(forTimeInterval: 1)
+
+        let deleteAction = app.buttons["Delete"].firstMatch
+        guard deleteAction.waitForExistence(timeout: 5) else {
+            XCTFail("Swipe delete action not found")
+            return
+        }
+        deleteAction.tap()
+        Thread.sleep(forTimeInterval: 3)
+        capture(app, named: "iphone-delete-confirm")
+        // Asserted, not just photographed: this card presented from a list row
+        // is fragile enough that a silent no-show has to fail the run.
+        XCTAssertTrue(
+            app.staticTexts["Delete “Delete me”?"].exists,
+            "The delete confirmation card did not appear"
+        )
+    }
+
     /// The prioritise duel: reached from the Inbox listing (Library → Inbox),
     /// not a dedicated Plan screen — see `PrioritiseDuelView`'s header
     /// comment for why. Answers every duel by always taking the first
     /// offered choice, then captures the medal-ranked reveal.
     func testCapturePrioritiseDuel() {
         let app = launch()
-        guard tapTab(app, "Library") else { return }
+        guard tapTab(app, "Plan") else { return }
 
         let inboxRow = app.buttons["Inbox"].firstMatch
         guard inboxRow.waitForExistence(timeout: 8) else {
@@ -275,10 +339,13 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30))
         Thread.sleep(forTimeInterval: 4)
 
-        capture(app, named: "iphone-today-dark")
-        // Hop via Map first: on Today a demo task titled "Focus" sits in the
-        // timeline and steals the firstMatch from the tab of the same name.
-        if tapTab(app, "Map"), tapTab(app, "Focus") {
+        // Named for the launch screen, which is Focus now — see the light-mode
+        // note above on why there is no Today capture any more.
+        capture(app, named: "iphone-launch-dark")
+        // Tab items are queried by label scoped to `app.tabBars`, so the demo
+        // task titled "Focus" on the Today timeline no longer collides with
+        // this row the way an unscoped label lookup once did.
+        if tapTab(app, "Focus") {
             capture(app, named: "iphone-focus-wheel-dark")
         }
     }

@@ -65,11 +65,15 @@ public struct TaskRowView: View {
             .tint(task.status == .completed ? .gray : .green)
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button(role: .destructive) {
+            // No `role: .destructive`: that role rebuilds the row as the swipe
+            // closes, which resets this view's state and silently drops the
+            // confirmation card. The tint carries the same meaning.
+            Button {
                 showDeleteConfirm = true
             } label: {
                 Label("Delete", systemImage: "trash")
             }
+            .tint(FlowTheme.destructive)
             Button {
                 showMoveDialog = true
             } label: {
@@ -85,14 +89,14 @@ public struct TaskRowView: View {
         }
         #endif
         .contextMenu { contextMenuItems }
-        .confirmationDialog(
-            "Delete “\(task.title)”?",
+        .flowDeleteConfirmation(
             isPresented: $showDeleteConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("Delete", role: .destructive, action: deleteTask)
-            Button("Cancel", role: .cancel) {}
-        }
+            itemTitle: task.title,
+            // Always the item wording: the branch wording names a project and
+            // its tasks, which a task with subtasks is not.
+            hasChildren: false,
+            onDelete: deleteTask
+        )
         .confirmationDialog("Move to…", isPresented: $showMoveDialog, titleVisibility: .visible) {
             Button("Inbox") { move(toList: nil, project: nil) }
             ForEach(lists.filter { !$0.isArchived }) { list in

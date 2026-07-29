@@ -71,8 +71,10 @@ public final class FocusVoiceService {
             "\(minutes) minutes left."
         case .countdown(let minutesLeft):
             minutesLeft == 1 ? "1 minute left." : "\(minutesLeft) minutes left."
-        case .windDown(let minutes):
-            minutes == 1 ? "1 minute to reflect." : "\(minutes) minutes to reflect."
+        case .windDown:
+            // The mockup's reflection prompt names the two things to do rather
+            // than repeating a countdown the banner already shows.
+            "Wind down. Note what you learned, and set up the next step."
         }
     }
 

@@ -113,11 +113,20 @@ public struct PrimaryActionButton: View {
     @Environment(\.isEnabled) private var isEnabled
     private let title: String
     private let systemImage: String?
+    private let tint: Color
     private let action: () -> Void
 
-    public init(_ title: String, systemImage: String? = nil, action: @escaping () -> Void) {
+    /// `tint` exists for the one destructive case — the delete card — and is
+    /// the accent everywhere else.
+    public init(
+        _ title: String,
+        systemImage: String? = nil,
+        tint: Color = FlowTheme.accentFill,
+        action: @escaping () -> Void
+    ) {
         self.title = title
         self.systemImage = systemImage
+        self.tint = tint
         self.action = action
     }
 
@@ -133,7 +142,7 @@ public struct PrimaryActionButton: View {
             .padding(.vertical, 14)
             .background(
                 RoundedRectangle(cornerRadius: FlowRadius.small, style: .continuous)
-                    .fill(FlowTheme.accentFill.opacity(isEnabled ? 1 : 0.4))
+                    .fill(tint.opacity(isEnabled ? 1 : 0.4))
             )
             .foregroundStyle(.white)
         }

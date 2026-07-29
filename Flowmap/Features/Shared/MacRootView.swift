@@ -179,6 +179,8 @@ struct MacRootView: View {
         case .calendar: .calendar
         case .library, .inbox: .inbox
         case .assistant: .assistant
+        case .stats: .progress
+        case .settings: .settings
         }
     }
 

@@ -9,6 +9,8 @@ public enum DeepLink: String, CaseIterable, Sendable {
     case library
     case inbox
     case assistant
+    case stats
+    case settings
 
     public static let scheme = "flowmap"
 
@@ -22,6 +24,8 @@ public enum DeepLink: String, CaseIterable, Sendable {
         case .library: "Library"
         case .inbox: "Inbox"
         case .assistant: "Assistant"
+        case .stats: "Stats"
+        case .settings: "Settings"
         }
     }
 
