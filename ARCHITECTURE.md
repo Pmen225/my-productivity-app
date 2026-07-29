@@ -42,7 +42,8 @@ Every persisted type carries a stable `UUID`, a `createdAt` and an `updatedAt`.
 |---|---|
 | `Workspace` | Top-level space (Personal, Work, Study) |
 | `TaskList` | A user-created list. Smart views are queries, not lists. |
-| `Project` | Work with its own tasks, maps and notes |
+| `Initiative` | The goal at the root of a map. Projects file under it; its progress walks down to their tasks and is never stored. |
+| `Project` | Work with its own tasks, maps and notes. Optionally belongs to an `Initiative`. |
 | `FlowTask` | The central unit of work. One identity for its whole life. |
 | `TaskSegment` | One scheduled block of time belonging to one task |
 | `Subtask` | Checklist item |
@@ -64,8 +65,9 @@ its *segments* change. The task itself is untouched. This is what makes
 gradually filling with copies.
 
 **Derived values are never stored.** `Project.progress` computes from its
-actionable tasks every time it is read. There is no second progress field that
-could disagree with it. The same applies to every Progress metric.
+actionable tasks every time it is read, and `Initiative.progress` walks down
+through its projects to the same tasks. There is no second progress field that
+could disagree with either. The same applies to every Progress metric.
 
 ### CloudKit constraints observed throughout
 
@@ -149,6 +151,8 @@ information.
 | `SchedulingService` / `SchedulingEngine` | All planning, placement and requeueing |
 | `FocusEngine` | Timer, transitions, task hand-off |
 | `GamificationService` / `GamificationCurve` | The one XP total, its level curve and award table — `MapNodeView` and `ProgressScreen` both read this rather than each keeping a copy |
+| `FlowMomentService` | The one transient thing the app is saying — XP toast, rank stamp, `COMPLETE` band, milestone banner, HUD pill. A single slot with a priority ranking, drawn by `FlowMomentOverlay` on each platform root. Services raise moments; no feature draws its own toast. |
+| `FlowSoundService` | The focus loop's four sounds, from the system alert set. Every caller goes through `play(_:settings:)` so the Settings toggle cannot be honoured on three call sites and forgotten on the fourth. |
 | `CalendarService` | EventKit: permission, selected calendars, de-duplicated reads, optional write-back |
 | `NotificationService` | Local notifications, keyed on segment id so rescheduling replaces rather than stacks |
 | `SearchService` | Global search across five content types |

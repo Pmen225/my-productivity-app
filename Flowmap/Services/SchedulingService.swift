@@ -561,7 +561,14 @@ public struct SchedulingService {
     ) -> TaskSegment? {
         let minutes = max(SchedulingEngine.snapMinutes, task.unscheduledMinutes)
         let firstDay = calendar.startOfDay(for: now)
-        let map = busyMap(from: firstDay, dayCount: lookaheadDays)
+        // Starts a day early and takes one more: busy intervals are bucketed by
+        // the day a block STARTS, so the search below reads each day plus the
+        // one before it, and the very first of those would otherwise be missing.
+        // Not a correctness fix — `schedule` re-checks through `canPlace`, which
+        // has its own ±1-day window and refuses — but without this the search
+        // offers a slot that is then rejected and silently skipped.
+        let searchStart = calendar.date(byAdding: .day, value: -1, to: firstDay) ?? firstDay
+        let map = busyMap(from: searchStart, dayCount: lookaheadDays + 1)
 
         for offset in 0..<lookaheadDays {
             guard let day = calendar.date(byAdding: .day, value: offset, to: firstDay) else { continue }
