@@ -65,7 +65,7 @@ struct PhoneRootView: View {
                 .tag(DeepLink.focus)
 
                 NavigationStack {
-                    MapListView()
+                    MapTodayScreen()
                 }
                 .contentMargins(.bottom, Self.floatingControlsInset, for: .scrollContent)
                 .tabItem {

@@ -3,6 +3,27 @@ import SwiftUI
 
 /// The Maps library screen. Default state is a compact `MAPS (0)` header and
 /// a compact `+` — never a permanent full-width "Add a map" row.
+/// Applies `.flowScreenTitle` only when the host is not already using the
+/// nav bar's centre for something of its own.
+private struct OptionalScreenTitle: ViewModifier {
+    let title: String
+    let isEnabled: Bool
+
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content.flowScreenTitle(title)
+        } else {
+            // Inline, or the nav bar draws a stock large "Maps" underneath the
+            // host's own principal control — two titles for one screen.
+            #if os(iOS)
+            content.navigationBarTitleDisplayMode(.inline)
+            #else
+            content
+            #endif
+        }
+    }
+}
+
 public struct MapListView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.colorScheme) private var scheme
@@ -13,7 +34,14 @@ public struct MapListView: View {
     @State private var renamingMap: MapDocument?
     @State private var renameDraft = ""
 
-    public init() {}
+    /// False when this is the Map pane of `MapTodayScreen`, which owns the
+    /// nav bar's centre for its `Map | Today` toggle — two views claiming the
+    /// principal slot means one of them silently loses.
+    private let showsScreenTitle: Bool
+
+    public init(showsScreenTitle: Bool = true) {
+        self.showsScreenTitle = showsScreenTitle
+    }
 
     public var body: some View {
         List {
@@ -65,7 +93,7 @@ public struct MapListView: View {
         .scrollContentBackground(.hidden)
         .background(FlowTheme.background(scheme).ignoresSafeArea())
         .navigationTitle("Maps")
-        .flowScreenTitle("Maps")
+        .modifier(OptionalScreenTitle(title: "Maps", isEnabled: showsScreenTitle))
         .searchable(text: $searchText, placement: .automatic, prompt: "Search maps")
         .navigationDestination(for: MapDocument.self) { map in
             MapDetailView(map: map)

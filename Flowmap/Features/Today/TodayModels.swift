@@ -87,17 +87,25 @@ struct TimelineBlock: Identifiable {
 
 // MARK: - Header scope
 
-/// The header's Day/Week/Month scope menu. Presentational only for now: the
-/// timeline underneath always shows today regardless of the selection, since
-/// a real week/month agenda is a separate feature this slice does not build.
-/// Kept here (rather than wired into `TodayView`) so it stays a self-contained,
-/// zero-behaviour-change visual affordance matching the mock's popover.
+/// How far ahead the Map + Today page's right-hand pane looks. Live state
+/// since T3: `MapTodayScreen` swaps the pane's body on it, so `.day` renders
+/// today's timeline and the other two render an agenda.
 enum TodayScope: String, CaseIterable, Identifiable {
     case day = "Day"
     case week = "Week"
     case month = "Month"
 
     var id: String { rawValue }
+
+    /// What the pane calls itself. `.day` is "Today" rather than "Day",
+    /// because that is what the pane actually shows.
+    var paneTitle: String {
+        switch self {
+        case .day: "Today"
+        case .week: "Week"
+        case .month: "Month"
+        }
+    }
 }
 
 // MARK: - Primary action

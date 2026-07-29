@@ -35,6 +35,7 @@
 		22479EC1266EA54F9A1D5604 /* SmartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCA70554D0B0A357184CF0E7 /* SmartView.swift */; };
 		2363EA1EF4FEF96F9F8DAF09 /* FocusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62569CD38AA4E9CA693B82B7 /* FocusTests.swift */; };
 		23B9F39ECCDE9A16C0E97866 /* NodeInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED7EDBEAC7E69A017446797F /* NodeInspectorView.swift */; };
+		2591B80EFB6133CE1A57EA57 /* MapTodayScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BB184AA6B470B3812EC60EA /* MapTodayScreen.swift */; };
 		275578016EEDC0840854F32E /* Typography.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83B3648432B82B48EC26C361 /* Typography.swift */; };
 		29FBFAF9D3A0F26D7BBF0C5B /* WatchCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B4F90BBB64EFCB2850D452D /* WatchCaptureView.swift */; };
 		2A28278789146C377D928120 /* AssistantSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B84AE4B1754CC03898330516 /* AssistantSettingsSection.swift */; };
@@ -111,6 +112,7 @@
 		91198C5C62F8A9374DA48DD8 /* ProjectDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00E639C60CF01D64FE44F5A3 /* ProjectDetailView.swift */; };
 		927F97B8C79206EDD2979174 /* FlowSoundService.swift in Sources */ = {isa = PBXBuildFile; fileRef = EACDF6D057742DD412CEF1F5 /* FlowSoundService.swift */; };
 		9348009671BD828F8DC4630B /* Subtask.swift in Sources */ = {isa = PBXBuildFile; fileRef = 501B9417F2666EAC5CF81025 /* Subtask.swift */; };
+		94F1B8B7A587A419586AD5E8 /* ScopeAgendaView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05C685E92BD8602A109C69ED /* ScopeAgendaView.swift */; };
 		980FB8B3CF235D626AB0430F /* CalendarSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04B302DF58D172EC24E02261 /* CalendarSettingsSection.swift */; };
 		997C6539C4088DD6697F0371 /* FlowmapApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6C542766FD2F6D59CFB41D7 /* FlowmapApp.swift */; };
 		9A2C4158EEF771D434772C52 /* NoteBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44C495F40A7DD9C21174FB03 /* NoteBlock.swift */; };
@@ -236,6 +238,7 @@
 		0445857E5428A7957338906D /* DurationFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DurationFormatter.swift; sourceTree = "<group>"; };
 		04B302DF58D172EC24E02261 /* CalendarSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarSettingsSection.swift; sourceTree = "<group>"; };
 		04F4E8D3C5B85D607E2FDA84 /* WatchFocusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchFocusView.swift; sourceTree = "<group>"; };
+		05C685E92BD8602A109C69ED /* ScopeAgendaView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScopeAgendaView.swift; sourceTree = "<group>"; };
 		06CC1F8183C75D6214F87C8A /* AssistantMessageRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantMessageRow.swift; sourceTree = "<group>"; };
 		06EE1F6A498560488D7AEFCE /* GoogleCalendarTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleCalendarTests.swift; sourceTree = "<group>"; };
 		09F2FF5B662A9FE14AB21800 /* FlowmapWatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FlowmapWatch.entitlements; sourceTree = "<group>"; };
@@ -263,6 +266,7 @@
 		29C766E969D518FCA3521DD0 /* FlowDurationWheel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowDurationWheel.swift; sourceTree = "<group>"; };
 		2A2A65534AACBCB3A815D738 /* MapNodeConversion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapNodeConversion.swift; sourceTree = "<group>"; };
 		2B4F90BBB64EFCB2850D452D /* WatchCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchCaptureView.swift; sourceTree = "<group>"; };
+		2BB184AA6B470B3812EC60EA /* MapTodayScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapTodayScreen.swift; sourceTree = "<group>"; };
 		2BEA6662C9F357223242197D /* GamificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamificationTests.swift; sourceTree = "<group>"; };
 		2C0CBD54720120E311923079 /* AboutSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutSettingsSection.swift; sourceTree = "<group>"; };
 		2C81E91657B6D3F353AD5A11 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
@@ -613,6 +617,7 @@
 			isa = PBXGroup;
 			children = (
 				A76CD73501FCD7A0C6BA81BA /* PlanPreviewView.swift */,
+				05C685E92BD8602A109C69ED /* ScopeAgendaView.swift */,
 				2E6A39F40C1D0CD1E8C2A4F7 /* TimelineBlockView.swift */,
 				14D1F57BF06C28FA627A1C51 /* TimelineDragDrop.swift */,
 				C3F8E2F1B974A574AD0FA750 /* TimelineView.swift */,
@@ -765,6 +770,7 @@
 				2A2A65534AACBCB3A815D738 /* MapNodeConversion.swift */,
 				BA761013D82B313562E967A6 /* MapNodeView.swift */,
 				027E10DFFDC2C8CACBA7AAEF /* MapOutlineView.swift */,
+				2BB184AA6B470B3812EC60EA /* MapTodayScreen.swift */,
 				D8F2A459CF8B13744C34F2D8 /* MapViewModel.swift */,
 				ED7EDBEAC7E69A017446797F /* NodeInspectorView.swift */,
 			);
@@ -1057,6 +1063,7 @@
 				15A5A85AAEFD9BE14CF180B9 /* MapNodeConversion.swift in Sources */,
 				5CDC1691BEEBB6A72D857545 /* MapNodeView.swift in Sources */,
 				F0C7EFA91F54099ED1158577 /* MapOutlineView.swift in Sources */,
+				2591B80EFB6133CE1A57EA57 /* MapTodayScreen.swift in Sources */,
 				0CA89E95FAE44254C9F857F9 /* MapViewModel.swift in Sources */,
 				8832DEE2AAC0B4F69C14BECB /* ModelContainerFactory.swift in Sources */,
 				2B901EF70D2B94FB3AB00D81 /* NewProjectView.swift in Sources */,
@@ -1092,6 +1099,7 @@
 				A931A5FB6FAB26DC4D526AFD /* RootView.swift in Sources */,
 				4D04FBD68E348E3CBE1E112B /* SchedulingEngine.swift in Sources */,
 				AE7FD04795412577FA678429 /* SchedulingService.swift in Sources */,
+				94F1B8B7A587A419586AD5E8 /* ScopeAgendaView.swift in Sources */,
 				C4FA65813C79E482F83D86A5 /* SearchService.swift in Sources */,
 				2E7ABCA5900842AC26F437CD /* SeedData.swift in Sources */,
 				AE93A99E564E9EF149AAEB22 /* SettingsScreen.swift in Sources */,

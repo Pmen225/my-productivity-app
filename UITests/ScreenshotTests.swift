@@ -87,6 +87,19 @@ final class ScreenshotTests: XCTestCase {
         if tapTab(app, "Map + Today") {
             capture(app, named: "iphone-map")
 
+            // The same destination's other pane, reached by the toggle in the
+            // nav bar's centre — not a separate tab any more.
+            let todayPane = app.buttons["Today plan"].firstMatch
+            if todayPane.waitForExistence(timeout: 5) {
+                todayPane.tap()
+                Thread.sleep(forTimeInterval: 1.5)
+                capture(app, named: "iphone-today-pane")
+                app.buttons["Map"].firstMatch.tap()
+                Thread.sleep(forTimeInterval: 1.5)
+            } else {
+                XCTFail("Map | Today toggle not found")
+            }
+
             // The design's "New" sheet off the + FAB. Captured here, not at
             // launch, because the FAB is hidden on the Focus tab — which is
             // now where the app opens.
