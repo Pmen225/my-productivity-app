@@ -168,6 +168,16 @@ final class ScreenshotTests: XCTestCase {
         if tapTab(app, "Plan") {
             capture(app, named: "iphone-library")
 
+            // Scrolled to the end, to prove the last row clears the floating
+            // FAB and orb rather than sitting under them.
+            app.swipeUp()
+            app.swipeUp()
+            Thread.sleep(forTimeInterval: 1)
+            capture(app, named: "iphone-library-bottom")
+            app.swipeDown()
+            app.swipeDown()
+            Thread.sleep(forTimeInterval: 1)
+
             // Stats is a chart-icon push on Plan's own NavigationStack now,
             // not a tab; Settings is still a tab (decision 1b).
             if tapStats(app) {

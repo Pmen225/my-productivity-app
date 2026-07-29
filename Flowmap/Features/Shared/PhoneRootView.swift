@@ -37,12 +37,23 @@ struct PhoneRootView: View {
         SmartView.inbox.matches(allTasks).count
     }
 
+    /// Space the FAB and the Assistant orb reserve at the bottom of the three
+    /// screens they float over, so the last row of a list is reachable instead
+    /// of sitting under them. The mock leans on an idle-fade for this; a native
+    /// tab bar does not fade, so the room is reserved outright — the stack's
+    /// own height, plus the gap it is padded off the bottom by, plus a breath
+    /// so the last row does not touch the orb.
+    private static let floatingControlsInset =
+        FlowControlSize.create + FlowSpacing.m + FlowControlSize.secondary
+            + FlowSpacing.xxxl + FlowSpacing.l
+
     var body: some View {
         ZStack(alignment: .bottom) {
             TabView(selection: $tab) {
                 NavigationStack {
                     LibraryView(showingAssistant: $showingAssistant, pushStats: $pushStats, onSearchResult: navigate(to:))
                 }
+                .contentMargins(.bottom, Self.floatingControlsInset, for: .scrollContent)
                 .tabItem { Label("Plan", systemImage: "square.stack") }
                 .tag(DeepLink.library)
                 .badge(inboxCount > 0 ? "\(inboxCount)" : nil)
@@ -56,6 +67,7 @@ struct PhoneRootView: View {
                 NavigationStack {
                     MapListView()
                 }
+                .contentMargins(.bottom, Self.floatingControlsInset, for: .scrollContent)
                 .tabItem {
                     Label("Map + Today", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
                 }
@@ -64,6 +76,7 @@ struct PhoneRootView: View {
                 NavigationStack {
                     CalendarRootView()
                 }
+                .contentMargins(.bottom, Self.floatingControlsInset, for: .scrollContent)
                 .tabItem { Label("Calendar", systemImage: "calendar") }
                 .tag(DeepLink.calendar)
 
@@ -236,7 +249,10 @@ struct LibraryView: View {
         }
         .scrollContentBackground(.hidden)
         .background(FlowTheme.background(scheme).ignoresSafeArea())
-        .flowScreenTitle("Library")
+        // Named for the tab that reaches it (decision 1b), not for the type —
+        // a screen titled "Library" under a tab labelled "Plan" reads as two
+        // different places.
+        .flowScreenTitle("Plan")
         .toolbar {
             // Left at trailing, where subtask 37's `≡` build put it — that
             // rationale (the floating `≡` owning the top-left corner) no
