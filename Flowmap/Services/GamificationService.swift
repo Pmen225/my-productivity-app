@@ -23,10 +23,16 @@ public struct GamificationAwardResult: Equatable, Sendable {
 public struct GamificationService {
     private let context: ModelContext
     private let settings: AppSettings
+    /// Raises the XP toast and the rank stamp. Every award in the app comes
+    /// through `award(_:)`, so wiring the feedback here rather than at each of
+    /// the five call sites means none of them can forget it. Optional so tests
+    /// and App Intents can build the service without any UI attached.
+    private let moments: FlowMomentService?
 
-    public init(context: ModelContext, settings: AppSettings) {
+    public init(context: ModelContext, settings: AppSettings, moments: FlowMomentService? = nil) {
         self.context = context
         self.settings = settings
+        self.moments = moments
     }
 
     /// Level, XP-into-level and XP-for-level, computed fresh from the
@@ -45,12 +51,14 @@ public struct GamificationService {
         settings.touch()
         try? context.save()
         let after = level
-        return GamificationAwardResult(
+        let result = GamificationAwardResult(
             xpAwarded: award.xp,
             totalXP: settings.totalXP,
             levelBefore: before.level,
             levelAfter: after.level
         )
+        moments?.show(result)
+        return result
     }
 
     /// Toggles a subtask and awards `.subtaskCompleted` exactly when the

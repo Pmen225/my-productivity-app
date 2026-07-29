@@ -53,6 +53,9 @@ public final class FocusEngine {
     /// Speaks task-start, time-left and wind-down announcements. Optional so
     /// existing call sites (tests, App Intents) need not supply one.
     private let voiceService: FocusVoiceService?
+    /// Raises the `COMPLETE` band when a task finishes. Optional for the same
+    /// reason `voiceService` is.
+    private let moments: FlowMomentService?
     /// Read fresh on every use. A continuation placed by the focus timer must
     /// respect the user's real calendar, and a snapshot taken at init would be
     /// empty at launch and stale forever after.
@@ -74,12 +77,14 @@ public final class FocusEngine {
         settings: AppSettings,
         externalEvents: [ExternalCalendarEvent] = [],
         calendar: Calendar = .current,
-        voiceService: FocusVoiceService? = nil
+        voiceService: FocusVoiceService? = nil,
+        moments: FlowMomentService? = nil
     ) {
         self.context = context
         self.settings = settings
         self.calendar = calendar
         self.voiceService = voiceService
+        self.moments = moments
         self.externalEventsProvider = { externalEvents }
         self.activeSession = Self.findRunningSession(in: context)
     }
@@ -293,6 +298,7 @@ public final class FocusEngine {
         if let task = session.task {
             task.actualMinutes += session.actualMinutes
             task.markCompleted(at: now)
+            moments?.show(.done(taskTitle: task.title))
             gamificationService().award(.taskCompleted(estimatedMinutes: task.estimatedMinutes))
         }
         if let segment = session.segment { segment.state = .completed }
@@ -422,6 +428,7 @@ public final class FocusEngine {
         guard let session = activeSession, session.isRunning else { return }
         voiceService?.tick(
             sessionID: session.id,
+            taskTitle: session.task?.title ?? "Focus",
             duration: session.plannedSeconds,
             elapsed: session.elapsedSeconds(at: now),
             settings: settings
@@ -496,6 +503,7 @@ public final class FocusEngine {
             context.delete(segment)
         }
         task.markCompleted()
+        moments?.show(.done(taskTitle: task.title))
         gamificationService().award(.taskCompleted(estimatedMinutes: task.estimatedMinutes))
         try? context.save()
         pendingTransition = nil

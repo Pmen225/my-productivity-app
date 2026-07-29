@@ -20,6 +20,10 @@ public final class AppEnvironment {
     /// `ProgressScreen`'s initiative card both read this rather than each
     /// keeping their own copy of the level maths.
     public let gamification: GamificationService
+    /// The one place transient feedback lives — XP toasts, the rank stamp, the
+    /// done band, wind-down banners and HUD confirmations. Services raise
+    /// moments here; `FlowMomentOverlay` on each platform root draws them.
+    public let moments = FlowMomentService()
     /// Every calendar account, merged. The planner reads busy time from here so
     /// it cannot end up with one rule for Apple and another for Google.
     public let calendarHub: CalendarHub
@@ -49,10 +53,12 @@ public final class AppEnvironment {
         self.settings = Self.loadOrCreateSettings(in: context)
         self.calendarService = CalendarService()
         self.notificationService = NotificationService()
-        self.voiceService = FocusVoiceService()
+        self.voiceService = FocusVoiceService(moments: moments)
         self.searchService = SearchService(context: context)
-        self.gamification = GamificationService(context: context, settings: settings)
-        self.focusEngine = FocusEngine(context: context, settings: settings, voiceService: voiceService)
+        self.gamification = GamificationService(context: context, settings: settings, moments: moments)
+        self.focusEngine = FocusEngine(
+            context: context, settings: settings, voiceService: voiceService, moments: moments
+        )
 
         let settings = self.settings
         let appleProvider = AppleCalendarProvider(

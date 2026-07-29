@@ -79,6 +79,7 @@ struct MacRootView: View {
                 detail
             }
         }
+        .overlay { FlowMomentOverlay() }
         .sheet(isPresented: $showingSearch) {
             GlobalSearchView { result in navigate(to: result) }
         }

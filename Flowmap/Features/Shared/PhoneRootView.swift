@@ -97,6 +97,7 @@ struct PhoneRootView: View {
                 .padding(.bottom, FlowSpacing.xxxl)
             }
         }
+        .overlay { FlowMomentOverlay() }
         .sheet(isPresented: $showingAssistant) {
             NavigationStack { AssistantScreen() }
         }

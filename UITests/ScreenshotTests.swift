@@ -95,6 +95,23 @@ final class ScreenshotTests: XCTestCase {
                 fab.tap()
                 Thread.sleep(forTimeInterval: 2)
                 capture(app, named: "iphone-new-sheet")
+
+                // Creating a task raises the HUD pill over whatever screen the
+                // sheet was covering. It is the one moment that can be
+                // provoked deterministically, so it is what proves the moment
+                // overlay actually draws.
+                let name = app.textFields["Task name"].firstMatch
+                let create = app.buttons["Create"].firstMatch
+                if name.waitForExistence(timeout: 5), create.waitForExistence(timeout: 5) {
+                    name.tap()
+                    name.typeText("Sketch the cover")
+                    create.tap()
+                    Thread.sleep(forTimeInterval: 0.8)
+                    capture(app, named: "iphone-hud-pill")
+                } else {
+                    XCTFail("New sheet did not offer a name field and a Create button")
+                }
+
                 let close = app.buttons["Close"].firstMatch
                 if close.exists { close.tap() } else { app.swipeDown() }
                 Thread.sleep(forTimeInterval: 1.5)

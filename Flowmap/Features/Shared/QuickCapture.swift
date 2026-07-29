@@ -188,6 +188,10 @@ struct QuickCaptureView: View {
     /// so that segment shares the task path until one exists.
     private func capture() {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        // The mock answers an empty name with a "Give it a name first" pill.
+        // This sheet disables Create until there is a name, so that pill can
+        // never fire — the refusal is structural, which is the better of the
+        // two. No HUD here on purpose.
         guard !trimmed.isEmpty else { return }
 
         switch kind {
@@ -200,9 +204,13 @@ struct QuickCaptureView: View {
                 project: project
             )
             context.insert(task)
+            // The mock says "Task added — Inbox + map"; nothing here puts it on
+            // the map, so the pill claims only what actually happened.
+            flow?.moments.show(.hud("Task added — Inbox"))
         case .project:
             let project = Project(title: trimmed, sortOrder: projects.count)
             context.insert(project)
+            flow?.moments.show(.hud("Project added"))
         }
         try? context.save()
 

@@ -16,8 +16,14 @@ public final class FocusVoiceService {
     /// What has already been said for each running session, so a pause/resume
     /// or a relaunch mid-session never repeats an announcement.
     private var announcedBySession: [UUID: Set<FocusVoiceMilestone>] = [:]
+    /// Shows the same milestone on screen as a banner. The two modalities
+    /// share this service because they share the schedule — a second timer
+    /// deciding when to show a banner would drift out of step with the voice.
+    private let moments: FlowMomentService?
 
-    public init() {}
+    public init(moments: FlowMomentService? = nil) {
+        self.moments = moments
+    }
 
     /// Every voice this device can speak with, for the settings picker.
     /// Read live from the system rather than a hard-coded list, since
@@ -39,8 +45,13 @@ public final class FocusVoiceService {
     ///
     /// Driven by `FocusEngine`'s existing tick — this never starts a second
     /// timer of its own.
-    public func tick(sessionID: UUID, duration: TimeInterval, elapsed: TimeInterval, settings: AppSettings) {
-        guard settings.focusVoiceEnabled else { return }
+    public func tick(
+        sessionID: UUID,
+        taskTitle: String,
+        duration: TimeInterval,
+        elapsed: TimeInterval,
+        settings: AppSettings
+    ) {
         let due = FocusVoiceSchedule.dueMilestones(duration: duration, elapsed: elapsed)
         guard !due.isEmpty else { return }
 
@@ -53,6 +64,10 @@ public final class FocusVoiceService {
         // spoken — otherwise an older one skipped this tick (because it was
         // superseded by a fresher one) would resurface stale on the next tick.
         announcedBySession[sessionID] = announced.union(due)
+        // The banner is not gated on the voice setting: someone who turned
+        // speech off still wants to see the milestone go by.
+        moments?.show(banner(for: toSpeak, taskTitle: taskTitle))
+        guard settings.focusVoiceEnabled else { return }
         speak(text(for: toSpeak), settings: settings)
     }
 
@@ -75,6 +90,29 @@ public final class FocusVoiceService {
             // The mockup's reflection prompt names the two things to do rather
             // than repeating a countdown the banner already shows.
             "Wind down. Note what you learned, and set up the next step."
+        }
+    }
+
+    /// The same milestone as a banner: how long is left and what the task is,
+    /// with wind-down carrying the mockup's reflection prompt as its subtitle.
+    private func banner(for milestone: FocusVoiceMilestone, taskTitle: String) -> FlowMoment {
+        switch milestone {
+        case .timeLeft(let minutes):
+            .notif(title: "\(minutes) minutes left — \(taskTitle)", subtitle: "Keep going.")
+        case .countdown(let minutesLeft):
+            .notif(
+                title: minutesLeft == 1
+                    ? "1 minute left — \(taskTitle)"
+                    : "\(minutesLeft) minutes left — \(taskTitle)",
+                subtitle: "Bring it to a close."
+            )
+        case .windDown(let minutes):
+            .notif(
+                title: minutes == 1
+                    ? "Wind down, 1 minute — \(taskTitle)"
+                    : "Wind down, \(minutes) minutes — \(taskTitle)",
+                subtitle: "Note what you learned, prep the next step."
+            )
         }
     }
 
