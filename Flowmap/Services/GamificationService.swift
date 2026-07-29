@@ -58,6 +58,7 @@ public struct GamificationService {
             levelAfter: after.level
         )
         moments?.show(result)
+        if result.didLevelUp { FlowSoundService().play(.fanfare, settings: settings) }
         return result
     }
 

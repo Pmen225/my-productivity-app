@@ -107,6 +107,7 @@
 		8EFE24A018C82B3445BCF704 /* FlowMomentOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = FED861A2A4656B80F201B0AB /* FlowMomentOverlay.swift */; };
 		90A7294C680A9C67E46080F9 /* AboutSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C0CBD54720120E311923079 /* AboutSettingsSection.swift */; };
 		91198C5C62F8A9374DA48DD8 /* ProjectDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00E639C60CF01D64FE44F5A3 /* ProjectDetailView.swift */; };
+		927F97B8C79206EDD2979174 /* FlowSoundService.swift in Sources */ = {isa = PBXBuildFile; fileRef = EACDF6D057742DD412CEF1F5 /* FlowSoundService.swift */; };
 		9348009671BD828F8DC4630B /* Subtask.swift in Sources */ = {isa = PBXBuildFile; fileRef = 501B9417F2666EAC5CF81025 /* Subtask.swift */; };
 		980FB8B3CF235D626AB0430F /* CalendarSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04B302DF58D172EC24E02261 /* CalendarSettingsSection.swift */; };
 		997C6539C4088DD6697F0371 /* FlowmapApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6C542766FD2F6D59CFB41D7 /* FlowmapApp.swift */; };
@@ -376,6 +377,7 @@
 		E6C542766FD2F6D59CFB41D7 /* FlowmapApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowmapApp.swift; sourceTree = "<group>"; };
 		E7F97131D87FA06E62C1BFA6 /* ProgressScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressScreen.swift; sourceTree = "<group>"; };
 		E9ACCD28558625756A7EC6F9 /* MomentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MomentTests.swift; sourceTree = "<group>"; };
+		EACDF6D057742DD412CEF1F5 /* FlowSoundService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowSoundService.swift; sourceTree = "<group>"; };
 		ECA435BB3B3F96C9BB8066FA /* ProjectsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectsScreen.swift; sourceTree = "<group>"; };
 		ED7EDBEAC7E69A017446797F /* NodeInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeInspectorView.swift; sourceTree = "<group>"; };
 		F09A23467F18FE0869E21B90 /* CalendarRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarRootView.swift; sourceTree = "<group>"; };
@@ -704,6 +706,7 @@
 				9AE7A6299405545AE13993BA /* AssistantToolRouter.swift */,
 				2D37B6ECC0169153F5381900 /* CalendarService.swift */,
 				4106483AA8C1DD1D7FFA42A5 /* FlowMomentService.swift */,
+				EACDF6D057742DD412CEF1F5 /* FlowSoundService.swift */,
 				042B1AC1D30F037BB3FB55AD /* FocusEngine.swift */,
 				7E04112C12BA31A7B85C45F7 /* FocusVoiceSchedule.swift */,
 				B017E50841C81D3D637B2D74 /* FocusVoiceService.swift */,
@@ -998,6 +1001,7 @@
 				0D7CCADF4CA35616095583C3 /* FlowDurationWheel.swift in Sources */,
 				8EFE24A018C82B3445BCF704 /* FlowMomentOverlay.swift in Sources */,
 				13A2A28AF677348CD44995FA /* FlowMomentService.swift in Sources */,
+				927F97B8C79206EDD2979174 /* FlowSoundService.swift in Sources */,
 				1811BBA0DA161447EBDC9A42 /* FlowSurfaces.swift in Sources */,
 				B29AFB55677A29A0EA7F0C9F /* FlowTask.swift in Sources */,
 				7E1215C1A9A90D6EB3168ABF /* FlowTheme.swift in Sources */,

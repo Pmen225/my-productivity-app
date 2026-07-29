@@ -56,6 +56,9 @@ public final class FocusEngine {
     /// Raises the `COMPLETE` band when a task finishes. Optional for the same
     /// reason `voiceService` is.
     private let moments: FlowMomentService?
+    /// The tick, the time-up bell and the completion chime. Stateless, so it
+    /// is built here rather than injected.
+    private let sounds = FlowSoundService()
     /// Read fresh on every use. A continuation placed by the focus timer must
     /// respect the user's real calendar, and a snapshot taken at init would be
     /// empty at launch and stale forever after.
@@ -299,6 +302,7 @@ public final class FocusEngine {
             task.actualMinutes += session.actualMinutes
             task.markCompleted(at: now)
             moments?.show(.done(taskTitle: task.title))
+            sounds.play(.chime, settings: settings)
             gamificationService().award(.taskCompleted(estimatedMinutes: task.estimatedMinutes))
         }
         if let segment = session.segment { segment.state = .completed }
@@ -402,6 +406,10 @@ public final class FocusEngine {
         if let segment { segment.state = .elapsed }
         try? context.save()
 
+        // The bell belongs to this path only — the task's own time ran out. A
+        // task the user finished or skipped by hand gets no bell.
+        sounds.play(.bell, settings: settings)
+
         var requeue: RequeueOutcome?
         if let task, task.status != .completed, task.status != .cancelled {
             // Not finished: it needs another block rather than disappearing.
@@ -426,6 +434,9 @@ public final class FocusEngine {
     /// tick — this adds no timer of its own.
     public func checkVoiceAnnouncements(now: Date = Date()) {
         guard let session = activeSession, session.isRunning else { return }
+        // The app's ticker fires once a second, so one tick per call is one
+        // tick per second — no second timer needed to pace the sound.
+        sounds.play(.tick, settings: settings)
         voiceService?.tick(
             sessionID: session.id,
             taskTitle: session.task?.title ?? "Focus",
@@ -504,6 +515,7 @@ public final class FocusEngine {
         }
         task.markCompleted()
         moments?.show(.done(taskTitle: task.title))
+        sounds.play(.chime, settings: settings)
         gamificationService().award(.taskCompleted(estimatedMinutes: task.estimatedMinutes))
         try? context.save()
         pendingTransition = nil
