@@ -537,3 +537,62 @@ struct FocusWheelGeometryTests {
         #expect(fiveMinute > viewOne * 5)
     }
 }
+
+@Suite("Focus card heights")
+@MainActor
+struct FocusCardDetentTests {
+    @Test("The three heights rise in order, so a step up is always taller")
+    func heightsRiseInOrder() {
+        let screen: CGFloat = 852
+        let hidden = FocusCardDetent.hidden.height(for: screen)
+        let rest = FocusCardDetent.rest.height(for: screen)
+        let open = FocusCardDetent.open.height(for: screen)
+
+        #expect(hidden < rest)
+        #expect(rest < open)
+        // The mock's 18px handle is under the HIG's 44pt floor and is the only
+        // thing left to grab once the card is away.
+        #expect(hidden >= 44)
+    }
+
+    @Test("Stepping stops at both ends rather than wrapping")
+    func steppingClampsAtTheEnds() {
+        #expect(FocusCardDetent.hidden.stepped(up: true) == .rest)
+        #expect(FocusCardDetent.rest.stepped(up: true) == .open)
+        #expect(FocusCardDetent.open.stepped(up: true) == .open)
+        #expect(FocusCardDetent.open.stepped(up: false) == .rest)
+        #expect(FocusCardDetent.rest.stepped(up: false) == .hidden)
+        #expect(FocusCardDetent.hidden.stepped(up: false) == .hidden)
+    }
+
+    @Test("Tapping the handle cycles round, so the card is never stuck away")
+    func tappingCyclesRound() {
+        #expect(FocusCardDetent.hidden.next == .rest)
+        #expect(FocusCardDetent.rest.next == .open)
+        #expect(FocusCardDetent.open.next == .hidden)
+    }
+}
+
+@Suite("Bowl neighbour labels")
+@MainActor
+struct NeighbourLabelTests {
+    @Test("A wide wedge keeps the full band and the full-size title")
+    func wideWedgeKeepsFullSize() {
+        let label = FocusWheelGeometry.neighbourLabel(spanDegrees: 60, midRadius: 200, thickness: 60)
+        #expect(label.width == FocusWheelGeometry.neighbourLabelBandWidth(thickness: 60))
+        #expect(label.isTight == false)
+    }
+
+    @Test("A narrow wedge steps the title down rather than truncating it")
+    func narrowWedgeStepsDown() {
+        let label = FocusWheelGeometry.neighbourLabel(spanDegrees: 8, midRadius: 200, thickness: 60)
+        #expect(label.isTight)
+        #expect(label.width < FocusWheelGeometry.neighbourLabelBandWidth(thickness: 60))
+    }
+
+    @Test("Even a sliver keeps enough width to draw something")
+    func sliverKeepsAFloor() {
+        let label = FocusWheelGeometry.neighbourLabel(spanDegrees: 0.5, midRadius: 120, thickness: 60)
+        #expect(label.width >= 30)
+    }
+}

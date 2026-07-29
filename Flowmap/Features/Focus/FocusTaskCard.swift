@@ -25,6 +25,40 @@ enum FocusCardPage: Int, CaseIterable, Identifiable {
     }
 }
 
+/// The three heights the lower card snaps between (decision 14). `hidden`
+/// gives the dial the screen; `rest` keeps the queue readable under it;
+/// `open` covers most of the screen for working through a checklist.
+enum FocusCardDetent: Int, CaseIterable {
+    case hidden
+    case rest
+    case open
+
+    /// The mock's 18px `hidden` strip is under the HIG's 44pt floor, and the
+    /// handle it leaves is the only way to bring the card back — so the strip
+    /// is the handle's whole 44pt target plus the card's own top padding,
+    /// rather than the mock's 18px. Anything shorter clips the target, since
+    /// the card clips to its own shape.
+    static let hiddenHeight: CGFloat = 44 + FlowSpacing.m
+
+    func height(for total: CGFloat) -> CGFloat {
+        switch self {
+        case .hidden: Self.hiddenHeight
+        case .rest: FocusTaskCard.restingHeight(for: total)
+        case .open: FocusTaskCard.expandedHeight(for: total)
+        }
+    }
+
+    /// One step up (`hidden` → `rest` → `open`) or down, stopping at the ends.
+    func stepped(up: Bool) -> FocusCardDetent {
+        FocusCardDetent(rawValue: min(2, max(0, rawValue + (up ? 1 : -1)))) ?? self
+    }
+
+    /// What tapping the handle does: cycles round rather than dead-ending.
+    var next: FocusCardDetent {
+        FocusCardDetent(rawValue: (rawValue + 1) % FocusCardDetent.allCases.count) ?? .rest
+    }
+}
+
 /// The card beneath the wheel: today's queue on one page, the active task's
 /// subtasks on the other.
 ///
@@ -40,8 +74,8 @@ struct FocusTaskCard: View {
     let onSelect: (TaskSegment) -> Void
 
     @Binding var page: FocusCardPage
-    /// 0 = resting, 1 = fully expanded.
-    @Binding var expansion: Double
+    /// Which of the three heights the card rests at.
+    @Binding var detent: FocusCardDetent
 
     @State private var dragOffset: CGFloat = 0
     /// Which queue row has been unfolded to show its checklist. One at a
@@ -60,13 +94,15 @@ struct FocusTaskCard: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let resting = Self.restingHeight(for: proxy.size.height)
             let expanded = Self.expandedHeight(for: proxy.size.height)
-            let height = resting + (expanded - resting) * expansion
+            let height = detent.height(for: proxy.size.height) + dragOffset
 
             VStack(spacing: 0) {
                 Spacer(minLength: 0)
-                card(height: max(resting, height + dragOffset), canExpand: expanded > resting)
+                card(
+                    height: min(expanded, max(FocusCardDetent.hiddenHeight, height)),
+                    canExpand: expanded > Self.restingHeight(for: proxy.size.height)
+                )
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         }
@@ -75,12 +111,27 @@ struct FocusTaskCard: View {
     // MARK: - Card
 
     private func card(height: CGFloat, canExpand: Bool) -> some View {
-        VStack(spacing: FlowSpacing.m) {
+        // The mock's hand-held shape: tighter top corners, a deep flare at
+        // the bottom rather than a plain rectangle.
+        let shape = UnevenRoundedRectangle(
+            topLeadingRadius: FlowRadius.large,
+            bottomLeadingRadius: FlowRadius.deep,
+            bottomTrailingRadius: FlowRadius.deep,
+            topTrailingRadius: FlowRadius.large,
+            style: .continuous
+        )
+
+        return VStack(spacing: FlowSpacing.m) {
             #if !os(macOS)
             grabber
             #endif
-            header
-            content
+            // Collapsed, the card is a handle and nothing else — its contents
+            // would otherwise draw straight over the dial, which is the whole
+            // point of collapsing it.
+            if detent != .hidden {
+                header
+                content
+            }
             Spacer(minLength: 0)
         }
         .padding(.horizontal, FlowSpacing.screen)
@@ -88,18 +139,11 @@ struct FocusTaskCard: View {
         .padding(.bottom, FlowSpacing.l)
         .frame(maxWidth: .infinity)
         .frame(height: height, alignment: .top)
+        .clipShape(shape)
         .background(
-            // The mock's hand-held shape: tighter top corners, a deep flare at
-            // the bottom rather than a plain rectangle.
-            UnevenRoundedRectangle(
-                topLeadingRadius: FlowRadius.large,
-                bottomLeadingRadius: FlowRadius.deep,
-                bottomTrailingRadius: FlowRadius.deep,
-                topTrailingRadius: FlowRadius.large,
-                style: .continuous
-            )
-            .fill(FlowTheme.surface(scheme))
-            .shadow(color: FlowTheme.shadow(scheme), radius: 18, y: -4)
+            shape
+                .fill(FlowTheme.surface(scheme))
+                .shadow(color: FlowTheme.shadow(scheme), radius: 18, y: -4)
         )
         #if !os(macOS)
         .gesture(dragGesture(canExpand: canExpand))
@@ -110,13 +154,29 @@ struct FocusTaskCard: View {
         Capsule()
             .fill(FlowTheme.separatorStrong(scheme))
             .frame(width: 42, height: 5)
-            .accessibilityLabel("Drag to expand the task card")
+            // A 5pt capsule is far under the 44pt floor, and when the card is
+            // collapsed it is the only way back — so the target is grown
+            // around the artwork rather than the artwork scaled up.
+            .flowHitTarget(44)
+            .onTapGesture { cycleDetent() }
+            .accessibilityLabel("Task card, \(detentDescription)")
+            .accessibilityHint("Changes the card's height")
             .accessibilityAddTraits(.isButton)
-            .accessibilityAction {
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    expansion = expansion > 0.5 ? 0 : 1
-                }
-            }
+            .accessibilityAction { cycleDetent() }
+    }
+
+    private var detentDescription: String {
+        switch detent {
+        case .hidden: "collapsed"
+        case .rest: "resting"
+        case .open: "expanded"
+        }
+    }
+
+    private func cycleDetent() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            detent = detent.next
+        }
     }
 
     private var header: some View {
@@ -354,9 +414,16 @@ struct FocusTaskCard: View {
                             .foregroundStyle(FlowTheme.secondaryText(scheme))
                     }
                     ScrollView {
-                        LazyVStack(spacing: 2) {
-                            ForEach(task.orderedSubtasks) { subtask in
-                                subtaskRow(subtask)
+                        // No spacing between rows: the timeline connector is
+                        // drawn per row and a gap would break it into dashes.
+                        LazyVStack(spacing: 0) {
+                            let subtasks = task.orderedSubtasks
+                            ForEach(Array(subtasks.enumerated()), id: \.element.id) { index, subtask in
+                                subtaskRow(
+                                    subtask,
+                                    isFirst: index == 0,
+                                    isLast: index == subtasks.count - 1
+                                )
                             }
                         }
                     }
@@ -373,7 +440,20 @@ struct FocusTaskCard: View {
         }
     }
 
-    private func subtaskRow(_ subtask: Subtask) -> some View {
+    /// The width the checklist's circles are centred in, so the connector
+    /// behind them lines up whichever symbol a row is showing.
+    private static let subtaskDotColumn: CGFloat = 20
+
+    /// Half a row's worth of timeline, drawn behind the circle column.
+    private func connector(hidden: Bool) -> some View {
+        Rectangle()
+            .fill(hidden ? Color.clear : FlowTheme.separatorStrong(scheme))
+            .frame(width: 1)
+            .frame(maxHeight: .infinity)
+            .accessibilityHidden(true)
+    }
+
+    private func subtaskRow(_ subtask: Subtask, isFirst: Bool, isLast: Bool) -> some View {
         Button {
             flow?.gamification.toggleSubtask(subtask)
         } label: {
@@ -381,6 +461,10 @@ struct FocusTaskCard: View {
                 Image(systemName: subtask.isCompleted ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 17))
                     .foregroundStyle(subtask.isCompleted ? FlowTheme.accent : FlowTheme.secondaryText(scheme))
+                    // A fixed column so the connector behind it lines up with
+                    // every circle, whatever the symbol's own width.
+                    .frame(width: Self.subtaskDotColumn)
+                    .background(Circle().fill(FlowTheme.surface(scheme)).padding(-1))
                 Text(subtask.title)
                     .font(FlowFont.body)
                     .strikethrough(subtask.isCompleted, color: FlowTheme.secondaryText(scheme))
@@ -392,6 +476,15 @@ struct FocusTaskCard: View {
                 Spacer(minLength: 0)
             }
             .padding(.vertical, FlowSpacing.s)
+            // The mock's timeline: a hairline joining one circle to the next,
+            // stopping at the first and last rows so the run has two ends.
+            .background(alignment: .leading) {
+                VStack(spacing: 0) {
+                    connector(hidden: isFirst)
+                    connector(hidden: isLast)
+                }
+                .frame(width: Self.subtaskDotColumn)
+            }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -403,6 +496,8 @@ struct FocusTaskCard: View {
     // MARK: - Drag
 
     #if !os(macOS)
+    /// One drag steps one height, up or down — dragging down from `rest`
+    /// collapses the card and hands the dial the screen (decision 14).
     private func dragGesture(canExpand: Bool) -> some Gesture {
         DragGesture(minimumDistance: 8)
             .onChanged { value in
@@ -411,10 +506,14 @@ struct FocusTaskCard: View {
             }
             .onEnded { value in
                 guard canExpand else { return }
-                let shouldExpand = -value.translation.height > 60
-                    || (-value.predictedEndTranslation.height > 140)
+                let travel = -value.translation.height
+                let flick = -value.predictedEndTranslation.height
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    expansion = shouldExpand ? 1 : (value.translation.height > 60 ? 0 : expansion)
+                    if travel > 60 || flick > 140 {
+                        detent = detent.stepped(up: true)
+                    } else if travel < -60 || flick < -140 {
+                        detent = detent.stepped(up: false)
+                    }
                     dragOffset = 0
                 }
             }

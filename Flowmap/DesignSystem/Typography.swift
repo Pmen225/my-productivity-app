@@ -41,6 +41,12 @@ public enum FlowFont {
     /// Title written inside a wheel segment.
     public static let wheelSegment = Font.system(size: 11, weight: .semibold, design: .rounded)
 
+    /// The same title on a wedge too narrow to hold it. Held at 9.5pt: the
+    /// design steps a third time down to 8.4, smaller than anything else in
+    /// this app and hard to read on a dial that moves — a wedge tighter than
+    /// this truncates instead, the way `mapNodeTitleCompact` holds its floor.
+    public static let wheelSegmentCompact = Font.system(size: 9.5, weight: .semibold, design: .rounded)
+
     /// The title inside a centred modal dialog — `FlowDialog`'s task/gate title.
     public static let dialogTitle = Font.system(size: 21, weight: .heavy, design: .rounded)
 

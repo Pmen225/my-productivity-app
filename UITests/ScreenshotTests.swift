@@ -41,8 +41,17 @@ final class ScreenshotTests: XCTestCase {
             XCTFail("Wheel mode chip \(mode) not found")
             return
         }
+        // The chips idle away 2.5s after the last touch and stop taking taps
+        // while they are invisible, so the first tap only wakes them. Tapping
+        // twice is right either way — selecting the mode already showing is a
+        // no-op. Without this the mode silently never changes and the run
+        // still passes, exporting a shot of the wrong dial.
         chip.tap()
-        Thread.sleep(forTimeInterval: 2.5)
+        Thread.sleep(forTimeInterval: 0.5)
+        chip.tap()
+        // Long enough for the radius ease to settle, short enough that the
+        // chips have not faded again by the time the shot is taken.
+        Thread.sleep(forTimeInterval: 1.2)
     }
 
     /// Taps a real tab bar item by its label. Decision 1b (2026-07-29)
@@ -176,6 +185,42 @@ final class ScreenshotTests: XCTestCase {
             start.press(forDuration: 0.2, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.3)
             Thread.sleep(forTimeInterval: 3)
             capture(app, named: "iphone-focus-card-expanded")
+
+            // The card's second page, reached by its own pager dot — the
+            // checklist and the timeline connecting its circles.
+            let subtasksDot = app.buttons["Subtasks"].firstMatch
+            if subtasksDot.waitForExistence(timeout: 5) {
+                subtasksDot.tap()
+                Thread.sleep(forTimeInterval: 1.5)
+                capture(app, named: "iphone-focus-subtasks")
+            } else {
+                XCTFail("The card's Subtasks page dot was not found")
+            }
+
+            // Decision 14's third height. Tapping the handle cycles it —
+            // dragging down cannot be used here because the expanded card's
+            // own queue scrolls, and the scroll takes the drag.
+            let handle = app.buttons.matching(
+                NSPredicate(format: "label BEGINSWITH %@", "Task card")
+            ).firstMatch
+            if handle.waitForExistence(timeout: 5) {
+                handle.tap()
+                Thread.sleep(forTimeInterval: 1.5)
+                capture(app, named: "iphone-focus-card-hidden")
+            } else {
+                XCTFail("The card's handle is not reachable as a control")
+            }
+
+            // Decision 13: the countdown hides on a tap and a ◷ button takes
+            // its place.
+            window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.297)).tap()
+            Thread.sleep(forTimeInterval: 1)
+            capture(app, named: "iphone-focus-timer-hidden")
+            if app.buttons["Show timer"].firstMatch.waitForExistence(timeout: 5) {
+                app.buttons["Show timer"].firstMatch.tap()
+            } else {
+                XCTFail("Show timer button not found after hiding the countdown")
+            }
         }
 
         if tapTab(app, "Calendar") {

@@ -237,15 +237,23 @@ struct FocusWheelView: View {
         radius: CGFloat,
         thickness: CGFloat
     ) -> some View {
+        let midRadius = radius - thickness / 2
         let midAngle = (span.start + span.end) / 2
-        let position = FocusWheelGeometry.point(centre: centre, radius: radius - thickness / 2, angle: midAngle)
+        let position = FocusWheelGeometry.point(centre: centre, radius: midRadius, angle: midAngle)
         let rotation = FocusWheelGeometry.readableRotation(atAngle: midAngle)
+        // Two size tiers, measured from the arc the label actually has
+        // (`FocusWheelGeometry` owns every angle in this view).
+        let label = FocusWheelGeometry.neighbourLabel(
+            spanDegrees: span.end - span.start,
+            midRadius: midRadius,
+            thickness: thickness
+        )
 
         return VStack(spacing: 1) {
             Image(systemName: item.iconName)
                 .font(.system(size: 11, weight: .semibold))
             Text(item.title)
-                .font(FlowFont.wheelSegment)
+                .font(label.isTight ? FlowFont.wheelSegmentCompact : FlowFont.wheelSegment)
                 .lineLimit(1)
                 .truncationMode(.tail)
             Text(DurationFormatter.compact(minutes: item.minutes))
@@ -253,7 +261,7 @@ struct FocusWheelView: View {
                 .opacity(0.85)
         }
         .foregroundStyle(item.colour.onSoft)
-        .frame(maxWidth: max(56, thickness * 1.6))
+        .frame(maxWidth: label.width)
         .rotationEffect(.degrees(rotation))
         .position(x: position.x, y: position.y)
         .accessibilityElement(children: .combine)

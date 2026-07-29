@@ -329,4 +329,30 @@ public enum FocusWheelGeometry {
         let arcLength = labelRadius * CGFloat(spanDegrees * .pi / 180)
         return arcLength >= overviewMinLabelArcLength
     }
+
+    // MARK: - Bowl neighbour labels
+
+    /// The widest a neighbour wedge's label is ever drawn: the band it sits
+    /// in, floored so a thin ring still gets a readable label.
+    public static func neighbourLabelBandWidth(thickness: CGFloat) -> CGFloat {
+        max(56, thickness * 1.6)
+    }
+
+    /// How much room a neighbour wedge's label really has, and whether that
+    /// is tight enough to step the title's type down a size.
+    ///
+    /// The label runs along the arc, so a short wedge is a narrow label —
+    /// the design answers this by shrinking the type rather than truncating
+    /// a five-minute task down to one word. The floor stops an extremely
+    /// thin sliver from collapsing the label to nothing.
+    public static func neighbourLabel(
+        spanDegrees: Double,
+        midRadius: CGFloat,
+        thickness: CGFloat
+    ) -> (width: CGFloat, isTight: Bool) {
+        let band = neighbourLabelBandWidth(thickness: thickness)
+        let arcLength = midRadius * CGFloat(abs(spanDegrees) * .pi / 180)
+        let width = min(band, max(30, arcLength - 4))
+        return (width, width < band)
+    }
 }
