@@ -547,6 +547,51 @@ public struct SchedulingService {
         return segment
     }
 
+    /// Places one task in the earliest free slot that fits it today, or the
+    /// first following day that has room.
+    ///
+    /// Deliberately narrower than `proposePlan`: the Plan page's "Plan now"
+    /// answers for a single task the user is looking at, so it needs no
+    /// preview — nothing else on the day moves.
+    @discardableResult
+    public func planNow(
+        task: FlowTask,
+        now: Date = Date(),
+        lookaheadDays: Int = SchedulingService.lookaheadDays
+    ) -> TaskSegment? {
+        let minutes = max(SchedulingEngine.snapMinutes, task.unscheduledMinutes)
+        let firstDay = calendar.startOfDay(for: now)
+        let map = busyMap(from: firstDay, dayCount: lookaheadDays)
+
+        for offset in 0..<lookaheadDays {
+            guard let day = calendar.date(byAdding: .day, value: offset, to: firstDay) else { continue }
+            // Adjacent days too: a block starting yesterday can still be
+            // running into this one, and busyMap buckets it under its start.
+            let previous = calendar.date(byAdding: .day, value: -1, to: day) ?? day
+            let busy = (map[day] ?? []) + (map[previous] ?? [])
+            let slots = engine.freeSlots(on: day, busy: busy, notBefore: offset == 0 ? now : nil)
+            for slot in slots {
+                guard let usable = engine.constrain(slot: slot, for: task, on: day),
+                      usable.minutes >= minutes
+                else { continue }
+                if let segment = schedule(task: task, at: usable.start, minutes: minutes) {
+                    return segment
+                }
+            }
+        }
+        return nil
+    }
+
+    /// Minutes still free between `now` and the end of the working day — what
+    /// the Plan page's capacity line reports.
+    public func freeMinutesRemainingToday(now: Date = Date()) -> Int {
+        let day = calendar.startOfDay(for: now)
+        let previous = calendar.date(byAdding: .day, value: -1, to: day) ?? day
+        let map = busyMap(from: previous, dayCount: 2)
+        let busy = (map[day] ?? []) + (map[previous] ?? [])
+        return engine.freeSlots(on: day, busy: busy, notBefore: now).reduce(0) { $0 + $1.minutes }
+    }
+
     /// Moves an existing block. Refuses if the destination overlaps or the block is locked.
     @discardableResult
     public func move(segment: TaskSegment, to start: Date) -> Bool {

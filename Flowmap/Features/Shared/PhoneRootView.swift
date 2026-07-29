@@ -202,6 +202,9 @@ struct LibraryView: View {
 
     var body: some View {
         List {
+            // Triage first: what has no slot yet, above the places to go
+            // looking for everything that has one.
+            PlanInboxSection()
             Section(header: sectionHeader("TASKS")) {
                 ForEach(Array(SmartView.allCases.enumerated()), id: \.element) { index, view in
                     NavigationLink {
