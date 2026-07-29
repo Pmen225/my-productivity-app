@@ -44,6 +44,9 @@ struct FocusTaskCard: View {
     @Binding var expansion: Double
 
     @State private var dragOffset: CGFloat = 0
+    /// Which queue row has been unfolded to show its checklist. One at a
+    /// time — the card is short, and two open rows leave nothing readable.
+    @State private var expandedSegmentID: UUID?
 
     /// Ticks with the same clock `FocusScreen` uses, so the active row's
     /// remaining time counts down without a timer of its own.
@@ -137,17 +140,28 @@ struct FocusTaskCard: View {
     private var pageDots: some View {
         HStack(spacing: 6) {
             ForEach(FocusCardPage.allCases) { candidate in
-                Circle()
-                    .fill(
-                        candidate == page
-                            ? FlowTheme.accent
-                            : FlowTheme.separator(scheme)
-                    )
-                    .frame(width: 6, height: 6)
+                Button {
+                    withAnimation(.snappy(duration: 0.24)) { page = candidate }
+                } label: {
+                    Circle()
+                        .fill(
+                            candidate == page
+                                ? FlowTheme.accent
+                                : FlowTheme.separator(scheme)
+                        )
+                        .frame(width: 6, height: 6)
+                        // HIG override: full 44pt of height, but 24pt of width
+                        // — a 44pt-wide target throws the pair of dots to
+                        // opposite ends of the header and they stop reading as
+                        // a pager. Swipe remains the primary way to change page.
+                        .frame(width: 24, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(candidate.eyebrowTitle)
+                .accessibilityAddTraits(candidate == page ? [.isButton, .isSelected] : .isButton)
             }
         }
-        .accessibilityElement()
-        .accessibilityLabel("Page \(page.rawValue + 1) of \(FocusCardPage.allCases.count)")
     }
 
     @ViewBuilder
@@ -187,6 +201,9 @@ struct FocusTaskCard: View {
                     LazyVStack(spacing: FlowSpacing.s) {
                         ForEach(queue) { segment in
                             queueRow(segment)
+                            if expandedSegmentID == segment.id {
+                                queueRowDetail(segment)
+                            }
                         }
                     }
                     .padding(.bottom, FlowSpacing.m)
@@ -195,55 +212,136 @@ struct FocusTaskCard: View {
         }
     }
 
+    // The mock's queue also carries "✓ done" / "↷ moved" / "skipped" rows and
+    // strikes finished ones through. Not built: `FocusEngine.queue(for:)`
+    // returns only `.scheduled` and `.elapsed` segments, so those states can
+    // never reach this view. Showing the day's history means widening that
+    // query, which `currentSegment` also reads — a change to what Focus
+    // considers "next", not a display tweak. See the handover.
     private func queueRow(_ segment: TaskSegment) -> some View {
         let task = segment.task
         let colour = task?.colour ?? .violet
         let isActive = segment.id == activeSegmentID
-        return Button {
-            onSelect(segment)
-        } label: {
-            HStack(spacing: FlowSpacing.m) {
-                Circle()
-                    .fill(colour.onSoft)
-                    .frame(width: 8, height: 8)
-                    .accessibilityHidden(true)
+        let hasNote = !(task?.notes ?? []).isEmpty
 
-                Text(task?.title ?? "Task")
-                    .font(FlowFont.body)
-                    .foregroundStyle(FlowTheme.primaryText(scheme))
-                    .lineLimit(1)
+        return HStack(spacing: FlowSpacing.m) {
+            Circle()
+                .fill(colour.onSoft)
+                .frame(width: 8, height: 8)
+                .accessibilityHidden(true)
 
-                Spacer(minLength: FlowSpacing.s)
-
-                if segment.isLocked {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 10))
-                        .foregroundStyle(FlowTheme.secondaryText(scheme))
-                        .accessibilityLabel("Locked")
+            // Decision 15: the row's own tap unfolds the checklist, so
+            // starting a task needs a control of its own.
+            Button {
+                withAnimation(.snappy(duration: 0.24)) {
+                    expandedSegmentID = expandedSegmentID == segment.id ? nil : segment.id
                 }
+            } label: {
+                HStack(spacing: FlowSpacing.xs) {
+                    Text(rowTitle(task: task, segment: segment))
+                        .font(FlowFont.body)
+                        .foregroundStyle(FlowTheme.primaryText(scheme))
+                        .lineLimit(1)
 
-                if isActive {
-                    // The row that is actually running reads its remaining
-                    // time, not the fixed slot it was scheduled into.
-                    Text(DurationFormatter.countdown(seconds: segment.remainingSeconds(at: now)))
-                        .font(FlowFont.caption.weight(.heavy).monospacedDigit())
-                        .foregroundStyle(FlowTheme.accentDeep)
-                } else {
-                    Text("\(DurationFormatter.time(segment.startDate)) · \(DurationFormatter.compact(minutes: segment.durationMinutes))")
-                        .font(.system(size: 12, design: .rounded).monospacedDigit())
-                        .foregroundStyle(FlowTheme.secondaryText(scheme))
+                    if hasNote {
+                        Image(systemName: "note.text")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(FlowTheme.secondaryText(scheme))
+                            .accessibilityLabel("Has a note")
+                    }
+
+                    Spacer(minLength: FlowSpacing.s)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(
+                "\(rowTitle(task: task, segment: segment)), \(DurationFormatter.spoken(minutes: segment.durationMinutes))"
+            )
+            .accessibilityHint("Shows this task's subtasks")
+
+            if segment.isLocked {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(FlowTheme.secondaryText(scheme))
+                    .accessibilityLabel("Locked")
+            }
+
+            if isActive {
+                // The row that is actually running reads its remaining
+                // time, not the fixed slot it was scheduled into.
+                Text(DurationFormatter.countdown(seconds: segment.remainingSeconds(at: now)))
+                    .font(FlowFont.caption.weight(.heavy).monospacedDigit())
+                    .foregroundStyle(FlowTheme.accentDeep)
+            } else {
+                Text("\(DurationFormatter.time(segment.startDate)) · \(DurationFormatter.compact(minutes: segment.durationMinutes))")
+                    .font(.system(size: 12, design: .rounded).monospacedDigit())
+                    .foregroundStyle(FlowTheme.secondaryText(scheme))
+
+                Button {
+                    onSelect(segment)
+                } label: {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(FlowTheme.accent)
+                        .flowHitTarget(44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Start \(task?.title ?? "task")")
+            }
+        }
+        .padding(.horizontal, FlowSpacing.m)
+        .flowHitTarget(44)
+        .background(
+            RoundedRectangle(cornerRadius: FlowRadius.small, style: .continuous)
+                .fill(isActive ? colour.soft : Color.clear)
+        )
+    }
+
+    /// What a tapped queue row unfolds: what "done" means for this task, and
+    /// its checklist — read-only here. Ticking happens on the Subtasks page,
+    /// which owns that interaction already.
+    private func queueRowDetail(_ segment: TaskSegment) -> some View {
+        let task = segment.task
+        let subtasks = task?.orderedSubtasks ?? []
+        return VStack(alignment: .leading, spacing: FlowSpacing.xs) {
+            if let dod = task?.definitionOfDone, !dod.isEmpty {
+                Text(dod)
+                    .font(FlowFont.caption)
+                    .foregroundStyle(FlowTheme.secondaryText(scheme))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if subtasks.isEmpty {
+                Text("No subtasks.")
+                    .font(FlowFont.caption)
+                    .foregroundStyle(FlowTheme.tertiaryText(scheme))
+            } else {
+                ForEach(subtasks) { subtask in
+                    HStack(spacing: FlowSpacing.s) {
+                        Image(systemName: subtask.isCompleted ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 11))
+                            .foregroundStyle(
+                                subtask.isCompleted ? FlowTheme.accent : FlowTheme.separatorStrong(scheme)
+                            )
+                        Text(subtask.title)
+                            .font(FlowFont.caption)
+                            .strikethrough(subtask.isCompleted)
+                            .foregroundStyle(FlowTheme.secondaryText(scheme))
+                            .lineLimit(1)
+                    }
                 }
             }
-            .padding(.horizontal, FlowSpacing.m)
-            .flowHitTarget(44)
-            .background(
-                RoundedRectangle(cornerRadius: FlowRadius.small, style: .continuous)
-                    .fill(isActive ? colour.soft : Color.clear)
-            )
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(task?.title ?? "Task"), \(DurationFormatter.spoken(minutes: segment.durationMinutes))")
-        .accessibilityHint(isActive ? "Currently running" : "Starts at \(DurationFormatter.time(segment.startDate))")
+        .padding(.horizontal, FlowSpacing.xl)
+        .padding(.bottom, FlowSpacing.xs)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// A continuation says so, the way the mock does — the same task coming
+    /// back around is not a second task.
+    private func rowTitle(task: FlowTask?, segment: TaskSegment) -> String {
+        let base = task?.title ?? "Task"
+        return segment.isContinuation ? "\(base) · moved" : base
     }
 
     private var subtaskList: some View {
