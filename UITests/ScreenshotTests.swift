@@ -417,7 +417,26 @@ final class ScreenshotTests: XCTestCase {
             Thread.sleep(forTimeInterval: 0.5)
             let notes = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Notes'")).firstMatch
             if notes.waitForExistence(timeout: 5) {
-                let before = app.staticTexts.count
+                // The row's own accessibility label is "Notes, <count>".
+                let noteCount = Int(
+                    notes.label.split(separator: ",").last?.trimmingCharacters(in: .whitespaces) ?? ""
+                ) ?? 0
+                // Compare the SET of visible labels, exactly as the Today
+                // accordion check above does, NOT how many there are. A count
+                // is blind here for the same reason it was blind there: this
+                // list is already full, so the rows that appear push others
+                // off the bottom and the total can sit still while the screen
+                // plainly changed. "free before" is skipped because the Inbox
+                // header counts minutes down to 21:00 on its own and would
+                // satisfy a naive set check with nothing having expanded.
+                let visibleLabels = {
+                    Set(
+                        app.staticTexts.allElementsBoundByIndex
+                            .map(\.label)
+                            .filter { !$0.contains("free before") }
+                    )
+                }
+                let before = visibleLabels()
                 notes.tap()
                 Thread.sleep(forTimeInterval: 2)
                 capture(app, named: "iphone-plan-notes-attach")
@@ -425,10 +444,12 @@ final class ScreenshotTests: XCTestCase {
                 // auto-plan schedules fewer tasks as the evening wears on, so
                 // a title like "Reading" fails against working code. Unfolding
                 // Notes adds the eyebrow and one chip per candidate task.
-                XCTAssertGreaterThan(
-                    app.staticTexts.count, before,
-                    "Unfolding Notes put no attach chips on screen"
-                )
+                if noteCount > 0 {
+                    XCTAssertFalse(
+                        visibleLabels().subtracting(before).isEmpty,
+                        "Unfolding Notes (count \(noteCount)) revealed no row that was not already on screen"
+                    )
+                }
                 notes.tap()
                 Thread.sleep(forTimeInterval: 1)
             } else {
@@ -628,6 +649,53 @@ final class ScreenshotTests: XCTestCase {
         let keepOrder = app.buttons["Keep order, plan later"].firstMatch
         if keepOrder.waitForExistence(timeout: 5) {
             keepOrder.tap()
+        }
+    }
+
+    /// "Start planning" must actually present `PlanPreviewView`.
+    ///
+    /// This is the duel's twin, and it had the identical root cause: both
+    /// sheets were attached to `PlanInboxSection`'s own `Section`, nested
+    /// inside `LibraryView`'s `List`, where a `.sheet` never presents — the
+    /// flag flips, nothing appears, nothing errors. The duel had a
+    /// screenshot test that caught it once it was taught to fail; this path
+    /// had nothing behind it at all, which made it the likeliest place for
+    /// the same bug to come back unnoticed.
+    ///
+    /// Asserts on the sheet's own chrome (`Plan my day`, `Apply plan`), never
+    /// on which demo tasks the auto-plan happened to schedule — how full the
+    /// proposal is depends on the hour, but the sheet's title does not.
+    func testCapturePlanPreview() {
+        let app = launch()
+        guard tapTab(app, "Plan") else { return }
+
+        // "Start planning" only renders when the inbox is non-empty
+        // (`PlanInboxSection.body`), and the demo's auto-plan can empty it —
+        // so put one task in rather than depending on what is left over.
+        addQuickTask(app, title: "Preview candidate")
+
+        let startPlanning = app.buttons["Start planning"].firstMatch
+        guard startPlanning.waitForExistence(timeout: 8) else {
+            XCTFail("\"Start planning\" not found — the inbox may be empty")
+            return
+        }
+        startPlanning.tap()
+
+        // Match the sheet's own navigation title, which exists in every
+        // proposal state including "nothing could be placed".
+        let previewTitle = app.staticTexts["Plan my day"].firstMatch
+        XCTAssertTrue(
+            previewTitle.waitForExistence(timeout: 5),
+            "Plan preview did not present after tapping \"Start planning\""
+        )
+        Thread.sleep(forTimeInterval: 0.8)
+        capture(app, named: "iphone-plan-preview")
+
+        // Leave without applying: this test proves the sheet presents, and
+        // applying a plan would move the demo day underneath every later run.
+        let cancel = app.buttons["Cancel"].firstMatch
+        if cancel.waitForExistence(timeout: 3) {
+            cancel.tap()
         }
     }
 
