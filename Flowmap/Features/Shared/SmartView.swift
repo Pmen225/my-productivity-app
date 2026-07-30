@@ -60,7 +60,7 @@ public enum SmartView: String, CaseIterable, Identifiable, Sendable {
         case .anytime: "No undated work waiting."
         case .someday: "Nothing parked for later."
         case .allTasks: "No tasks yet."
-        case .completed: "Finished work will collect here."
+        case .completed: "Nothing completed yet."
         }
     }
 

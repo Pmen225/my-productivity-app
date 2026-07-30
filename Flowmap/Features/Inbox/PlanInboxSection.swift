@@ -16,9 +16,20 @@ struct PlanInboxSection: View {
     /// Which row has been tapped open. One at a time: two editors expanded at
     /// once is a list nobody can read.
     @State private var editingTaskID: UUID?
-    @State private var showingDuel = false
-    @State private var showingPlanPreview = false
-    @State private var planProposal: PlanProposal?
+    /// Both duel and plan-preview presentation are driven from here but
+    /// HOSTED by `LibraryView`, which owns the `.sheet` modifiers. A `.sheet`
+    /// attached to this view's own `Section` never presents: `Section` is
+    /// only one of several children inside `LibraryView`'s outer `List`, and
+    /// SwiftUI does not reliably host a presentation controller for a
+    /// modifier attached that deep inside another List's content — the
+    /// duel's own entry point silently stopped opening the moment T6 moved
+    /// it from `TaskListScreen` (where `.sheet` sat on the screen's own
+    /// top-level `List`) into this nested `Section`. Bindings, not local
+    /// `@State`, so the parent's `.sheet` toggles the same flag this button
+    /// sets.
+    @Binding var showingDuel: Bool
+    @Binding var showingPlanPreview: Bool
+    @Binding var planProposal: PlanProposal?
 
     private var inbox: [FlowTask] {
         SmartView.inbox.matches(allTasks)
@@ -39,15 +50,6 @@ struct PlanInboxSection: View {
             }
         } header: {
             header
-        }
-        .sheet(isPresented: $showingDuel) { PrioritiseDuelView(tasks: inbox) }
-        .sheet(isPresented: $showingPlanPreview) {
-            PlanPreviewView(
-                proposal: planProposal ?? PlanProposal(),
-                tasksByID: Dictionary(uniqueKeysWithValues: allTasks.map { ($0.id, $0) }),
-                onApply: applyPlan,
-                onReplanWholeDay: replanWholeDay
-            )
         }
     }
 
@@ -142,16 +144,5 @@ struct PlanInboxSection: View {
         } else {
             flow.moments.show(.hud("No free slots left today"))
         }
-    }
-
-    private func applyPlan() {
-        guard let flow, let planProposal else { return }
-        flow.applyPlan(planProposal, replanExisting: false)
-        showingPlanPreview = false
-    }
-
-    private func replanWholeDay() {
-        guard let flow else { return }
-        planProposal = flow.planToday(replanExisting: true)
     }
 }

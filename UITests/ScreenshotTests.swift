@@ -316,6 +316,64 @@ final class ScreenshotTests: XCTestCase {
         if tapTab(app, "Plan") {
             capture(app, named: "iphone-library")
 
+            // T6: TASKS rows expand in place now rather than pushing a
+            // screen. Two captures plus one behavioural check that must
+            // differ between them — an assertion that could pass in both
+            // states proves nothing, the mistake the calendar day-tap check
+            // shipped last session.
+            //
+            // The check counts rows rather than naming a demo task. Naming
+            // one ("Reading") failed at 20:44 against working code: the
+            // header read "0M free before 21:00", so the demo's auto-plan
+            // had no room left and Today legitimately held a single task.
+            // How much of the demo lands in Today is a function of the clock,
+            // so no fixed title is safe — but "expanding adds rows" is true
+            // whenever Today is non-empty, and its count is on screen to say
+            // whether it is.
+            capture(app, named: "iphone-plan-accordion-closed")
+
+            let todayRow = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Today'")).firstMatch
+            if todayRow.waitForExistence(timeout: 5) {
+                // The row's own accessibility label is "Today, <count>".
+                let todayCount = Int(
+                    todayRow.label.split(separator: ",").last?.trimmingCharacters(in: .whitespaces) ?? ""
+                ) ?? 0
+                // Compare the SET of visible labels, not how many there are.
+                // A count cannot see this: the list is already full, so
+                // unfolding one row pushes another off the bottom and 21 goes
+                // to 21 while the screen plainly changed. That is what failed
+                // at 20:19 against an app whose accordion was working —
+                // `iphone-plan-accordion-open.png` from the same run shows
+                // "Reading" sitting under Today. "free before" is skipped
+                // because it counts minutes down and would turn over on its
+                // own, passing this check without anything having expanded.
+                let visibleLabels = {
+                    Set(
+                        app.staticTexts.allElementsBoundByIndex
+                            .map(\.label)
+                            .filter { !$0.contains("free before") }
+                    )
+                }
+                let before = visibleLabels()
+
+                todayRow.tap()
+                Thread.sleep(forTimeInterval: 1)
+                capture(app, named: "iphone-plan-accordion-open")
+
+                if todayCount > 0 {
+                    XCTAssertFalse(
+                        visibleLabels().subtracting(before).isEmpty,
+                        "Expanding Today (count \(todayCount)) revealed no row that was not already on screen"
+                    )
+                }
+                // Collapse again so the rest of this run finds the screen in
+                // the same state later captures already assume.
+                todayRow.tap()
+                Thread.sleep(forTimeInterval: 0.5)
+            } else {
+                XCTFail("Today accordion row not found")
+            }
+
             // Scrolled to the end, to prove the last row clears the floating
             // FAB and orb rather than sitting under them.
             app.swipeUp()
@@ -341,13 +399,40 @@ final class ScreenshotTests: XCTestCase {
             // Notes and Assistant stay inside Plan/Library, so hop back.
             guard tapTab(app, "Plan") else { return }
 
-            let notes = app.buttons["Notes"].firstMatch
+            // Notes now UNFOLDS IN PLACE (subtasks 6.8/6.9) instead of pushing
+            // `NotesRootView`. The old capture tapped it and then popped with
+            // `app.navigationBars.buttons.firstMatch.tap()` — with nothing
+            // pushed there is no back button, so that tap would land on the
+            // Plan nav bar's own leading control and quietly derail every
+            // capture after it while the suite still reported green.
+            // Collapse it by tapping the row again instead.
+            // Match on a PREFIX, not the bare title: an accordion row's
+            // accessibility label is "Notes, <count>", so `buttons["Notes"]`
+            // matches nothing. It previously sat behind a bare
+            // `if …waitForExistence`, so the miss skipped the capture in
+            // silence and the test still reported green with no
+            // `iphone-plan-notes-attach.png` in the export at all.
+            // Fail loudly instead — a guard that can only skip is not a check.
+            app.swipeUp()
+            Thread.sleep(forTimeInterval: 0.5)
+            let notes = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Notes'")).firstMatch
             if notes.waitForExistence(timeout: 5) {
+                let before = app.staticTexts.count
                 notes.tap()
-                Thread.sleep(forTimeInterval: 2.5)
-                capture(app, named: "iphone-notes")
-                app.navigationBars.buttons.firstMatch.tap()
+                Thread.sleep(forTimeInterval: 2)
+                capture(app, named: "iphone-plan-notes-attach")
+                // Shape assertion, never a named demo task: the demo's
+                // auto-plan schedules fewer tasks as the evening wears on, so
+                // a title like "Reading" fails against working code. Unfolding
+                // Notes adds the eyebrow and one chip per candidate task.
+                XCTAssertGreaterThan(
+                    app.staticTexts.count, before,
+                    "Unfolding Notes put no attach chips on screen"
+                )
+                notes.tap()
                 Thread.sleep(forTimeInterval: 1)
+            } else {
+                XCTFail("Notes accordion row not found on the Plan screen")
             }
 
             let assistant = app.buttons["Assistant"].firstMatch
@@ -381,47 +466,85 @@ final class ScreenshotTests: XCTestCase {
         }
     }
 
-    /// Adds one quick task from the Inbox screen's own "Add task" control, so
-    /// the prioritise duel screenshot never depends on how many demo tasks
-    /// the auto-plan at launch happened to leave sitting in the Inbox.
+    /// Adds one quick task from the shell's floating create button, so the
+    /// prioritise duel screenshot never depends on how many demo tasks the
+    /// auto-plan at launch happened to leave sitting in the
+    /// Inbox. T6 removed Library's "Inbox" row (`PlanInboxSection` already
+    /// shows the inbox inline at the top of Plan), so this no longer opens
+    /// `TaskListScreen`'s "Add task" control — it drives the shared
+    /// `FlowCreateSheet` instead, whose title field shares the exact same
+    /// placeholder/label pair.
     private func addQuickTask(_ app: XCUIApplication, title: String) {
-        let addButton = app.buttons["Add task"].firstMatch
+        // Reach the create sheet by the SHELL's floating button. Plan used to
+        // carry a duplicate "+" in its own toolbar, and the sheet it presented
+        // — from `LibraryView`, inside a NavigationStack inside the TabView —
+        // rendered a title field that reported a real frame and took taps yet
+        // never became first responder, so `typeText` threw "Neither element
+        // nor any descendant has keyboard focus". That duplicate is now gone
+        // and the shell's button is the only route; keep it that way.
+        let addButton = app.buttons["New task, project or initiative"].firstMatch
         guard addButton.waitForExistence(timeout: 5) else {
-            XCTFail("Add task button not found")
+            XCTFail("Floating create button not found")
             return
         }
         addButton.tap()
         Thread.sleep(forTimeInterval: 0.5)
-        let field = app.textFields["Task name…"].firstMatch
+        // Query the accessibility label the field sets deliberately
+        // (`QuickAddTaskView.swift:120`), not its placeholder.
+        let field = app.textFields["Task name"].firstMatch
         guard field.waitForExistence(timeout: 5) else {
-            XCTFail("Quick-add title field not found")
+            XCTFail("Quick capture title field not found")
             return
         }
-        field.tap()
-        // The quick-add field keeps whatever the previous add left in it, so
-        // typing straight in concatenates the two titles — the duel reveal
-        // once showed a task literally named "Duel candidate ADuel candidate B".
-        if let existing = field.value as? String, !existing.isEmpty {
-            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: existing.count))
+        // Verify the OUTCOME, never a proxy for it. Waiting on
+        // `app.keyboards` was both flaky and wrong: the sheet auto-focuses in
+        // `onAppear`, which does not reliably stick while a sheet is still
+        // presenting, and a simulator with "Connect Hardware Keyboard" on
+        // never shows a software keyboard at all even when the field IS
+        // focused. Either way the guard failed against working code. Tap and
+        // type, then check the field actually holds the title; retry if not.
+        var typed = false
+        for _ in 0..<4 {
+            field.tap()
+            // An empty SwiftUI TextField reports its PLACEHOLDER as `value`,
+            // so treat that as empty — otherwise this sends ten phantom
+            // deletes. Anything else is a previous add's leftover title,
+            // which must go or the two concatenate ("Duel candidate ADuel
+            // candidate B" shipped in a real capture).
+            if let existing = field.value as? String,
+               !existing.isEmpty,
+               existing != "Task name…" {
+                field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: existing.count))
+            }
+            field.typeText(title)
+            if (field.value as? String) == title {
+                typed = true
+                break
+            }
+            Thread.sleep(forTimeInterval: 0.5)
         }
-        field.typeText(title)
-        field.typeText("\n")
+        guard typed else {
+            XCTFail("Quick capture title field never accepted text (value: \(String(describing: field.value)))")
+            return
+        }
+        // FlowCreateSheet's title field has no `.onSubmit` — unlike the old
+        // QuickAddTaskView field, return does nothing here. Tap Create.
+        let createButton = app.buttons["Create"].firstMatch
+        guard createButton.waitForExistence(timeout: 3) else {
+            XCTFail("Create button not found")
+            return
+        }
+        createButton.tap()
         Thread.sleep(forTimeInterval: 0.8)
     }
 
     /// The shared glass delete card, reached the way decision 11 says a row is
-    /// deleted: swipe, not a permanent `✕`.
+    /// deleted: swipe, not a permanent `✕`. T6 removed Library's "Inbox" row;
+    /// `PlanInboxSection` already renders the inbox inline at the top of the
+    /// Plan tab, `TaskRowView`'s own swipe actions unchanged underneath it.
     func testCaptureDeleteConfirmation() {
         let app = launch()
         guard tapTab(app, "Plan") else { return }
-
-        let inboxRow = app.buttons["Inbox"].firstMatch
-        guard inboxRow.waitForExistence(timeout: 8) else {
-            XCTFail("Inbox row not found in Library")
-            return
-        }
-        inboxRow.tap()
-        Thread.sleep(forTimeInterval: 2)
 
         // Add one, so the row swiped is this test's own rather than whichever
         // task the demo's auto-plan happened to leave behind.
@@ -451,21 +574,14 @@ final class ScreenshotTests: XCTestCase {
         )
     }
 
-    /// The prioritise duel: reached from the Inbox listing (Library → Inbox),
-    /// not a dedicated Plan screen — see `PrioritiseDuelView`'s header
-    /// comment for why. Answers every duel by always taking the first
-    /// offered choice, then captures the medal-ranked reveal.
+    /// The prioritise duel: reached from `PlanInboxSection`, inline at the
+    /// top of the Plan tab since T6 removed Library's own "Inbox" row — see
+    /// `PrioritiseDuelView`'s header comment for why the duel exists at all.
+    /// Answers every duel by always taking the first offered choice, then
+    /// captures the medal-ranked reveal.
     func testCapturePrioritiseDuel() {
         let app = launch()
         guard tapTab(app, "Plan") else { return }
-
-        let inboxRow = app.buttons["Inbox"].firstMatch
-        guard inboxRow.waitForExistence(timeout: 8) else {
-            XCTFail("Inbox row not found in Library")
-            return
-        }
-        inboxRow.tap()
-        Thread.sleep(forTimeInterval: 2)
 
         // The demo's auto-plan at launch can leave the Inbox with fewer than
         // two tasks, which hides the duel entry entirely — top up with two
@@ -473,19 +589,30 @@ final class ScreenshotTests: XCTestCase {
         addQuickTask(app, title: "Duel candidate A")
         addQuickTask(app, title: "Duel candidate B")
 
-        let playButton = app.buttons["Play the prioritise game"].firstMatch
+        let playButton = app.buttons["Play the game"].firstMatch
         guard playButton.waitForExistence(timeout: 8) else {
             XCTFail("Prioritise duel entry not found — inbox may hold fewer than two tasks")
             return
         }
         playButton.tap()
         Thread.sleep(forTimeInterval: 1.5)
+
+        // Hard-fail if the duel never opened, rather than silently
+        // photographing the Plan screen twice. This is the exact regression
+        // that shipped once: `PlanInboxSection`'s `.sheet` was attached to a
+        // `Section` nested inside this screen's `List` and never presented,
+        // yet nothing downstream failed — the tap-through loop below just
+        // `break`s when it finds no choice button, so the run stayed green
+        // while `iphone-prioritise-duel.png` and `-reveal.png` came out
+        // byte-for-byte identical. Every choice button's accessibility label
+        // starts "Put … ahead of …" (`PrioritiseDuelView.swift`).
+        let choicePredicate = NSPredicate(format: "label BEGINSWITH 'Put '")
+        guard app.buttons.matching(choicePredicate).firstMatch.waitForExistence(timeout: 5) else {
+            XCTFail("Prioritise duel did not present after tapping \"Play the game\"")
+            return
+        }
         capture(app, named: "iphone-prioritise-duel")
 
-        // Every choice button's accessibility label starts "Put … ahead of
-        // …"; always taking the first one offered clears every pair without
-        // needing to know the demo's exact task count in advance.
-        let choicePredicate = NSPredicate(format: "label BEGINSWITH 'Put '")
         var remainingTaps = 30
         while remainingTaps > 0 {
             let choice = app.buttons.matching(choicePredicate).firstMatch
