@@ -241,16 +241,36 @@ public enum SeedData {
     @MainActor
     public static func reset(in context: ModelContext, settings: AppSettings) {
         let workspaces = (try? context.fetch(FetchDescriptor<Workspace>())) ?? []
+        let demoWorkspaceIDs = Set(workspaces.filter { $0.name == "Personal" }.map(\.id))
+        // Workspace.tasks and TaskList.tasks are intentionally `.nullify` for
+        // CloudKit safety, so deleting the workspace alone leaves its tasks
+        // orphaned until a later fetch. Capture and delete those task objects
+        // explicitly before removing their containers.
+        let tasks = (try? context.fetch(FetchDescriptor<FlowTask>())) ?? []
+        for task in tasks where
+            demoWorkspaceIDs.contains(task.workspace?.id ?? UUID()) ||
+            demoWorkspaceIDs.contains(task.list?.workspace?.id ?? UUID()) {
+            context.delete(task)
+        }
         for workspace in workspaces where workspace.name == "Personal" {
             context.delete(workspace)
         }
-        // Cascade covers the workspace's own children; anything orphaned by a
-        // nullify rule is cleaned up here.
-        for task in (try? context.fetch(FetchDescriptor<FlowTask>())) ?? [] where task.workspace == nil && task.list == nil {
-            context.delete(task)
-        }
         settings.hasLoadedDemoData = false
+        settings.sealedPlanDay = nil
+        settings.lastRolloverReviewedDay = nil
+        settings.lastDayClearedAwardDay = nil
         settings.touch()
         try? context.save()
+    }
+
+    /// Restores the deterministic demo workspace immediately, including a
+    /// fresh schedule for the current day. This is deliberately separate from
+    /// `reset(in:settings:)`: the Settings action is a restart, not a one-way
+    /// delete that waits for the next launch argument to seed again.
+    @MainActor
+    @discardableResult
+    public static func restartDemoDay(in context: ModelContext, settings: AppSettings) -> Workspace? {
+        reset(in: context, settings: settings)
+        return load(into: context, settings: settings)
     }
 }

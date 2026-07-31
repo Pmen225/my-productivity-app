@@ -162,4 +162,26 @@ struct ReviewRegressionTests {
         #expect(firstTaskCount == secondTaskCount)
         #expect(firstTaskCount == 7)
     }
+
+    @Test("Restarting demo day reseeds the workspace immediately")
+    func restartDemoDayReseedsImmediately() throws {
+        let world = try TestWorld()
+
+        SeedData.load(into: world.context, settings: world.settings)
+        let originalTaskIDs = try world.context.fetch(FetchDescriptor<FlowTask>()).map(\.id)
+        world.settings.sealedPlanDay = world.date(hour: 8)
+        try world.context.save()
+
+        let workspace = SeedData.restartDemoDay(in: world.context, settings: world.settings)
+        let workspaces = try world.context.fetch(FetchDescriptor<Workspace>())
+        let tasks = try world.context.fetch(FetchDescriptor<FlowTask>())
+
+        #expect(workspace?.name == "Personal")
+        #expect(workspaces.count == 1)
+        #expect(tasks.count == 7)
+        #expect(tasks.allSatisfy { $0.status == .inbox })
+        #expect(tasks.map(\.id).allSatisfy { !originalTaskIDs.contains($0) })
+        #expect(world.settings.hasLoadedDemoData)
+        #expect(world.settings.sealedPlanDay == nil)
+    }
 }

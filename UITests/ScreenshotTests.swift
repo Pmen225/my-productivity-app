@@ -823,6 +823,66 @@ final class ScreenshotTests: XCTestCase {
         capture(app, named: "iphone-settings-sounds")
     }
 
+    /// Decision 21's lighter demo action lives below the Sounds and
+    /// Notifications cards. Assert the renamed control is actually hittable,
+    /// rather than letting an off-screen `exists` result produce a false green
+    /// screenshot.
+    func testCaptureSettingsData() {
+        let app = launch()
+        // Leave any persisted Calendar page first; this two-hop route avoids a
+        // cold TabView transaction reporting Settings selected while still
+        // rendering the Calendar page underneath it.
+        guard tapTab(app, "Plan"), tapTab(app, "Settings") else {
+            XCTFail("Settings tab not reachable")
+            return
+        }
+
+        let restart = app.buttons["Restart demo day"].firstMatch
+        var swipes = 0
+        while !restart.isHittable && swipes < 10 {
+            app.swipeUp()
+            Thread.sleep(forTimeInterval: 0.4)
+            swipes += 1
+        }
+        guard restart.isHittable else {
+            XCTFail("Restart demo day was not on screen in Settings after \(swipes) swipes")
+            return
+        }
+        capture(app, named: "iphone-settings-data")
+    }
+
+    /// Proves the action is not just a renamed button: confirmation leads to
+    /// an immediate restart acknowledgement after the seeded day is rebuilt.
+    func testRestartDemoDay() {
+        let app = launch()
+        guard tapTab(app, "Plan"), tapTab(app, "Settings") else {
+            XCTFail("Settings tab not reachable")
+            return
+        }
+
+        let restart = app.buttons["Restart demo day"].firstMatch
+        var swipes = 0
+        while !restart.isHittable && swipes < 10 {
+            app.swipeUp()
+            Thread.sleep(forTimeInterval: 0.4)
+            swipes += 1
+        }
+        guard restart.isHittable else {
+            XCTFail("Restart demo day was not on screen after \(swipes) swipes")
+            return
+        }
+        restart.tap()
+
+        let confirm = app.buttons["Restart"].firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5), "Restart confirmation did not appear")
+        confirm.tap()
+        XCTAssertTrue(
+            app.staticTexts["Demo day restarted."].waitForExistence(timeout: 10),
+            "Restart acknowledgement did not appear"
+        )
+        capture(app, named: "iphone-restart-demo-day")
+    }
+
     /// T7's Stats page, in its own test so it can run at any hour: nothing on
     /// this screen depends on the auto-plan, so it survives the 21:00 workday
     /// cliff that stops `testCaptureEveryRequiredScreen` dead.

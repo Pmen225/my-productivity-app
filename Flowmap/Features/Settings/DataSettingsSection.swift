@@ -20,8 +20,8 @@ private struct BackupJSONDocument: FileDocument {
     }
 }
 
-/// iCloud status, JSON backup export/import, Markdown export and demo-data
-/// reset — all through the existing `BackupService` and `SeedData`, never a
+/// iCloud status, JSON backup export/import, Markdown export and demo-day
+/// restart — all through the existing `BackupService` and `SeedData`, never a
 /// second import/export implementation.
 struct DataSettingsSection: View {
     @Environment(\.flow) private var flow
@@ -58,7 +58,7 @@ struct DataSettingsSection: View {
                     SecondaryActionButton("Export Notes as Markdown", systemImage: "doc.text") {
                         showingMarkdownFolderPicker = true
                     }
-                    SecondaryActionButton("Reset Demo Data", systemImage: "arrow.counterclockwise") {
+                    SecondaryActionButton("Restart demo day", systemImage: "arrow.counterclockwise") {
                         showingResetConfirm = true
                     }
                 }
@@ -79,14 +79,14 @@ struct DataSettingsSection: View {
             handleMarkdownExport(result)
         }
         .confirmationDialog(
-            "Reset demo data?",
+            "Restart demo day?",
             isPresented: $showingResetConfirm,
             titleVisibility: .visible
         ) {
-            Button("Reset", role: .destructive, action: resetDemoData)
+            Button("Restart", role: .destructive, action: restartDemoDay)
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Removes the seeded Personal workspace so you can start clean. Your own data is not affected.")
+            Text("Restores the seeded Personal workspace and today's plan. Your own data is not affected.")
         }
     }
 
@@ -194,10 +194,12 @@ struct DataSettingsSection: View {
 
     // MARK: - Demo data
 
-    private func resetDemoData() {
+    private func restartDemoDay() {
         guard let flow else { return }
-        SeedData.reset(in: context, settings: flow.settings)
-        statusMessage = "Demo data reset."
+        _ = SeedData.restartDemoDay(in: context, settings: flow.settings)
+        flow.applyPlan(flow.planToday())
+        statusMessage = "Demo day restarted."
+        flow.moments.show(.hud("Demo day restarted."))
         isError = false
     }
 }
