@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 // MARK: - Floating tab bar
 
@@ -82,11 +85,9 @@ public struct FlowTabBar<Tag: Hashable>: View {
 
 // MARK: - Floating circular button
 
-/// A floating circular chrome control — the create FAB and the assistant
-/// orb are both this, differing only in size, fill and glyph.
+/// A floating circular chrome control. It can expose a secondary Assistant
+/// path without adding a competing second control to the screen corner.
 public struct FlowFloatingButton: View {
-    @Environment(\.colorScheme) private var scheme
-
     private let systemImage: String
     private let diameter: CGFloat
     private let background: Color
@@ -94,6 +95,9 @@ public struct FlowFloatingButton: View {
     private let shadowColor: Color
     private let accessibilityLabel: String
     private let action: () -> Void
+    private let badgeSystemImage: String?
+    private let assistantAction: (() -> Void)?
+    private let hapticsEnabled: Bool
 
     public init(
         systemImage: String,
@@ -102,6 +106,9 @@ public struct FlowFloatingButton: View {
         foreground: Color,
         shadowColor: Color,
         accessibilityLabel: String,
+        badgeSystemImage: String? = nil,
+        assistantAction: (() -> Void)? = nil,
+        hapticsEnabled: Bool = false,
         action: @escaping () -> Void
     ) {
         self.systemImage = systemImage
@@ -110,20 +117,55 @@ public struct FlowFloatingButton: View {
         self.foreground = foreground
         self.shadowColor = shadowColor
         self.accessibilityLabel = accessibilityLabel
+        self.badgeSystemImage = badgeSystemImage
+        self.assistantAction = assistantAction
+        self.hapticsEnabled = hapticsEnabled
         self.action = action
     }
 
     public var body: some View {
         Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: diameter * 0.36, weight: .semibold))
-                .foregroundStyle(foreground)
-                .frame(width: diameter, height: diameter)
-                .background(Circle().fill(background))
-                .shadow(color: shadowColor, radius: 12, y: 4)
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: systemImage)
+                    .font(.system(size: diameter * 0.36, weight: .semibold))
+                    .foregroundStyle(foreground)
+
+                if let badgeSystemImage {
+                    Image(systemName: badgeSystemImage)
+                        .font(.system(size: diameter * 0.19, weight: .semibold))
+                        .foregroundStyle(foreground)
+                        .frame(width: diameter * 0.34, height: diameter * 0.34)
+                        .background(Circle().fill(FlowTheme.popoverSurface))
+                        .padding(diameter * 0.06)
+                }
+            }
+            .frame(width: diameter, height: diameter)
+            .background(Circle().fill(background))
+            .shadow(color: shadowColor, radius: 12, y: 4)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint(assistantAction == nil ? "" : "Double tap to create. Use the Open Assistant custom action for help.")
+        .accessibilityAction(named: "Open Assistant") {
+            assistantAction?()
+        }
+        // A high-priority recogniser cancels the Button's release action once
+        // the hold succeeds. A short tap still falls through to the Button,
+        // so a long press cannot swallow the next Create tap.
+        .highPriorityGesture(
+            LongPressGesture(minimumDuration: 0.5, maximumDistance: 44)
+                .onEnded { _ in activateAssistant() }
+        )
+    }
+
+    private func activateAssistant() {
+        guard let assistantAction else { return }
+        #if os(iOS)
+        if hapticsEnabled {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
+        #endif
+        assistantAction()
     }
 }
 

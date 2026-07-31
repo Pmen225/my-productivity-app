@@ -93,13 +93,10 @@ struct PhoneRootView: View {
         // capture stay one tap away from every other destination.
         .overlay(alignment: .bottomTrailing) {
             if tab != .focus {
-                VStack(spacing: FlowSpacing.m) {
-                    createButton
-                    assistantOrb
-                }
+                captureAssistantOrb
                 .padding(.trailing, FlowSpacing.screen)
                 // Clears the now-visible native tab bar rather than a
-                // floating one, so the FAB stack sits above its safe area.
+                // floating one, so the orb sits above its safe area.
                 .padding(.bottom, FlowSpacing.xxxl)
             }
         }
@@ -137,32 +134,22 @@ struct PhoneRootView: View {
         }
     }
 
-    /// The floating create button — new task, project or initiative — sitting
-    /// above the assistant orb, clear of the tab bar.
-    private var createButton: some View {
+    /// The shell's single primary orb. Tapping captures work; Assistant remains
+    /// one long press or VoiceOver custom action away without competing for a
+    /// second bottom-corner control.
+    private var captureAssistantOrb: some View {
         FlowFloatingButton(
             systemImage: "plus",
             diameter: FlowControlSize.create,
-            background: FlowTheme.accent,
+            background: FlowTheme.accentFill,
             foreground: .white,
             shadowColor: FlowTheme.accentShadow,
-            accessibilityLabel: "New task, project or initiative"
+            accessibilityLabel: "New task, project or initiative",
+            badgeSystemImage: "sparkles",
+            assistantAction: { showingAssistant = true },
+            hapticsEnabled: flow?.settings.focusHapticsEnabled ?? false
         ) {
             showingCapture = true
-        }
-    }
-
-    /// Floats above the tab bar, below the create button.
-    private var assistantOrb: some View {
-        FlowFloatingButton(
-            systemImage: "sparkles",
-            diameter: FlowControlSize.secondary,
-            background: FlowTheme.popoverSurface,
-            foreground: .white,
-            shadowColor: FlowTheme.shadow(scheme),
-            accessibilityLabel: "Assistant"
-        ) {
-            showingAssistant = true
         }
     }
 
