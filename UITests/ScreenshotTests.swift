@@ -356,8 +356,8 @@ final class ScreenshotTests: XCTestCase {
             capture(app, named: "iphone-library")
 
             // T25 replaces TASKS accordions with six ordered peers. Capture
-            // each through the title-strip Menu rather than a coordinate
-            // swipe: the helper proves the selected page before its capture.
+            // each through native horizontal paging; the helper proves the
+            // selected title strip before its capture.
             let taskPages = ["Inbox", "Today", "Upcoming", "Anytime", "All tasks", "Completed"]
             for page in taskPages {
                 guard selectPlanTaskPage(app, page) else { continue }
