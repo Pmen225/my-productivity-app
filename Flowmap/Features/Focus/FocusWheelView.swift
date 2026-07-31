@@ -270,8 +270,13 @@ struct FocusWheelView: View {
         thickness: CGFloat
     ) -> some View {
         let midAngle = (span.start + span.end) / 2
+        // Reserve a dedicated title slot above the fixed play/pause control.
+        // The control is intentionally centred in the dial; keeping the title
+        // outside its upper clearance preserves the circular carousel's focus
+        // without changing any segment or ruler geometry.
+        let activeTitleY = centre.y - (FlowControlSize.hero / 2 + FlowSpacing.l)
         let position = item.isActive
-            ? CGPoint(x: centre.x, y: centre.y - 30)
+            ? CGPoint(x: centre.x, y: activeTitleY)
             : FocusWheelGeometry.point(centre: centre, radius: radius, angle: midAngle)
         let rotation = item.isActive ? 0 : FocusWheelGeometry.readableRotation(atAngle: midAngle)
         let label = FocusWheelGeometry.neighbourLabel(
