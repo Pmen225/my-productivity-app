@@ -16,7 +16,6 @@ struct FocusWheelSettingsSection: View {
 
                 if let flow {
                     visibleTasksRow(flow)
-                    Toggle("Sound", isOn: binding(flow, \.focusSoundEnabled))
                     Toggle("Haptics", isOn: binding(flow, \.focusHapticsEnabled))
                     Toggle("Automatically start next task", isOn: binding(flow, \.autoStartNextTask))
                     requeueRow(flow)

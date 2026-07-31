@@ -726,6 +726,37 @@ final class ScreenshotTests: XCTestCase {
         }
     }
 
+    /// Feedback task 15's Sounds card, in its own test for the same reason as
+    /// Stats: nothing on Settings depends on the auto-plan, so this can run at
+    /// any hour. The card sits below the fold, so scroll until its ticking
+    /// toggle exists and fail loudly if it never does — a guard that can only
+    /// skip is not a check.
+    func testCaptureSettingsSounds() {
+        let app = launch()
+        guard tapTab(app, "Settings") else {
+            XCTFail("Settings tab not reachable")
+            return
+        }
+
+        // `exists` is true for an element still OFF screen (the documented
+        // XCUITest trap), so the scroll must run until the toggle is
+        // actually hittable, not merely present in the hierarchy.
+        let ticking = app.switches.matching(
+            NSPredicate(format: "label BEGINSWITH 'Ticking'")
+        ).firstMatch
+        var swipes = 0
+        while !ticking.isHittable && swipes < 4 {
+            app.swipeUp()
+            Thread.sleep(forTimeInterval: 0.5)
+            swipes += 1
+        }
+        guard ticking.isHittable else {
+            XCTFail("Sounds card not on screen in Settings after \(swipes) swipes")
+            return
+        }
+        capture(app, named: "iphone-settings-sounds")
+    }
+
     /// T7's Stats page, in its own test so it can run at any hour: nothing on
     /// this screen depends on the auto-plan, so it survives the 21:00 workday
     /// cliff that stops `testCaptureEveryRequiredScreen` dead.

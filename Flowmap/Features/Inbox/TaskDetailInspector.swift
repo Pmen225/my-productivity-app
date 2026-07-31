@@ -115,8 +115,7 @@ public struct TaskDetailInspector: View {
                     Button("Cancel") { showAddSegment = false }
                     Spacer()
                     Button("Add") {
-                        _ = flow?.scheduling().schedule(task: task, at: newSegmentStart)
-                        showAddSegment = false
+                        addSegment()
                     }
                 }
             } else {
@@ -130,6 +129,28 @@ public struct TaskDetailInspector: View {
         } header: {
             FlowEyebrow("Schedule")
         }
+    }
+
+    /// Places the new block and says so. A taken slot returns `nil`, silently,
+    /// from `SchedulingService` — same success/refusal handling as
+    /// `TaskRowView`'s scheduler popover, so the two surfaces agree.
+    private func addSegment() {
+        let now = flow?.now ?? Date()
+        guard let segment = flow?.scheduling().schedule(task: task, at: newSegmentStart) else {
+            flow?.moments.show(.notif(
+                title: "That time is taken",
+                subtitle: "Nothing was changed — pick another slot."
+            ))
+            return
+        }
+        showAddSegment = false
+        let subtitle = Calendar.current.isDate(segment.startDate, inSameDayAs: now)
+            ? "On today's timeline."
+            : "Find it in Upcoming."
+        flow?.moments.show(.notif(
+            title: "Scheduled — \(ScheduleWording.startLabel(segment.startDate, now: now, calendar: .current))",
+            subtitle: subtitle
+        ))
     }
 
     private func segmentRow(_ segment: TaskSegment) -> some View {

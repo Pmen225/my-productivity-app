@@ -125,7 +125,8 @@ public struct TaskRowView: View {
     // MARK: - Metadata line
 
     private var metadataLine: some View {
-        HStack(spacing: FlowSpacing.s) {
+        let now = flow?.now ?? Date()
+        return HStack(spacing: FlowSpacing.s) {
             if task.priority != .none {
                 Image(systemName: task.priority.symbolName)
                     .font(.system(size: 10, weight: .semibold))
@@ -136,6 +137,14 @@ public struct TaskRowView: View {
                 Text(due, style: .date)
                     .font(FlowFont.caption)
                     .foregroundStyle(FlowTheme.secondaryText(scheme))
+            }
+            if let upcoming = task.nextSegment(after: now) {
+                Label(
+                    ScheduleWording.startLabel(upcoming.startDate, now: now, calendar: .current),
+                    systemImage: "calendar.badge.clock"
+                )
+                .font(FlowFont.caption)
+                .foregroundStyle(FlowTheme.secondaryText(scheme))
             }
             if let label = task.subtaskProgressLabel {
                 Label(label, systemImage: "checklist")
@@ -193,8 +202,7 @@ public struct TaskRowView: View {
             DatePicker("Start", selection: $scheduleDate)
                 .labelsHidden()
             PrimaryActionButton("Place on timeline") {
-                _ = flow?.scheduling().schedule(task: task, at: scheduleDate)
-                showScheduler = false
+                placeOnTimeline()
             }
         }
         .padding(FlowSpacing.l)
@@ -212,6 +220,29 @@ public struct TaskRowView: View {
             }
             try? context.save()
         }
+    }
+
+    /// Places the task on the timeline at `scheduleDate` and says so. A taken
+    /// slot returns `nil`, silently, from `SchedulingService` — this is the
+    /// one place that turns that silence into something the user can see and
+    /// act on, per the HIG's "feedback near the action" rule.
+    private func placeOnTimeline() {
+        let now = flow?.now ?? Date()
+        guard let segment = flow?.scheduling().schedule(task: task, at: scheduleDate) else {
+            flow?.moments.show(.notif(
+                title: "That time is taken",
+                subtitle: "Nothing was changed — pick another slot."
+            ))
+            return
+        }
+        showScheduler = false
+        let subtitle = Calendar.current.isDate(segment.startDate, inSameDayAs: now)
+            ? "On today's timeline."
+            : "Find it in Upcoming."
+        flow?.moments.show(.notif(
+            title: "Scheduled — \(ScheduleWording.startLabel(segment.startDate, now: now, calendar: .current))",
+            subtitle: subtitle
+        ))
     }
 
     private func move(toList list: TaskList?, project: Project?) {

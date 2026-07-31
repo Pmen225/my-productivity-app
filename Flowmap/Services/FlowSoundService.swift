@@ -32,14 +32,19 @@ public enum FlowSound: Sendable {
 /// Plays the focus loop's sounds, or stays quiet when the user has asked it to.
 ///
 /// Every caller goes through `play(_:settings:)` rather than reading
-/// `focusSoundEnabled` itself, so the one toggle in Settings cannot be honoured
-/// on three call sites and forgotten on the fourth.
+/// `focusTickEnabled`/`focusSoundEnabled` itself, so the Settings toggles
+/// cannot be honoured on some call sites and forgotten on others.
 @MainActor
 public struct FlowSoundService {
     public init() {}
 
     public func play(_ sound: FlowSound, settings: AppSettings) {
-        guard settings.focusSoundEnabled else { return }
+        switch sound {
+        case .tick:
+            guard settings.focusTickEnabled else { return }
+        case .bell, .fanfare, .chime:
+            guard settings.focusSoundEnabled else { return }
+        }
         AudioServicesPlaySystemSound(sound.systemSoundID)
     }
 }

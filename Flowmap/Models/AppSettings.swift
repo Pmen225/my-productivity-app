@@ -24,6 +24,7 @@ public final class AppSettings {
     // Focus wheel
     public var wheelVisibilityRaw: String = WheelVisibility.two.rawValue
     public var focusSoundEnabled: Bool = true
+    public var focusTickEnabled: Bool = true
     public var focusHapticsEnabled: Bool = true
     public var autoStartNextTask: Bool = true
 
@@ -33,6 +34,8 @@ public final class AppSettings {
     /// The chosen `AVSpeechSynthesisVoice.identifier`. Nil uses the system
     /// default for the current language.
     public var focusVoiceIdentifier: String?
+    /// Relative volume for spoken announcements — never the system volume.
+    public var focusVoiceVolume: Double = 0.8
 
     // Notifications
     public var notifyFiveMinuteWarning: Bool = true

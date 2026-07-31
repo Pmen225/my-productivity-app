@@ -1,11 +1,10 @@
 import AVFoundation
 import SwiftUI
 
-/// Focus voice coach settings — task-start, time-left and wind-down
-/// announcements. The picker lists whatever voices `AVSpeechSynthesisVoice`
-/// actually reports on this device rather than a hard-coded list, since
-/// availability differs by device, language and downloaded voice packs.
-struct FocusAudioSettingsSection: View {
+/// Every audio control in one place. Founder feedback: the ticking could only
+/// be turned off by guessing that a toggle labelled plain "Sound" (buried in
+/// Focus Wheel) covered it — each control here names the sound it governs.
+struct SoundSettingsSection: View {
     @Environment(\.flow) private var flow
     @Environment(\.colorScheme) private var scheme
     @Environment(\.modelContext) private var context
@@ -13,12 +12,28 @@ struct FocusAudioSettingsSection: View {
     var body: some View {
         FlowCard {
             VStack(alignment: .leading, spacing: FlowSpacing.l) {
-                FlowEyebrow("Focus Voice")
+                FlowEyebrow("Sounds")
 
                 if let flow {
-                    Toggle("Voice coach", isOn: binding(flow, \.focusVoiceEnabled))
+                    Toggle("Ticking while focusing", isOn: binding(flow, \.focusTickEnabled))
+
+                    VStack(alignment: .leading, spacing: FlowSpacing.xxs) {
+                        Toggle("Session chimes", isOn: binding(flow, \.focusSoundEnabled))
+                        Text("Time-up bell, level-up fanfare and the task-complete chime.")
+                            .font(FlowFont.caption)
+                            .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                    }
+
+                    VStack(alignment: .leading, spacing: FlowSpacing.xxs) {
+                        Toggle("Voice coach", isOn: binding(flow, \.focusVoiceEnabled))
+                        Text("Spoken reminders during focus sessions.")
+                            .font(FlowFont.caption)
+                            .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                    }
+
                     if flow.settings.focusVoiceEnabled {
                         voicePicker(flow)
+                        voiceVolumeRow(flow)
                     }
                 }
             }
@@ -44,6 +59,23 @@ struct FocusAudioSettingsSection: View {
                 }
             }
             .labelsHidden()
+        }
+    }
+
+    private func voiceVolumeRow(_ flow: AppEnvironment) -> some View {
+        VStack(alignment: .leading, spacing: FlowSpacing.xs) {
+            Text("Voice volume").font(FlowFont.secondary).foregroundStyle(FlowTheme.secondaryText(scheme))
+            Slider(
+                value: Binding(
+                    get: { flow.settings.focusVoiceVolume },
+                    set: { newValue in
+                        flow.settings.focusVoiceVolume = newValue
+                        save()
+                    }
+                ),
+                in: 0.2...1.0
+            )
+            .accessibilityValue("\(Int(flow.settings.focusVoiceVolume * 100)) per cent")
         }
     }
 

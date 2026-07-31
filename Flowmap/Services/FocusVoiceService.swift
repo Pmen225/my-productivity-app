@@ -13,6 +13,9 @@ import Observation
 @Observable
 public final class FocusVoiceService {
     private let synthesizer = AVSpeechSynthesizer()
+    /// Set once the shared audio session has been configured for `.ambient`
+    /// playback, so `speak(_:settings:)` only pays that cost once.
+    private var audioSessionConfigured = false
     /// What has already been said for each running session, so a pause/resume
     /// or a relaunch mid-session never repeats an announcement.
     private var announcedBySession: [UUID: Set<FocusVoiceMilestone>] = [:]
@@ -157,9 +160,23 @@ public final class FocusVoiceService {
     // MARK: - Speaking
 
     private func speak(_ text: String, settings: AppSettings) {
+        configureAudioSessionIfNeeded()
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = voice(for: settings)
+        utterance.volume = Float(settings.focusVoiceVolume)
         synthesizer.speak(utterance)
+    }
+
+    /// `.ambient` respects the silent switch and mixes with other apps' audio
+    /// rather than interrupting them — never `.playback`, which would do
+    /// neither. A failure here should never crash the focus session, so this
+    /// is best-effort.
+    private func configureAudioSessionIfNeeded() {
+        guard !audioSessionConfigured else { return }
+        audioSessionConfigured = true
+        #if os(iOS)
+        try? AVAudioSession.sharedInstance().setCategory(.ambient)
+        #endif
     }
 
     /// The user's chosen voice if it is still installed, else the system's
