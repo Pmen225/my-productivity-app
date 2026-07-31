@@ -183,8 +183,6 @@ struct LibraryView: View {
     @Query(sort: \TaskList.sortOrder) private var lists: [TaskList]
     @Query private var allTasks: [FlowTask]
     @Query(sort: \Project.sortOrder) private var projects: [Project]
-    @Query(sort: \TaskSegment.startDate) private var allSegments: [TaskSegment]
-    @Query(sort: \FocusSession.startedAt) private var allSessions: [FocusSession]
     // Same sort `NotesListView` uses, so "note preview row order" cannot
     // drift between the two places notes are listed.
     @Query(sort: \Note.updatedAt, order: .reverse) private var allNotes: [Note]
@@ -280,20 +278,6 @@ struct LibraryView: View {
     /// drift into different counts or contents.
     static func taskPageContent(for view: SmartView, in tasks: [FlowTask], now: Date) -> [FlowTask] {
         view.sorted(view.matches(tasks, now: now), grouping: .manual)
-    }
-
-    private var calendar: Calendar {
-        var calendar = Calendar.current
-        calendar.firstWeekday = flow?.settings.firstWeekday ?? 2
-        return calendar
-    }
-
-    /// Today's headline numbers for the Stats row's unfolded tile strip —
-    /// the same `ProgressMetrics` maths `ProgressScreen` uses, never a
-    /// second metrics path.
-    private var statsSummary: ProgressSummary {
-        let range = ProgressPeriod.today.range(containing: flow?.now ?? Date(), calendar: calendar)
-        return ProgressMetrics.summary(tasks: allTasks, segments: allSegments, sessions: allSessions, range: range)
     }
 
     var body: some View {
@@ -437,10 +421,6 @@ struct LibraryView: View {
             }
             .listRowBackground(FlowTheme.surface(scheme))
 
-            Section(header: sectionHeader("REVIEW")) {
-                statsAccordion
-            }
-            .listRowBackground(FlowTheme.surface(scheme))
         }
         .scrollContentBackground(.hidden)
     }
@@ -699,20 +679,6 @@ struct LibraryView: View {
         note.task = Self.attachToggleResult(current: note.task, tapped: task)
         note.touch()
         try? context.save()
-    }
-
-    // MARK: - REVIEW accordion
-
-    private var statsAccordion: some View {
-        LibraryAccordionRow(
-            title: "Stats",
-            symbol: "chart.bar",
-            token: .pink,
-            count: nil,
-            isExpanded: expansionBinding(for: "stats")
-        ) {
-            ProgressStatTilesRow(summary: statsSummary)
-        }
     }
 
     // MARK: - Expansion state

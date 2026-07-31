@@ -376,6 +376,10 @@ final class ScreenshotTests: XCTestCase {
 
         if tapTab(app, "Plan") {
             capture(app, named: "iphone-library")
+            XCTAssertFalse(
+                app.staticTexts["REVIEW"].exists,
+                "Plan should not expose a duplicate REVIEW/Stats route; use the chart toolbar button"
+            )
 
             // T25 replaces TASKS accordions with six ordered peers. Capture
             // each through native horizontal paging; the helper proves the
