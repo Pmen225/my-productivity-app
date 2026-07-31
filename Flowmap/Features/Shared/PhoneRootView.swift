@@ -661,6 +661,9 @@ struct LibraryView: View {
             }
         }
         .contentShape(Rectangle())
+        // Keep the compact row scannable without letting the note title touch
+        // the accordion header or the next row at Dynamic Type sizes.
+        .padding(.vertical, FlowSpacing.xs)
         .onTapGesture { inspectedNote = note }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
