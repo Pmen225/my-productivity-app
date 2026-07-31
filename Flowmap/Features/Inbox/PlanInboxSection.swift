@@ -30,6 +30,22 @@ struct PlanInboxSection: View {
     @Binding var showingDuel: Bool
     @Binding var showingPlanPreview: Bool
     @Binding var planProposal: PlanProposal?
+    /// The paged Plan surface supplies its own title strip. Keeping the
+    /// existing section header optional lets Inbox remain the same triage
+    /// implementation without displaying its title twice.
+    let showsHeader: Bool
+
+    init(
+        showingDuel: Binding<Bool>,
+        showingPlanPreview: Binding<Bool>,
+        planProposal: Binding<PlanProposal?>,
+        showsHeader: Bool = true
+    ) {
+        _showingDuel = showingDuel
+        _showingPlanPreview = showingPlanPreview
+        _planProposal = planProposal
+        self.showsHeader = showsHeader
+    }
 
     private var inbox: [FlowTask] {
         SmartView.inbox.matches(allTasks)
@@ -58,7 +74,9 @@ struct PlanInboxSection: View {
                 actions
             }
         } header: {
-            header
+            if showsHeader {
+                header
+            }
         }
     }
 

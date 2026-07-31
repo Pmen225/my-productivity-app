@@ -165,6 +165,7 @@ struct PhoneRootView: View {
 /// Everything that does not earn its own tab.
 struct LibraryView: View {
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.flow) private var flow
     @Environment(\.modelContext) private var context
     @Query(sort: \TaskList.sortOrder) private var lists: [TaskList]
@@ -199,8 +200,9 @@ struct LibraryView: View {
     /// a presentation modifier below a nested Section can silently fail to
     /// present. The contextual menu only selects the note to attach.
     @State private var attachmentPickerNote: Note?
-    /// Which accordion rows are open, keyed by a stable id per row.
+    /// Which BUILD and REVIEW accordions are open, keyed by a stable id per row.
     @State private var expandedRows: Set<String> = []
+    @State private var taskPage: TaskPage = Self.initialTaskPage
     /// The prioritise duel and plan-preview sheets `PlanInboxSection`'s
     /// buttons trigger, hosted HERE rather than inside `PlanInboxSection`
     /// itself: `PlanInboxSection` is only one `Section` among several inside
@@ -219,18 +221,51 @@ struct LibraryView: View {
     @State private var showCreateList = false
     @State private var pendingListDelete: TaskList?
 
-    /// The five `SmartView` cases the TASKS section shows as accordions.
-    /// `.inbox` is left out on purpose: `PlanInboxSection` already renders
-    /// the whole inbox inline with editing directly above, and the tab
-    /// already carries the inbox badge — unfolding it a second time here
-    /// would be duplication, not parity. Exposed so a test can assert this
-    /// list directly rather than reading the view body.
-    static let taskAccordionViews: [SmartView] = [.today, .upcoming, .anytime, .allTasks, .completed]
+    /// Ordered peers in the Plan tab's task surface. Inbox is deliberately
+    /// page zero because it is the capture-to-triage entry point; completed is
+    /// last because it is history, not the next action.
+    enum TaskPage: String, CaseIterable, Identifiable {
+        case inbox, today, upcoming, anytime, allTasks, completed
 
-    /// The exact tasks a TASKS accordion shows, sorted for display. Both the
-    /// header's count and the unfolded rows read this one array, never two
-    /// separately written filters, so they cannot disagree.
-    static func taskAccordionContent(for view: SmartView, in tasks: [FlowTask], now: Date) -> [FlowTask] {
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .inbox: "Inbox"
+            case .today: "Today"
+            case .upcoming: "Upcoming"
+            case .anytime: "Anytime"
+            case .allTasks: "All tasks"
+            case .completed: "Completed"
+            }
+        }
+
+        var smartView: SmartView? {
+            switch self {
+            case .inbox: nil
+            case .today: .today
+            case .upcoming: .upcoming
+            case .anytime: .anytime
+            case .allTasks: .allTasks
+            case .completed: .completed
+            }
+        }
+    }
+
+    static let taskPages = TaskPage.allCases
+    static let initialTaskPage: TaskPage = .inbox
+
+    /// Kept pure so the selected-page rule is covered without needing a
+    /// simulator to drive a swipe. Choosing the current page is intentionally
+    /// idempotent; it should not restart a transition or collapse Inbox edits.
+    static func taskPageSelection(from current: TaskPage, choosing candidate: TaskPage) -> TaskPage {
+        current == candidate ? current : candidate
+    }
+
+    /// The exact tasks a non-Inbox page shows, sorted for display. Both the
+    /// page and this helper read the same SmartView filter, so they cannot
+    /// drift into different counts or contents.
+    static func taskPageContent(for view: SmartView, in tasks: [FlowTask], now: Date) -> [FlowTask] {
         view.sorted(view.matches(tasks, now: now), grouping: .manual)
     }
 
@@ -249,20 +284,102 @@ struct LibraryView: View {
     }
 
     var body: some View {
-        List {
-            // Triage first: what has no slot yet, above the places to go
-            // looking for everything that has one.
-            PlanInboxSection(
-                showingDuel: $showingDuel,
-                showingPlanPreview: $showingPlanPreview,
-                planProposal: $planProposal
-            )
-            Section(header: sectionHeader("TASKS")) {
-                ForEach(Array(Self.taskAccordionViews.enumerated()), id: \.element) { index, view in
-                    taskAccordion(view, token: Self.rowTokens[index % Self.rowTokens.count])
+        taskPager
+            .background(FlowTheme.background(scheme).ignoresSafeArea())
+            // Named for the tab that reaches it (decision 1b), not for the type —
+            // a screen titled "Library" under a tab labelled "Plan" reads as two
+            // different places.
+            .flowScreenTitle("Plan")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showingSearch = true } label: { Image(systemName: "magnifyingglass") }
+                        .accessibilityLabel("Search")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { pushStats = true } label: { Image(systemName: "chart.bar") }
+                        .accessibilityLabel("Stats")
                 }
             }
-            .listRowBackground(FlowTheme.surface(scheme))
+            .navigationDestination(isPresented: $pushStats) {
+                ProgressScreen()
+            }
+            .navigationDestination(for: Project.self) { project in
+                ProjectDetailView(project: project)
+            }
+            .sheet(isPresented: $showingSearch) {
+                GlobalSearchView { result in onSearchResult(result) }
+            }
+            .sheet(item: $inspectedTask) { task in
+                NavigationStack { TaskDetailInspector(task: task) }
+            }
+            .sheet(item: $inspectedNote) { note in
+                NavigationStack { NoteEditorView(note: note) }
+            }
+            .sheet(item: $attachmentPickerNote) { note in
+                NoteAttachPickerView(
+                    candidates: NoteAttachCandidates.display(noteCandidates, attached: note.task),
+                    current: note.task
+                ) { task in
+                    toggleAttach(note: note, task: task)
+                }
+            }
+            // Hosted here, not on `PlanInboxSection`'s `Section`. A `.sheet`
+            // attached to a `Section` nested inside this `List` never presents.
+            .sheet(isPresented: $showingDuel) {
+                PrioritiseDuelView(tasks: SmartView.today.matches(allTasks, now: flow?.now ?? Date()))
+            }
+            .sheet(isPresented: $showingPlanPreview) {
+                PlanPreviewView(
+                    proposal: planProposal ?? PlanProposal(),
+                    tasksByID: Dictionary(uniqueKeysWithValues: allTasks.map { ($0.id, $0) }),
+                    onApply: applyPlan,
+                    onReplanWholeDay: replanWholeDay
+                )
+            }
+            .sheet(isPresented: $showCreateList) {
+                CreateListSheet()
+            }
+            .confirmationDialog(
+                "Delete this list?",
+                isPresented: Binding(get: { pendingListDelete != nil }, set: { if !$0 { pendingListDelete = nil } }),
+                titleVisibility: .visible
+            ) {
+                Button("Delete List", role: .destructive) {
+                    if let list = pendingListDelete {
+                        context.delete(list)
+                        try? context.save()
+                    }
+                    pendingListDelete = nil
+                }
+                Button("Cancel", role: .cancel) { pendingListDelete = nil }
+            } message: {
+                Text("Tasks inside stay in Flowmap and move to Inbox.")
+            }
+    }
+
+    @ViewBuilder
+    private var taskPager: some View {
+        #if os(macOS)
+        planList(for: taskPage)
+        #else
+        TabView(selection: $taskPage) {
+            ForEach(Self.taskPages) { page in
+                planList(for: page)
+                    .tag(page)
+            }
+        }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+        #endif
+    }
+
+    private func planList(for page: TaskPage) -> some View {
+        List {
+            Section {
+                taskPageTitleStrip
+            }
+            .listRowBackground(Color.clear)
+
+            taskPageSection(page)
 
             Section(header: sectionHeader("LISTS")) {
                 ForEach(lists) { list in
@@ -307,96 +424,6 @@ struct LibraryView: View {
             .listRowBackground(FlowTheme.surface(scheme))
         }
         .scrollContentBackground(.hidden)
-        .background(FlowTheme.background(scheme).ignoresSafeArea())
-        // Named for the tab that reaches it (decision 1b), not for the type —
-        // a screen titled "Library" under a tab labelled "Plan" reads as two
-        // different places.
-        .flowScreenTitle("Plan")
-        .toolbar {
-            // Left at trailing, where subtask 37's `≡` build put it — that
-            // rationale (the floating `≡` owning the top-left corner) no
-            // longer applies now the tab bar is back, but there is no design
-            // authority for a specific placement here, so it stays rather
-            // than guess. Open question, see closing handover.
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { showingSearch = true } label: { Image(systemName: "magnifyingglass") }
-                    .accessibilityLabel("Search")
-            }
-            // No `+` here. The shell's floating create button already floats
-            // over this tab and opens the same `QuickCaptureView`, so a second
-            // one only crowded the bar — and the duplicate presented from
-            // inside this screen rendered a text field that never became first
-            // responder, so it was the broken copy of the two.
-            // Stats: decision 1b drops it off the tab bar; reached instead
-            // by this chart-icon push, normal `NavigationLink` behaviour, not
-            // a tab and not a sheet. Separate from the REVIEW section's Stats
-            // accordion below, which only unfolds today's tile strip in
-            // place — this pushes the full `ProgressScreen`.
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { pushStats = true } label: { Image(systemName: "chart.bar") }
-                    .accessibilityLabel("Stats")
-            }
-        }
-        .navigationDestination(isPresented: $pushStats) {
-            ProgressScreen()
-        }
-        .navigationDestination(for: Project.self) { project in
-            ProjectDetailView(project: project)
-        }
-        .sheet(isPresented: $showingSearch) {
-            GlobalSearchView { result in onSearchResult(result) }
-        }
-        .sheet(item: $inspectedTask) { task in
-            NavigationStack { TaskDetailInspector(task: task) }
-        }
-        .sheet(item: $inspectedNote) { note in
-            NavigationStack { NoteEditorView(note: note) }
-        }
-        .sheet(item: $attachmentPickerNote) { note in
-            NoteAttachPickerView(
-                candidates: NoteAttachCandidates.display(noteCandidates, attached: note.task),
-                current: note.task
-            ) { task in
-                toggleAttach(note: note, task: task)
-            }
-        }
-        // Hosted here, not on `PlanInboxSection`'s `Section`. A `.sheet`
-        // attached to a `Section` nested inside this `List` never presents:
-        // the flag flips and nothing appears, with no error and no test
-        // failure. That is how the duel silently stopped opening when T6
-        // moved its entry point off `TaskListScreen`.
-        .sheet(isPresented: $showingDuel) {
-            PrioritiseDuelView(tasks: SmartView.today.matches(allTasks, now: flow?.now ?? Date()))
-        }
-        .sheet(isPresented: $showingPlanPreview) {
-            PlanPreviewView(
-                proposal: planProposal ?? PlanProposal(),
-                tasksByID: Dictionary(uniqueKeysWithValues: allTasks.map { ($0.id, $0) }),
-                onApply: applyPlan,
-                onReplanWholeDay: replanWholeDay
-            )
-        }
-        // Same reason as `showingDuel` above: hosted on this top-level `List`,
-        // not on the LISTS `Section`, which never presents.
-        .sheet(isPresented: $showCreateList) {
-            CreateListSheet()
-        }
-        .confirmationDialog(
-            "Delete this list?",
-            isPresented: Binding(get: { pendingListDelete != nil }, set: { if !$0 { pendingListDelete = nil } }),
-            titleVisibility: .visible
-        ) {
-            Button("Delete List", role: .destructive) {
-                if let list = pendingListDelete {
-                    context.delete(list)
-                    try? context.save()
-                }
-                pendingListDelete = nil
-            }
-            Button("Cancel", role: .cancel) { pendingListDelete = nil }
-        } message: {
-            Text("Tasks inside stay in Flowmap and move to Inbox.")
-        }
     }
 
     // MARK: - Inbox plan preview
@@ -414,28 +441,90 @@ struct LibraryView: View {
         planProposal = flow.planToday(replanExisting: true)
     }
 
-    // MARK: - TASKS accordions
+    // MARK: - TASKS pages
+
+    /// The title strip is intentionally a single native Menu rather than six
+    /// narrow buttons. Paging owns the swipe; the Menu gives the same ordered
+    /// destinations to a tap, VoiceOver and Dynamic Type without cramming the
+    /// strip or making small dots pretend to be controls.
+    private var taskPageTitleStrip: some View {
+        HStack(spacing: FlowSpacing.m) {
+            Menu {
+                ForEach(Self.taskPages) { candidate in
+                    Button {
+                        selectTaskPage(candidate)
+                    } label: {
+                        if candidate == taskPage {
+                            Label(candidate.title, systemImage: "checkmark")
+                        } else {
+                            Text(candidate.title)
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: FlowSpacing.xs) {
+                    Text(taskPage.title)
+                        .font(FlowFont.cardTitle)
+                        .foregroundStyle(FlowTheme.primaryText(scheme))
+                    Image(systemName: "chevron.down")
+                        .font(FlowFont.caption.weight(.semibold))
+                        .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                }
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .accessibilityLabel("Task page: \(taskPage.title)")
+            .accessibilityHint("Shows Inbox, Today, Upcoming, Anytime, All tasks and Completed")
+
+            Spacer(minLength: FlowSpacing.s)
+
+            HStack(spacing: FlowSpacing.xxs) {
+                ForEach(Self.taskPages) { candidate in
+                    Circle()
+                        .fill(candidate == taskPage ? FlowTheme.accent : FlowTheme.separator(scheme))
+                        .frame(width: 6, height: 6)
+                }
+            }
+            .accessibilityHidden(true)
+        }
+    }
 
     @ViewBuilder
-    private func taskAccordion(_ view: SmartView, token: ColourToken) -> some View {
-        let tasks = Self.taskAccordionContent(for: view, in: allTasks, now: flow?.now ?? Date())
-        LibraryAccordionRow(
-            title: view.displayName,
-            symbol: view.symbolName,
-            token: token,
-            count: tasks.count,
-            isExpanded: expansionBinding(for: view.rawValue)
-        ) {
-            if tasks.isEmpty {
-                emptyRow(view.emptyMessage)
-            } else {
-                ForEach(tasks) { task in
-                    TaskRowView(task: task)
-                        .contentShape(Rectangle())
-                        .onTapGesture { inspectedTask = task }
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
+    private func taskPageSection(_ page: TaskPage) -> some View {
+        if page == .inbox {
+            PlanInboxSection(
+                showingDuel: $showingDuel,
+                showingPlanPreview: $showingPlanPreview,
+                planProposal: $planProposal,
+                showsHeader: false
+            )
+        } else if let view = page.smartView {
+            let tasks = Self.taskPageContent(for: view, in: allTasks, now: flow?.now ?? Date())
+            Section {
+                if tasks.isEmpty {
+                    emptyRow(view.emptyMessage)
+                } else {
+                    ForEach(tasks) { task in
+                        TaskRowView(task: task)
+                            .contentShape(Rectangle())
+                            .onTapGesture { inspectedTask = task }
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                    }
                 }
+            }
+            .listRowBackground(FlowTheme.surface(scheme))
+        }
+    }
+
+    private func selectTaskPage(_ page: TaskPage) {
+        let next = Self.taskPageSelection(from: taskPage, choosing: page)
+        guard next != taskPage else { return }
+        if reduceMotion {
+            taskPage = next
+        } else {
+            withAnimation(.snappy(duration: 0.24)) {
+                taskPage = next
             }
         }
     }
