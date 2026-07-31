@@ -504,23 +504,21 @@ public struct FlowPopoverMenu<ID: Hashable>: View {
     }
 }
 
-/// The create sheet's text-input shape: surface fill, hairline border, the
-/// mock's 12pt corner. Shared by the name, subtask and note fields so they
-/// cannot drift apart.
+/// The create sheet's text-input treatment: typography first, with one quiet
+/// baseline instead of a stack of bordered boxes. Shared by the name, subtask
+/// and note fields so they cannot drift apart.
 private struct FieldChrome: ViewModifier {
     let scheme: ColorScheme
 
     func body(content: Content) -> some View {
         content
-            .padding(FlowSpacing.m)
-            .background(
-                RoundedRectangle(cornerRadius: FlowRadius.small, style: .continuous)
-                    .fill(FlowTheme.surface(scheme))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: FlowRadius.small, style: .continuous)
-                    .strokeBorder(FlowTheme.separatorStrong(scheme), lineWidth: 1)
-            )
+            .padding(.vertical, FlowSpacing.s)
+            .padding(.horizontal, FlowSpacing.xxs)
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(FlowTheme.separatorStrong(scheme))
+                    .frame(height: 1)
+            }
     }
 }
 
@@ -746,7 +744,8 @@ public struct FlowCreateSheet: View {
 
     private var titleField: some View {
         TextField(kind.namePlaceholder, text: $title)
-            .font(FlowFont.body)
+            .font(FlowFont.cardTitle)
+            .textFieldStyle(.plain)
             .modifier(FieldChrome(scheme: scheme))
             .accessibilityLabel("\(kind.title) name")
     }
@@ -811,10 +810,8 @@ public struct FlowCreateSheet: View {
         }
     }
 
-    /// Mirrors `QuickAddTaskView.dateControl`: a collapsed pill that expands
-    /// into a date+time picker. Self-labelled like `durationSection` rather
-    /// than wrapped in an eyebrow — the mock puts the label on the control,
-    /// not above it.
+    /// Mirrors `QuickAddTaskView.dateControl`: a collapsed, self-labelled
+    /// control that expands into a date+time picker.
     private var dueSection: some View {
         Group {
             if hasDue {
@@ -847,11 +844,11 @@ public struct FlowCreateSheet: View {
         }
         .padding(.horizontal, FlowSpacing.m)
         .frame(minHeight: 44)
-        .background(Capsule().fill(FlowTheme.surface(scheme)))
-        .overlay(Capsule().strokeBorder(FlowTheme.separator(scheme), lineWidth: 1))
+        .background(Capsule().fill(FlowTheme.surfaceSunken(scheme)))
     }
 
-    /// Same self-labelled capsule idiom as `dueSection` — one control, no eyebrow.
+    /// Same self-labelled control idiom as `dueSection` — one control, no
+    /// eyebrow or explanatory caption.
     private var repeatSection: some View {
         HStack(spacing: FlowSpacing.xs) {
             Image(systemName: "repeat").font(.system(size: 13, weight: .semibold))
@@ -864,16 +861,25 @@ public struct FlowCreateSheet: View {
         .foregroundStyle(FlowTheme.primaryText(scheme))
         .padding(.horizontal, FlowSpacing.m)
         .frame(minHeight: 44)
-        .background(Capsule().fill(FlowTheme.surface(scheme)))
-        .overlay(Capsule().strokeBorder(FlowTheme.separator(scheme), lineWidth: 1))
+        .background(Capsule().fill(FlowTheme.surfaceSunken(scheme)))
     }
 
     private var projectSection: some View {
-        VStack(alignment: .leading, spacing: FlowSpacing.s) {
-            FlowEyebrow("Project")
-            FlowChipWrap(spacing: FlowSpacing.s) {
-                ForEach(projects) { project in
-                    projectChip(project)
+        selectionSection(
+            title: "Project",
+            symbol: "folder",
+            selectionTitle: projects.first(where: { $0.id == projectID })?.title ?? "No project"
+        ) {
+            Button {
+                animated { projectID = nil }
+            } label: {
+                selectionLabel("No project", isSelected: projectID == nil)
+            }
+            ForEach(projects) { project in
+                Button {
+                    select(project: project.id)
+                } label: {
+                    selectionLabel(project.title, isSelected: project.id == projectID)
                 }
             }
         }
@@ -883,59 +889,66 @@ public struct FlowCreateSheet: View {
     /// under, with an explicit `None` rather than a nothing-selected state the
     /// user has to infer.
     private var initiativeSection: some View {
-        VStack(alignment: .leading, spacing: FlowSpacing.s) {
-            FlowEyebrow("Initiative")
-            FlowChipWrap(spacing: FlowSpacing.s) {
-                chip(title: "None", colour: nil, isSelected: initiativeID == nil) {
-                    animated { initiativeID = nil }
-                }
-                ForEach(initiatives) { initiative in
-                    chip(
-                        title: initiative.title,
-                        colour: initiative.colour,
-                        isSelected: initiative.id == initiativeID
-                    ) {
-                        animated { initiativeID = initiative.id }
-                    }
-                }
-            }
-        }
-    }
-
-    private func projectChip(_ project: FlowCreateChipOption) -> some View {
-        chip(
-            title: project.title,
-            colour: project.colour,
-            isSelected: project.id == projectID
+        selectionSection(
+            title: "Initiative",
+            symbol: "scope",
+            selectionTitle: initiatives.first(where: { $0.id == initiativeID })?.title ?? "None"
         ) {
-            select(project: project.id)
+            Button {
+                animated { initiativeID = nil }
+            } label: {
+                selectionLabel("None", isSelected: initiativeID == nil)
+            }
+            ForEach(initiatives) { initiative in
+                Button {
+                    animated { initiativeID = initiative.id }
+                } label: {
+                    selectionLabel(initiative.title, isSelected: initiative.id == initiativeID)
+                }
+            }
         }
     }
 
-    private func chip(
+    private func selectionSection<MenuContent: View>(
         title: String,
-        colour: ColourToken?,
-        isSelected: Bool,
-        action: @escaping () -> Void
+        symbol: String,
+        selectionTitle: String,
+        @ViewBuilder menu: () -> MenuContent
     ) -> some View {
-        Button(action: action) {
-            HStack(spacing: FlowSpacing.xs) {
-                if let colour {
-                    Circle().fill(colour.base).frame(width: 8, height: 8)
+        VStack(alignment: .leading, spacing: FlowSpacing.xs) {
+            FlowEyebrow(title)
+            Menu {
+                menu()
+            } label: {
+                HStack(spacing: FlowSpacing.s) {
+                    Image(systemName: symbol)
+                        .foregroundStyle(FlowTheme.secondaryText(scheme))
+                    Text(selectionTitle)
+                        .font(FlowFont.body)
+                        .foregroundStyle(FlowTheme.primaryText(scheme))
+                        .lineLimit(1)
+                    Spacer(minLength: FlowSpacing.s)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(FlowTheme.tertiaryText(scheme))
                 }
-                Text(title).font(FlowFont.secondary)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .padding(.horizontal, FlowSpacing.s)
+                .background(Capsule().fill(FlowTheme.surfaceSunken(scheme)))
             }
-            .padding(.horizontal, FlowSpacing.m)
-            // HIG override 1: same reasoning as the duration chips above.
-            .frame(minHeight: 44)
-            .background(Capsule().fill(isSelected ? FlowTheme.accentFill : FlowTheme.surface(scheme)))
-            .foregroundStyle(isSelected ? .white : FlowTheme.primaryText(scheme))
-            .overlay(
-                Capsule().strokeBorder(FlowTheme.separator(scheme), lineWidth: isSelected ? 0 : 1)
-            )
+            .buttonStyle(.plain)
+            .accessibilityLabel(title)
+            .accessibilityValue(selectionTitle)
         }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+    }
+
+    @ViewBuilder
+    private func selectionLabel(_ title: String, isSelected: Bool) -> some View {
+        if isSelected {
+            Label(title, systemImage: "checkmark")
+        } else {
+            Text(title)
+        }
     }
 
     // MARK: - Selection, honouring Reduce Motion
@@ -953,44 +966,6 @@ public struct FlowCreateSheet: View {
             body()
         } else {
             withAnimation(.spring(response: 0.32, dampingFraction: 0.86), body)
-        }
-    }
-}
-
-/// Wraps chips onto as many lines as they need — the create sheet's project
-/// row can hold more chips than one line fits, unlike every other chip row in
-/// the app which scrolls horizontally instead.
-private struct FlowChipWrap: Layout {
-    var spacing: CGFloat
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let maxWidth = proposal.width ?? .infinity
-        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x > 0, x + size.width > maxWidth {
-                x = 0
-                y += rowHeight + spacing
-                rowHeight = 0
-            }
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-        }
-        return CGSize(width: maxWidth.isFinite ? maxWidth : x, height: y + rowHeight)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x > bounds.minX, x + size.width > bounds.maxX {
-                x = bounds.minX
-                y += rowHeight + spacing
-                rowHeight = 0
-            }
-            subview.place(at: CGPoint(x: x, y: y), proposal: .unspecified)
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
         }
     }
 }
