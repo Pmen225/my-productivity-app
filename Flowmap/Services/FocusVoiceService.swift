@@ -31,11 +31,31 @@ public final class FocusVoiceService {
         self.moments = moments
     }
 
-    /// Every voice this device can speak with, for the settings picker.
-    /// Read live from the system rather than a hard-coded list, since
-    /// availability differs by device, language and downloaded voice packs.
+    /// Every voice this device can speak with, used to resolve the curated
+    /// reminder styles. Read live from the system rather than a hard-coded
+    /// list, since availability differs by device, language and downloaded
+    /// voice packs.
     public static func availableVoices() -> [AVSpeechSynthesisVoice] {
         AVSpeechSynthesisVoice.speechVoices()
+    }
+
+    /// Maps a curated style to a currently installed voice in the current
+    /// language. Device voice packs differ, so the mapping is deterministic
+    /// within the available list and gracefully collapses to the same voice
+    /// when only one option is installed.
+    public static func voice(for style: FocusVoiceStyle) -> AVSpeechSynthesisVoice? {
+        let language = AVSpeechSynthesisVoice.currentLanguageCode()
+        let all = availableVoices()
+        let matching = all.filter { $0.language == language }
+        let voices = (matching.isEmpty ? all : matching).sorted { $0.name < $1.name }
+        guard !voices.isEmpty else { return nil }
+        let index: Int
+        switch style {
+        case .calm: index = 0
+        case .bright: index = voices.count / 2
+        case .deep: index = voices.count - 1
+        }
+        return voices[min(index, voices.count - 1)]
     }
 
     /// Speaks the task-start announcement. Called once, exactly when a fresh
@@ -82,6 +102,13 @@ public final class FocusVoiceService {
     public func sessionEnded(sessionID: UUID) {
         announcedBySession[sessionID] = nil
         synthesizer.stopSpeaking(at: .word)
+    }
+
+    /// A settings preview uses the same speech path as a real reminder, so
+    /// volume, style, device voice and the silent-switch-aware audio session
+    /// cannot drift apart.
+    public func preview(settings: AppSettings) {
+        speak("You have 30 minutes left.", settings: settings)
     }
 
     // MARK: - Wording
@@ -164,6 +191,8 @@ public final class FocusVoiceService {
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = voice(for: settings)
         utterance.volume = Float(settings.focusVoiceVolume)
+        utterance.rate = settings.focusVoiceStyle.speechRate
+        utterance.pitchMultiplier = settings.focusVoiceStyle.pitchMultiplier
         synthesizer.speak(utterance)
     }
 
@@ -184,6 +213,9 @@ public final class FocusVoiceService {
     private func voice(for settings: AppSettings) -> AVSpeechSynthesisVoice? {
         if let identifier = settings.focusVoiceIdentifier,
            let voice = AVSpeechSynthesisVoice(identifier: identifier) {
+            return voice
+        }
+        if let voice = Self.voice(for: settings.focusVoiceStyle) {
             return voice
         }
         return AVSpeechSynthesisVoice(language: AVSpeechSynthesisVoice.currentLanguageCode())

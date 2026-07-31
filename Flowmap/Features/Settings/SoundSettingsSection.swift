@@ -32,9 +32,14 @@ struct SoundSettingsSection: View {
                     }
 
                     if flow.settings.focusVoiceEnabled {
-                        voicePicker(flow)
+                        voiceStylePicker(flow)
                         voiceVolumeRow(flow)
                     }
+
+                    Text("The bell rings at the wind-down mark (last 5 min of a long task, scaled down for short ones). Reminders scale with the task — a 1H task hears 45, 30 and 15 minutes left, then 5 · 4 · 3 · 2 · 1.")
+                        .font(FlowFont.caption)
+                        .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .font(FlowFont.body)
@@ -43,22 +48,25 @@ struct SoundSettingsSection: View {
         }
     }
 
-    private func voicePicker(_ flow: AppEnvironment) -> some View {
+    private func voiceStylePicker(_ flow: AppEnvironment) -> some View {
         VStack(alignment: .leading, spacing: FlowSpacing.xs) {
-            Text("Voice").font(FlowFont.secondary).foregroundStyle(FlowTheme.secondaryText(scheme))
-            Picker("Voice", selection: Binding(
-                get: { flow.settings.focusVoiceIdentifier },
+            Text("Reminder voice").font(FlowFont.secondary).foregroundStyle(FlowTheme.secondaryText(scheme))
+            Picker("Reminder voice", selection: Binding(
+                get: { flow.settings.focusVoiceStyle },
                 set: { newValue in
-                    flow.settings.focusVoiceIdentifier = newValue
+                    flow.settings.focusVoiceStyle = newValue
+                    flow.settings.focusVoiceIdentifier = FocusVoiceService.voice(for: newValue)?.identifier
                     save()
+                    flow.voiceService.preview(settings: flow.settings)
                 }
             )) {
-                Text("System default").tag(String?.none)
-                ForEach(voices, id: \.identifier) { voice in
-                    Text(voice.name).tag(Optional(voice.identifier))
+                ForEach(FocusVoiceStyle.allCases) { style in
+                    Text(style.displayName).tag(style)
                 }
             }
+            .pickerStyle(.segmented)
             .labelsHidden()
+            .accessibilityValue(flow.settings.focusVoiceStyle.displayName)
         }
     }
 
@@ -77,15 +85,6 @@ struct SoundSettingsSection: View {
             )
             .accessibilityValue("\(Int(flow.settings.focusVoiceVolume * 100)) per cent")
         }
-    }
-
-    /// Voices in the device's current language first, since a picker full of
-    /// every installed language would bury the ones worth choosing between.
-    private var voices: [AVSpeechSynthesisVoice] {
-        let currentLanguage = AVSpeechSynthesisVoice.currentLanguageCode()
-        let all = FocusVoiceService.availableVoices()
-        let matching = all.filter { $0.language == currentLanguage }
-        return matching.isEmpty ? all : matching
     }
 
     private func binding(_ flow: AppEnvironment, _ keyPath: ReferenceWritableKeyPath<AppSettings, Bool>) -> Binding<Bool> {

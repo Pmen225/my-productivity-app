@@ -129,6 +129,7 @@
 		9BA6BA616E484E70058FD7D6 /* MapListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03532FFB077B67310DFD5A18 /* MapListView.swift */; };
 		A157FACA6CC7574BCC902330 /* NoteSlashMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB6AB9BE4F6D57F905D3B1B7 /* NoteSlashMenu.swift */; };
 		A4C90ED06CA42F85BC0E96FC /* CalendarService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D37B6ECC0169153F5381900 /* CalendarService.swift */; };
+		A61892E08781FC578C50DFA1 /* FocusVoiceStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD4B8F2831425F3BABDAB641 /* FocusVoiceStyle.swift */; };
 		A8290C73E415F4AC1D6644C5 /* SmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 456CAB4E8F890B1F08777A0F /* SmokeTests.swift */; };
 		A872981C1B9B8307BE75BACE /* MapDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD844E3158685B395C00397C /* MapDocument.swift */; };
 		A889D5F4268A5FA0ED1028A7 /* ScreenshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C09034A22F33C188C979591A /* ScreenshotTests.swift */; };
@@ -392,6 +393,7 @@
 		CA7094DE397EF5DCFD495E04 /* ModelContainerFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelContainerFactory.swift; sourceTree = "<group>"; };
 		CCB88FF804A5D540239434E7 /* Project.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Project.swift; sourceTree = "<group>"; };
 		CD07FE51C52722CDCE4128EE /* SmartViewGroupingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartViewGroupingStore.swift; sourceTree = "<group>"; };
+		CD4B8F2831425F3BABDAB641 /* FocusVoiceStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusVoiceStyle.swift; sourceTree = "<group>"; };
 		CD50E14D1C9867BB2983C34D /* TodayModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayModels.swift; sourceTree = "<group>"; };
 		CE7A7BE15C0A46A7C3882FB6 /* CalendarIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarIntents.swift; sourceTree = "<group>"; };
 		D0B3651080E5FA47F0CB9A7A /* EditListsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditListsView.swift; sourceTree = "<group>"; };
@@ -552,6 +554,7 @@
 				0445857E5428A7957338906D /* DurationFormatter.swift */,
 				C7A5B04286EF445FCEB14B8E /* FlowTask.swift */,
 				AD971E8BEEB1BA04AC552EF3 /* FocusSession.swift */,
+				CD4B8F2831425F3BABDAB641 /* FocusVoiceStyle.swift */,
 				000AB24E52FD4C0D5866003B /* Initiative.swift */,
 				DD844E3158685B395C00397C /* MapDocument.swift */,
 				375E452CBC16B13A4BC4CF71 /* MapNode.swift */,
@@ -1085,6 +1088,7 @@
 				AB20E1476E087BE50F8AFF70 /* FocusTaskCard.swift in Sources */,
 				6449ECFD5600735BB8413FAE /* FocusVoiceSchedule.swift in Sources */,
 				3B88BB62C091BA5125C80562 /* FocusVoiceService.swift in Sources */,
+				A61892E08781FC578C50DFA1 /* FocusVoiceStyle.swift in Sources */,
 				F642801A24B8DD52BAAAEF5D /* FocusWheelGeometry.swift in Sources */,
 				332A3B718715C56035C5A7B9 /* FocusWheelSettingsSection.swift in Sources */,
 				C544DBAC35277F8226C9C1D8 /* FocusWheelView.swift in Sources */,

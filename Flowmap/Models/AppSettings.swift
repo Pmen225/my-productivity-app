@@ -34,6 +34,9 @@ public final class AppSettings {
     /// The chosen `AVSpeechSynthesisVoice.identifier`. Nil uses the system
     /// default for the current language.
     public var focusVoiceIdentifier: String?
+    /// Curated style label shown in Settings. The identifier above remains
+    /// optional so older records continue to use the system default safely.
+    public var focusVoiceStyleRaw: String = FocusVoiceStyle.calm.rawValue
     /// Relative volume for spoken announcements — never the system volume.
     public var focusVoiceVolume: Double = 0.8
 
@@ -115,6 +118,11 @@ public final class AppSettings {
     public var wheelVisibility: WheelVisibility {
         get { WheelVisibility(rawValue: wheelVisibilityRaw) ?? .two }
         set { wheelVisibilityRaw = newValue.rawValue; touch() }
+    }
+
+    public var focusVoiceStyle: FocusVoiceStyle {
+        get { FocusVoiceStyle(rawValue: focusVoiceStyleRaw) ?? .calm }
+        set { focusVoiceStyleRaw = newValue.rawValue; touch() }
     }
 
     public var assistantProvider: AssistantProvider {
