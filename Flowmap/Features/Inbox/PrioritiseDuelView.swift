@@ -1,5 +1,8 @@
 import SwiftData
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 /// The prioritise duel: pairwise "which comes first?" picks over today's
 /// tasks, then a medal-ranked reveal with two exits. See `state/specs/
@@ -36,6 +39,9 @@ struct PrioritiseDuelView: View {
 
     @State private var currentPairIndex = 0
     @State private var picks: [UUID] = []
+    /// The current pair gets a new identity after every pick, so SwiftUI can
+    /// give the decision a brief, directional hand-off without adding a
+    /// second interaction or delaying the next choice.
     /// Rows already shown in the reveal — grows one at a time on a timer to
     /// produce the staggered reveal, or all at once under Reduce Motion.
     @State private var revealedIDs: Set<UUID> = []
@@ -101,7 +107,10 @@ struct PrioritiseDuelView: View {
                 Text("Which comes first?")
                     .font(FlowFont.sectionTitle)
                     .foregroundStyle(FlowTheme.primaryText(scheme))
-                ProgressView(value: Double(currentPairIndex), total: Double(pairs.count))
+                ProgressView(
+                    value: Double(min(currentPairIndex + 1, pairs.count)),
+                    total: Double(pairs.count)
+                )
                     .tint(FlowTheme.accentFill)
                     .accessibilityHidden(true)
                 Text(Self.duelCounter(index: currentPairIndex, total: pairs.count))
@@ -111,13 +120,14 @@ struct PrioritiseDuelView: View {
             }
 
             if let first = tasksByID[pair.first], let second = tasksByID[pair.second] {
-                VStack(spacing: FlowSpacing.m) {
-                    choiceButton(for: first, against: second)
-                    Text("or")
-                        .font(FlowFont.caption)
-                        .foregroundStyle(FlowTheme.tertiaryText(scheme))
-                    choiceButton(for: second, against: first)
-                }
+                duelArena(first: first, second: second)
+                    .id(currentPairIndex)
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: .trailing).combined(with: .opacity),
+                            removal: .scale(scale: 0.96).combined(with: .opacity)
+                        )
+                    )
             }
 
             Spacer()
@@ -125,16 +135,38 @@ struct PrioritiseDuelView: View {
         .padding(FlowSpacing.screen)
     }
 
+    /// Two task cards share one stage, with a quiet VS marker in the space
+    /// between them. The marker makes the comparison relationship visible
+    /// without adding explanatory copy to either card.
+    private func duelArena(first: FlowTask, second: FlowTask) -> some View {
+        ZStack {
+            VStack(spacing: FlowSpacing.xl) {
+                choiceButton(for: first, against: second)
+                choiceButton(for: second, against: first)
+            }
+
+            Text("VS")
+                .font(FlowFont.durationChip)
+                .foregroundStyle(FlowTheme.primaryText(scheme))
+                .padding(FlowSpacing.s)
+                .background(FlowTheme.background(scheme), in: Circle())
+                .overlay {
+                    Circle().strokeBorder(FlowTheme.separatorStrong(scheme), lineWidth: 1)
+                }
+                .accessibilityHidden(true)
+        }
+    }
+
     private func choiceButton(for task: FlowTask, against other: FlowTask) -> some View {
         Button {
             pick(task)
         } label: {
-            FlowCard {
+            FlowCard(padding: FlowSpacing.l) {
                 HStack(spacing: FlowSpacing.m) {
                     Image(systemName: task.iconName)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(FlowFont.sectionTitle)
                         .foregroundStyle(task.colour.onSoft)
-                        .frame(width: 28, height: 28)
+                        .frame(width: FlowControlSize.secondary, height: FlowControlSize.secondary)
                         .background(Circle().fill(task.colour.soft))
                     Text(task.title)
                         .font(FlowFont.cardTitle)
@@ -142,6 +174,12 @@ struct PrioritiseDuelView: View {
                         .lineLimit(2)
                     Spacer(minLength: FlowSpacing.s)
                     DurationChip(minutes: task.estimatedMinutes, tint: task.colour)
+                }
+                .overlay(alignment: .leading) {
+                    Capsule()
+                        .fill(task.colour.base)
+                        .frame(width: FlowSpacing.xs)
+                        .padding(.vertical, FlowSpacing.s)
                 }
             }
         }
@@ -151,10 +189,25 @@ struct PrioritiseDuelView: View {
     }
 
     private func pick(_ winner: FlowTask) {
+        pickHaptic()
         picks.append(winner.id)
-        withAnimation(.snappy) {
+        if reduceMotion {
             currentPairIndex += 1
+        } else {
+            withAnimation(.snappy(duration: 0.28, extraBounce: 0.04)) {
+                currentPairIndex += 1
+            }
         }
+    }
+
+    /// A pick is a discrete positive decision, so it gets one short optional
+    /// impact. The visual hand-off remains the primary feedback and still
+    /// works when haptics are disabled or unavailable.
+    private func pickHaptic() {
+        #if os(iOS)
+        guard flow?.settings.focusHapticsEnabled ?? false else { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        #endif
     }
 
     // MARK: - Reveal stage

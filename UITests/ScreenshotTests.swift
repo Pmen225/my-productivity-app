@@ -677,7 +677,10 @@ final class ScreenshotTests: XCTestCase {
         }
         capture(app, named: "iphone-prioritise-duel")
 
-        var remainingTaps = 30
+        // The pair count is n*(n-1)/2, so the two top-up tasks can still leave
+        // more than thirty choices. Keep tapping until the reveal is actually
+        // on screen; a fixed short loop used to label a live duel as a reveal.
+        var remainingTaps = 100
         while remainingTaps > 0 {
             let choice = app.buttons.matching(choicePredicate).firstMatch
             guard choice.waitForExistence(timeout: 3) else { break }
@@ -687,6 +690,10 @@ final class ScreenshotTests: XCTestCase {
         }
 
         Thread.sleep(forTimeInterval: 1.5)
+        XCTAssertTrue(
+            app.staticTexts["Decision made."].waitForExistence(timeout: 5),
+            "Prioritise duel did not reach its reveal after answering every available pair"
+        )
         capture(app, named: "iphone-prioritise-duel-reveal")
 
         let keepOrder = app.buttons["Keep order, plan later"].firstMatch
