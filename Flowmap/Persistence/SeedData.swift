@@ -74,6 +74,10 @@ public enum SeedData {
             // layout frames empty canvas.
             settings.accentToken = ColourToken.clay.rawValue
             settings.appearance = demoAppearance
+            // The original Focus design opens on the 2-task bowl. Persisted
+            // zoom state must not make a demo capture reopen on the tiny All
+            // overview or force the founder to reconstruct the dial each run.
+            settings.wheelVisibility = .two
             settings.touch()
             if let maps = try? context.fetch(FetchDescriptor<MapDocument>()) {
                 for map in maps {
@@ -194,6 +198,7 @@ public enum SeedData {
         // on a simulator that persisted an older accent choice.
         settings.accentToken = ColourToken.clay.rawValue
         settings.appearance = demoAppearance
+        settings.wheelVisibility = .two
         settings.touch()
         try? context.save()
         return workspace

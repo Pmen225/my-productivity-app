@@ -375,54 +375,28 @@ struct FocusGateTests {
 
 @Suite("Focus wheel geometry")
 struct FocusWheelGeometryTests {
-    @Test("Each 1, 2 and 3 view is a complete ring with the active wedge at the bottom")
-    func closedRingModesAreFullyVisibleAndCentred() {
-        let canvas: CGFloat = 320
-        for visibility in [WheelVisibility.one, .two, .three] {
-            let count = FocusWheelGeometry.closedRingVisibleCount(for: visibility, queueCount: 8)
-            let active = FocusWheelGeometry.closedRingSpan(index: 0, visibleCount: count)
-            let radius = FocusWheelGeometry.closedRingOuterRadius(width: canvas, height: canvas)
-            let centre = FocusWheelGeometry.closedRingCentre(width: canvas, height: canvas)
-            let free = FocusWheelGeometry.closedRingFreeSpan(visibleCount: count)
+    @Test("Close views keep the original bowl and zoom by radius")
+    func closeModesUseOriginalBowlZoom() {
+        let width: CGFloat = 375
+        let one = FocusWheelGeometry.bowlTargetRadius(forWidth: width, visibility: .one)
+        let two = FocusWheelGeometry.bowlTargetRadius(forWidth: width, visibility: .two)
+        let three = FocusWheelGeometry.bowlTargetRadius(forWidth: width, visibility: .three)
 
-            #expect(abs((active.start + active.end) / 2 - FocusWheelGeometry.bottomAngle) < 0.0001)
-            #expect(centre.y - radius >= 0)
-            #expect(centre.y + radius + FocusWheelGeometry.pointerMarkerOffset <= canvas)
-            #expect(free.end - free.start > 0)
+        #expect(one > two)
+        #expect(two > three)
+        #expect(FocusWheelGeometry.bowlTargetRadiusFraction(for: .one) == 1150.0 / 375.0)
+        #expect(FocusWheelGeometry.bowlTargetRadiusFraction(for: .two) == 680.0 / 375.0)
+        #expect(FocusWheelGeometry.bowlTargetRadiusFraction(for: .three) == 500.0 / 375.0)
+    }
+
+    @Test("The original bowl window stays centred on the fixed pointer")
+    func bowlWindowStaysCentredOnPointer() {
+        let width: CGFloat = 375
+        for visibility in [WheelVisibility.fiveMinute, .one, .two, .three] {
+            let radius = FocusWheelGeometry.bowlTargetRadius(forWidth: width, visibility: visibility)
+            let window = FocusWheelGeometry.bowlVisibleWindow(radius: radius, width: width)
+            #expect(abs((window.min + window.max) / 2 - FocusWheelGeometry.bottomAngle) < 0.0001)
         }
-    }
-
-    @Test("Closed-ring queue wedges sit ahead of the bottom, so they arrive turning clockwise")
-    func closedRingUpcomingTasksApproachClockwise() {
-        let count = 3
-        let active = FocusWheelGeometry.closedRingSpan(index: 0, visibleCount: count)
-        let next = FocusWheelGeometry.closedRingSpan(index: 1, visibleCount: count)
-        // Increasing angle is clockwise, so the next task must start at a lower
-        // angle and travel up to the bottom.
-        #expect((next.start + next.end) / 2 < (active.start + active.end) / 2)
-        #expect(abs(active.start - next.end) < 0.0001)
-    }
-
-    @Test("Closed-ring task wedges are contiguous and preserve a free span")
-    func closedRingWedgesLeaveFreeSpan() {
-        for count in 1...3 {
-            let sweep = FocusWheelGeometry.closedRingSweep(visibleCount: count)
-            let free = FocusWheelGeometry.closedRingFreeSpan(visibleCount: count)
-            #expect(abs(free.end - free.start - sweep) < 0.0001)
-
-            if count > 1 {
-                let first = FocusWheelGeometry.closedRingSpan(index: 0, visibleCount: count)
-                let second = FocusWheelGeometry.closedRingSpan(index: 1, visibleCount: count)
-                #expect(abs(second.end - first.start) < 0.0001)
-            }
-        }
-    }
-
-    @Test("The active closed-ring label is horizontal, because it sits at the bottom")
-    func closedRingActiveLabelIsUpright() {
-        let span = FocusWheelGeometry.closedRingSpan(index: 0, visibleCount: 3)
-        let angle = (span.start + span.end) / 2
-        #expect(FocusWheelGeometry.readableRotation(atAngle: angle) == 0)
     }
 
     @Test("Visibility never asks for more segments than there are tasks")
@@ -571,10 +545,10 @@ struct FocusWheelGeometryTests {
         #expect(abs(straddlingAngle - (straddling.start + straddling.end) / 2) < 0.001)
     }
 
-    @Test("5M's radius dwarfs the closed ring, so it remains the horizon magnifier")
-    func fiveMinuteRadiusFarExceedsClosedRing() {
+    @Test("5M's radius dwarfs view 1, so it remains the horizon magnifier")
+    func fiveMinuteRadiusFarExceedsViewOne() {
         let width: CGFloat = 375
-        let viewOne = FocusWheelGeometry.closedRingOuterRadius(width: width, height: width)
+        let viewOne = FocusWheelGeometry.bowlTargetRadius(forWidth: width, visibility: .one)
         let fiveMinute = FocusWheelGeometry.bowlTargetRadius(forWidth: width, visibility: .fiveMinute)
         #expect(fiveMinute > viewOne * 5)
     }

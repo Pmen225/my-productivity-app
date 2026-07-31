@@ -41,25 +41,33 @@ final class ScreenshotTests: XCTestCase {
         add(attachment)
     }
 
-    /// Pick a wheel visibility chip by its accessibility label. The chip's own
-    /// text is a bare "2" or "All", which collides with other content, so the
-    /// spoken label is queried instead.
+    /// Pick a wheel zoom from the native options menu. The dial keeps its
+    /// original quiet surface; zoom choices are progressively disclosed under
+    /// the menu's "Dial zoom" submenu.
     private func selectWheelMode(_ app: XCUIApplication, _ mode: String) {
-        let chip = app.buttons["\(mode) tasks visible"].firstMatch
-        guard chip.waitForExistence(timeout: 10) else {
-            XCTFail("Wheel mode chip \(mode) not found")
+        let options = app.buttons["Open focus options"].firstMatch
+        guard options.waitForExistence(timeout: 10) else {
+            XCTFail("Focus options button not found before selecting \(mode)")
             return
         }
-        // The chips idle away 2.5s after the last touch and stop taking taps
-        // while they are invisible, so the first tap only wakes them. Tapping
-        // twice is right either way — selecting the mode already showing is a
-        // no-op. Without this the mode silently never changes and the run
-        // still passes, exporting a shot of the wrong dial.
-        chip.tap()
-        Thread.sleep(forTimeInterval: 0.5)
-        chip.tap()
-        // Long enough for the radius ease to settle, short enough that the
-        // chips have not faded again by the time the shot is taken.
+        options.tap()
+
+        let zoomMenu = app.buttons["Dial zoom"].firstMatch
+        guard zoomMenu.waitForExistence(timeout: 5) else {
+            XCTFail("Dial zoom submenu not found before selecting \(mode)")
+            return
+        }
+        zoomMenu.tap()
+
+        let announcement = mode == "5M"
+            ? "Zoomed to a five-minute window"
+            : mode == "All" ? "All tasks visible" : "\(mode) tasks visible"
+        let item = app.buttons[announcement].firstMatch
+        guard item.waitForExistence(timeout: 5) else {
+            XCTFail("Wheel zoom \(mode) not found in Dial zoom submenu")
+            return
+        }
+        item.tap()
         Thread.sleep(forTimeInterval: 1.2)
     }
 
@@ -1091,5 +1099,19 @@ final class ScreenshotTests: XCTestCase {
         if tapTab(app, "Focus") {
             capture(app, named: "iphone-focus-wheel-dark")
         }
+    }
+
+    /// A focused light-mode proof of the founder's original bottom-arc dial.
+    /// Keeping this isolated makes it cheap to inspect the signature surface
+    /// without waiting for the rest of the screenshot catalogue.
+    func testCaptureFocusDialLight() {
+        let app = launch()
+        guard tapTab(app, "Focus") else { return }
+        selectWheelMode(app, "2")
+        if app.buttons["Show timer"].firstMatch.waitForExistence(timeout: 2) {
+            app.buttons["Show timer"].firstMatch.tap()
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        capture(app, named: "iphone-focus-original-dial-light")
     }
 }

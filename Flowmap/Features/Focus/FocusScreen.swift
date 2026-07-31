@@ -6,8 +6,6 @@ struct FocusScreen: View {
     @Environment(\.flow) private var flow
     @Environment(\.colorScheme) private var scheme
     @Environment(\.modelContext) private var context
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
 
     @State private var page: FocusCardPage = .today
     @State private var cardDetent: FocusCardDetent = .rest
@@ -18,9 +16,6 @@ struct FocusScreen: View {
     /// its place to bring it back. Deliberately not persisted — a hidden
     /// timer is a "let me look at the dial" moment, not a setting.
     @State private var isTimerHidden = false
-    /// The mock's `_lastZoom`: the view chips fade out once nothing has
-    /// touched the dial for a while, and any activity brings them back.
-    @State private var lastChipActivity = Date()
 
     /// Redraws the countdown once a second without touching the store.
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -159,8 +154,9 @@ struct FocusScreen: View {
     /// plus a spacing constant is reserved, so the two can never touch at rest.
     private func wheelLayer(in size: CGSize) -> some View {
         let reserved = cardDetent.height(for: size.height) + FlowSpacing.wheelCardGap
-        // The title bar and the centre readout now sit above the dial rather
-        // than inside it, so both need their own reserve alongside the card's.
+        // The title bar and centre readout sit above the dial, so reserve their
+        // stable space alongside the card's. There is no transient hint row:
+        // the dial itself is the visual instruction.
         let chromeReserve = FlowSpacing.xxxl * 2 + FlowSpacing.xl
         let dialWidth = size.width - FlowSpacing.screen * 2
         // Collapsing the card is a request to see the dial, so its ceiling
@@ -197,120 +193,78 @@ struct FocusScreen: View {
         .padding(.top, FlowSpacing.s)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         #if !os(macOS)
-        // A touch anywhere around the dial is the "pointer activity" that
-        // brings the faded view chips back — including a touch that lands on
-        // a chip itself, which stops taking taps while it is invisible.
-        .contentShape(Rectangle())
-        .onTapGesture { noteChipActivity() }
         .gesture(pinchGesture)
         #endif
     }
 
-    /// The mock's top row — a menu button, the screen's own small centred
-    /// title, and an appearance button — with the "View" pill beneath it.
+    /// The mock's top row — a stable options button, the screen's own small
+    /// centred title, and an appearance button. The selected zoom lives on the
+    /// options button as a quiet badge, keeping the dial as the visual anchor.
     private var titleBar: some View {
-        VStack(spacing: FlowSpacing.m) {
+        HStack {
             #if !os(macOS)
-            HStack {
-                cornerButton(systemImage: "line.3.horizontal", label: "Open focus options") {
-                    showingDurationPicker = true
-                }
-                Spacer(minLength: FlowSpacing.s)
-                // The mock's title is a small centred word in the content, not
-                // a system large title — this screen hides the navigation bar.
-                Text("Focus")
-                    .font(FlowFont.screenTitleCompact)
-                    .foregroundStyle(FlowTheme.primaryText(scheme))
-                    .accessibilityAddTraits(.isHeader)
-                Spacer(minLength: FlowSpacing.s)
-                cornerButton(systemImage: appearanceSymbol, label: "Change appearance, currently \(flow?.settings.appearance.displayName ?? "System")") {
-                    cycleAppearance()
-                }
+            visibilityMenu
+            Spacer(minLength: FlowSpacing.s)
+            // The mock's title is a small centred word in the content, not
+            // a system large title — this screen hides the navigation bar.
+            Text("Focus")
+                .font(FlowFont.screenTitleCompact)
+                .foregroundStyle(FlowTheme.primaryText(scheme))
+                .accessibilityAddTraits(.isHeader)
+            Spacer(minLength: FlowSpacing.s)
+            cornerButton(systemImage: appearanceSymbol, label: "Change appearance, currently \(flow?.settings.appearance.displayName ?? "System")") {
+                cycleAppearance()
             }
-
-            // The chips and the zoom hint are both about zooming the dial, so
-            // they idle away together and come back together.
-            VStack(spacing: FlowSpacing.xs) {
-                visibilityPill
-                Text("Pinch to zoom")
-                    // Explicit 12pt: small but never below the HIG's 11pt floor.
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundStyle(FlowTheme.tertiaryText(scheme))
-            }
-            .opacity(chipsAreIdle ? 0 : 1)
-            .offset(y: chipsAreIdle ? -6 : 0)
-            .animation(.easeOut(duration: 0.3), value: chipsAreIdle)
-            // Faded out, the chips stop taking taps — the first touch wakes
-            // them rather than silently changing the zoom level.
-            .allowsHitTesting(!chipsAreIdle)
             #endif
         }
+        .frame(maxWidth: .infinity)
     }
 
     #if !os(macOS)
-    /// The mock fades its view chips 2500ms after the last zoom activity. Kept
-    /// on the screen's existing one-second clock rather than a timer of its
-    /// own, and skipped entirely when Reduce Motion or VoiceOver is on — a
-    /// control that vanishes is worse than one that never moves.
-    private var chipsAreIdle: Bool {
-        guard !reduceMotion, !voiceOverEnabled else { return false }
-        return now.timeIntervalSince(lastChipActivity) > 2.5
-    }
-
-    /// Any touch on the dial or its controls wakes the chips.
-    private func noteChipActivity() {
-        lastChipActivity = now
-    }
-    #endif
-
-    #if !os(macOS)
-    /// A single white pill reading "View: 1 2 3 | All", the selected number
-    /// sitting inside a filled clay circle — not a segmented control.
-    private var visibilityPill: some View {
-        HStack(spacing: 2) {
-            Text("View:")
-                .font(FlowFont.chromeLabel)
-                .foregroundStyle(FlowTheme.tertiaryText(scheme))
-                .padding(.leading, FlowSpacing.s)
-
-            ForEach(Array(WheelVisibility.allCases.enumerated()), id: \.element) { index, mode in
-                if mode == .all {
-                    Rectangle()
-                        .fill(FlowTheme.separator(scheme))
-                        .frame(width: 1, height: 14)
-                        .padding(.horizontal, 2)
-                        .accessibilityHidden(true)
-                }
-                visibilityOption(mode)
+    /// Native progressive disclosure keeps the original quiet chrome while
+    /// keeping five zoom choices out of the way until they are wanted.
+    private var visibilityMenu: some View {
+        Menu {
+            Button("Choose focus duration", systemImage: "timer") {
+                showingDurationPicker = true
             }
-        }
-        .padding(.vertical, FlowSpacing.xxs)
-        .padding(.trailing, FlowSpacing.xs)
-        .background(Capsule().fill(FlowTheme.surface(scheme)))
-        .overlay(Capsule().strokeBorder(FlowTheme.separator(scheme), lineWidth: 1))
-        .accessibilityElement(children: .contain)
-    }
-
-    private func visibilityOption(_ mode: WheelVisibility) -> some View {
-        let isSelected = mode == visibility
-        return Button {
-            setVisibility(mode)
+            Menu("Dial zoom") {
+                ForEach(WheelVisibility.allCases, id: \.self) { mode in
+                    Button {
+                        setVisibility(mode)
+                    } label: {
+                        if mode == visibility {
+                            Label(mode.displayName, systemImage: "checkmark")
+                        } else {
+                            Text(mode.displayName)
+                        }
+                    }
+                    .accessibilityIdentifier("focus-wheel-mode-\(mode.rawValue)")
+                    .accessibilityLabel(mode.announcement)
+                }
+            }
         } label: {
-            Text(mode.displayName)
-                .font(FlowFont.chromeLabel)
-                .foregroundStyle(isSelected ? .white : FlowTheme.secondaryText(scheme))
-                .frame(width: 26, height: 26)
-                .background(isSelected ? AnyView(Circle().fill(FlowTheme.accentFill)) : AnyView(Color.clear))
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(FlowTheme.primaryText(scheme))
+                    .frame(width: 34, height: 34)
+                    .background(Circle().fill(FlowTheme.surface(scheme)))
+                    .overlay(Circle().strokeBorder(FlowTheme.separatorStrong(scheme), lineWidth: 1))
+
+                Text(visibility.displayName)
+                    .font(FlowFont.durationChip)
+                    .foregroundStyle(.white)
+                    .frame(minWidth: 27, minHeight: 27)
+                    .background(Circle().fill(FlowTheme.accentFill))
+                    .offset(x: 8, y: -7)
+            }
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        // The visible chip is smaller than the HIG's 44pt minimum, so the tap
-        // target is grown around it rather than the artwork scaled up.
-        .frame(minWidth: 44, minHeight: 44)
-        .contentShape(Rectangle())
-        // Reuses the same string the HUD shows on selection, so `5M` never
-        // gets mislabelled as a task count here either (`WheelVisibility.announcement`).
-        .accessibilityLabel(mode.announcement)
-        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+        .accessibilityLabel("Open focus options")
+        .accessibilityValue(visibility.announcement)
+        .accessibilityHint("Choose a focus duration or dial zoom")
     }
 
     private var appearanceSymbol: String {
@@ -366,21 +320,28 @@ struct FocusScreen: View {
 
     // MARK: - Centre
 
-    /// Icon and task name on one line, remaining minutes in clay beneath it —
-    /// the mock's centre readout, still reading the live remaining time, just
-    /// in whole minutes rather than a running clock.
+    /// The running clock is the focal point. The task name belongs on the
+    /// dial itself, so the centre stays quiet and leaves the arc unobscured.
     private var centreContent: some View {
         VStack(spacing: FlowSpacing.s) {
-            HStack(spacing: FlowSpacing.xs) {
-                Image(systemName: activeTask?.iconName ?? "timer")
-                    .font(.system(size: 17, weight: .regular))
-                Text(activeTask?.title ?? "Ready when you are")
-                    .font(.system(size: 19, weight: .regular, design: .rounded))
-                    .lineLimit(1)
+            if session == nil {
+                HStack(spacing: FlowSpacing.xs) {
+                    Image(systemName: activeTask?.iconName ?? "timer")
+                        .font(.system(size: 17, weight: .regular))
+                    Text(activeTask?.title ?? "Ready when you are")
+                        .font(.system(size: 19, weight: .regular, design: .rounded))
+                        .lineLimit(1)
+                }
+                .foregroundStyle(FlowTheme.primaryText(scheme))
             }
-            .foregroundStyle(FlowTheme.primaryText(scheme))
 
             countdownSlot
+
+            if session != nil {
+                Text(sessionEndLabel)
+                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                    .foregroundStyle(FlowTheme.secondaryText(scheme))
+            }
 
             controls.padding(.top, FlowSpacing.xs)
         }
@@ -411,10 +372,8 @@ struct FocusScreen: View {
             Button {
                 withAnimation(.easeOut(duration: 0.2)) { isTimerHidden = true }
             } label: {
-                (
-                    Text(countdownMinutesText).font(.system(size: 22, weight: .bold, design: .rounded))
-                        + Text(" min").font(.system(size: 13, weight: .semibold, design: .rounded))
-                )
+                Text(countdownDisplayText)
+                    .font(.system(size: session == nil ? 24 : 38, weight: .bold, design: .rounded))
                 .foregroundStyle(FlowTheme.accentText(scheme))
                 .frame(minHeight: 44)
                 .contentShape(Rectangle())
@@ -505,6 +464,20 @@ struct FocusScreen: View {
             return "Ready to start, \(DurationFormatter.spoken(minutes: segment.durationMinutes))"
         }
         return "No task running"
+    }
+
+    private var countdownDisplayText: String {
+        if let session { return session.countdownLabel(at: now) }
+        return "(countdownMinutesText) min"
+    }
+
+    private var sessionEndLabel: String {
+        if let segment = activeSegment {
+            return "Ends \(DurationFormatter.time(segment.endDate))"
+        }
+        guard let session else { return "" }
+        let end = session.startedAt.addingTimeInterval(session.plannedSeconds + session.accumulatedPausedSeconds)
+        return "Ends \(DurationFormatter.time(end))"
     }
 
     private var playPauseSymbol: String {
@@ -623,9 +596,6 @@ struct FocusScreen: View {
     // MARK: - Visibility
 
     private func setVisibility(_ new: WheelVisibility) {
-        #if !os(macOS)
-        noteChipActivity()
-        #endif
         guard let flow, flow.settings.wheelVisibility != new else { return }
         flow.settings.wheelVisibility = new
         try? context.save()
