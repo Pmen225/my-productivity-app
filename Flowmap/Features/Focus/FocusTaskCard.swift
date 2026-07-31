@@ -27,7 +27,7 @@ enum FocusCardPage: Int, CaseIterable, Identifiable {
 
 /// The three heights the lower card snaps between (decision 14). `hidden`
 /// gives the dial the screen; `rest` keeps the queue readable under it;
-/// `open` covers most of the screen for working through a checklist.
+/// `open` gives the checklist a compact scrollable working surface below it.
 enum FocusCardDetent: Int, CaseIterable {
     case hidden
     case rest
@@ -92,12 +92,10 @@ struct FocusTaskCard: View {
     nonisolated static func restingHeight(for total: CGFloat) -> CGFloat {
         FlowControlSize.hero + FlowControlSize.utility + FlowSpacing.xxxl
     }
-    /// Comfortably past the three fifths of the screen the spec asks for, once
-    /// the status bar and tab bar are taken out of `total`.
-    /// The reference keeps the checklist visible without swallowing the dial;
-    /// a compact 42% sheet is enough room for four subtasks and leaves the
-    /// circular control readable above it.
-    nonisolated static func expandedHeight(for total: CGFloat) -> CGFloat { max(330, total * 0.42) }
+    /// The checklist remains a scrollable working surface, but it must not
+    /// swallow the circular dial when it opens. A compact 20% sheet keeps the
+    /// first rows visible while preserving the ring's width-based diameter.
+    nonisolated static func expandedHeight(for total: CGFloat) -> CGFloat { max(180, total * 0.20) }
 
     var body: some View {
         GeometryReader { proxy in

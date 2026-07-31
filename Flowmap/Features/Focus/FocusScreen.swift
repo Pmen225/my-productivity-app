@@ -170,7 +170,16 @@ struct FocusScreen: View {
         // Collapsing the card is a request to see the dial, so its ceiling
         // lifts with it — otherwise the freed height is just empty screen.
         let dialCeiling: CGFloat = cardDetent == .hidden ? 500 : 430
-        let dialHeight = max(120, min(dialCeiling, size.height - reserved - chromeReserve))
+        // The ring is the screen's visual anchor. Size its container from the
+        // available width first, then let the checklist card occupy the lower
+        // surface; reserving the open card before sizing the ring made the
+        // circular dial shrink by roughly a quarter at the exact moment focus
+        // began.
+        let widthSizedDialHeight = dialWidth + 44
+        let dialHeight = max(
+            120,
+            min(dialCeiling, max(widthSizedDialHeight, size.height - reserved - chromeReserve))
+        )
 
         return VStack(spacing: FlowSpacing.m) {
             titleBar
