@@ -8,8 +8,10 @@ import SwiftUI
 /// drift away from the node it joins.
 struct MapCanvasView: View {
     @Bindable var viewModel: MapViewModel
+    let taskScope: TodayScope?
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.flow) private var flow
 
     /// Guards the one-time fit so reappearing does not throw away the user's pan.
     @State private var hasFitted = false
@@ -26,6 +28,11 @@ struct MapCanvasView: View {
 
     private var metrics: MapLayout.Metrics { .shared }
     private let margin: CGFloat = 160
+
+    init(viewModel: MapViewModel, taskScope: TodayScope? = nil) {
+        self.viewModel = viewModel
+        self.taskScope = taskScope
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -152,7 +159,7 @@ struct MapCanvasView: View {
                         // reads as one coloured thread from its pill back to
                         // its parent, matching the reference mock.
                         colour: node.colour.base,
-                        dimmed: viewModel.isDimmed(node.id) || viewModel.isDimmed(parent.id),
+                        dimmed: isDimmed(node) || isDimmed(parent),
                         in: context
                     )
                 }
@@ -215,7 +222,7 @@ struct MapCanvasView: View {
             node: node,
             size: size,
             isSelected: viewModel.selectedNodeID == node.id,
-            isDimmed: viewModel.isDimmed(node.id),
+            isDimmed: isDimmed(node),
             isCompact: viewModel.isCompact,
             isSearchMatch: viewModel.searchMatchIDs.contains(node.id),
             isRenaming: Binding(
@@ -229,6 +236,19 @@ struct MapCanvasView: View {
         .position(point)
         .gesture(nodeDragGesture(for: node))
         .contextMenu { contextMenu(for: node) }
+    }
+
+    /// Scope emphasis is deliberately additive to branch-focus dimming. A
+    /// node outside the selected plan window remains rendered and tappable;
+    /// it simply does not compete with work that belongs to that window.
+    private func isDimmed(_ node: MapNode) -> Bool {
+        guard !viewModel.isDimmed(node.id) else { return true }
+        let starts = node.linkedTask?.liveSegments.map(\.startDate) ?? []
+        return !MapTaskScopeFilter.shouldEmphasise(
+            segmentStarts: starts,
+            scope: taskScope,
+            at: flow?.now ?? Date()
+        )
     }
 
     // MARK: - Gestures

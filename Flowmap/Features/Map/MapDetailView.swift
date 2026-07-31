@@ -11,6 +11,7 @@ public struct MapDetailView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.colorScheme) private var scheme
     let map: MapDocument
+    let taskScope: TodayScope?
 
     @State private var viewModel: MapViewModel?
     @State private var isInspectorPresented = false
@@ -18,6 +19,12 @@ public struct MapDetailView: View {
 
     public init(map: MapDocument) {
         self.map = map
+        self.taskScope = nil
+    }
+
+    init(map: MapDocument, taskScope: TodayScope?) {
+        self.map = map
+        self.taskScope = taskScope
     }
 
     public var body: some View {
@@ -68,7 +75,7 @@ public struct MapDetailView: View {
         Group {
             switch viewModel.viewMode {
             case .map:
-                MapCanvasView(viewModel: viewModel)
+                MapCanvasView(viewModel: viewModel, taskScope: taskScope)
             case .outline:
                 MapOutlineView(viewModel: viewModel)
             }

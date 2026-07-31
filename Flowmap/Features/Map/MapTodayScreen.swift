@@ -24,7 +24,7 @@ struct MapTodayScreen: View {
     var body: some View {
         ZStack {
             if pane == .map {
-                MapListView(showsScreenTitle: false)
+                MapListView(showsScreenTitle: false, taskScope: scope)
                     .transition(.move(edge: .leading).combined(with: .opacity))
             } else {
                 todayPane
@@ -62,6 +62,7 @@ private struct MapTodayToggle: View {
     /// Non-nil while the hold-and-drag is live: the scope the finger is
     /// currently over, shown in place of the committed one.
     @State private var previewScope: TodayScope?
+    @State private var isScopePickerPresented = false
 
     /// How far the finger travels before the preview steps to the next scope.
     private static let stepHeight: CGFloat = 34
@@ -89,14 +90,25 @@ private struct MapTodayToggle: View {
         }
         .foregroundStyle(pane == .today ? .white : FlowTheme.secondaryText(scheme))
         .padding(.horizontal, FlowSpacing.m)
-        .frame(minHeight: 34)
+        .frame(minHeight: 44)
         .background(Capsule().fill(pane == .today ? FlowTheme.accentFill : .clear))
         .contentShape(Capsule())
         .gesture(scopeGesture)
+        .confirmationDialog("Plan scope", isPresented: $isScopePickerPresented, titleVisibility: .hidden) {
+            ForEach(TodayScope.allCases) { option in
+                Button(option == scope ? "\(option.paneTitle) (selected)" : option.paneTitle) {
+                    selectScope(option)
+                }
+            }
+        }
         .accessibilityElement()
         .accessibilityLabel("\(shownScope.paneTitle) plan")
-        .accessibilityHint("Double tap to open. Hold and drag up or down for Today, Week or Month.")
+        .accessibilityHint("Double tap to open. Hold to choose Today, Week or Month, or hold and drag to preview a scope.")
         .accessibilityAddTraits(pane == .today ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction(named: "Show scope options") { isScopePickerPresented = true }
+        .accessibilityAction(named: "Today") { selectScope(.day) }
+        .accessibilityAction(named: "Week") { selectScope(.week) }
+        .accessibilityAction(named: "Month") { selectScope(.month) }
     }
 
     /// Three dots under the label, the current scope's one filled — the mock's
@@ -114,7 +126,7 @@ private struct MapTodayToggle: View {
 
     private var scopeGesture: some Gesture {
         LongPressGesture(minimumDuration: 0.28)
-            .sequenced(before: DragGesture(minimumDistance: 0))
+            .sequenced(before: DragGesture(minimumDistance: FlowSpacing.s))
             .onChanged { value in
                 // `.second` means the hold succeeded; the drag that follows
                 // picks the scope, so a plain tap never reaches this.
@@ -123,12 +135,14 @@ private struct MapTodayToggle: View {
             }
             .onEnded { value in
                 guard case .second(true, let drag) = value else { return }
-                let committed = scopeFromDrag(drag?.translation.height ?? 0)
-                previewScope = nil
-                animated {
-                    scope = committed
-                    pane = .today
+                guard let drag else {
+                    previewScope = nil
+                    isScopePickerPresented = true
+                    return
                 }
+                let committed = scopeFromDrag(drag.translation.height)
+                previewScope = nil
+                selectScope(committed)
             }
             .simultaneously(with: TapGesture().onEnded { select(.today) })
     }
@@ -151,7 +165,7 @@ private struct MapTodayToggle: View {
                 .fixedSize()
                 .foregroundStyle(isSelected ? .white : FlowTheme.secondaryText(scheme))
                 .padding(.horizontal, FlowSpacing.m)
-                .frame(minHeight: 34)
+                .frame(minHeight: 44)
                 .background(Capsule().fill(isSelected ? FlowTheme.accentFill : .clear))
         }
         .buttonStyle(.plain)
@@ -161,6 +175,13 @@ private struct MapTodayToggle: View {
     private func select(_ newPane: MapTodayScreen.Pane) {
         guard newPane != pane else { return }
         animated { pane = newPane }
+    }
+
+    private func selectScope(_ newScope: TodayScope) {
+        animated {
+            scope = newScope
+            pane = .today
+        }
     }
 
     private func animated(_ body: () -> Void) {

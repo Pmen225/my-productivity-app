@@ -48,7 +48,9 @@
 		2F64E662B7E50878F8C5969F /* RecurrenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125AE5FD529AE0809A53AA6E /* RecurrenceTests.swift */; };
 		2FB2FC2461C9A79647E3170B /* Initiative.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000AB24E52FD4C0D5866003B /* Initiative.swift */; };
 		3122B8E3A06EA501A6325781 /* GamificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85B4135C8F542311B9A1D8BD /* GamificationService.swift */; };
+		328B32CEAD6E691476933809 /* MapTaskScopeFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEA88219DC3712CAC56364C9 /* MapTaskScopeFilter.swift */; };
 		332A3B718715C56035C5A7B9 /* FocusWheelSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4564C4E8A79E9FED86048C7 /* FocusWheelSettingsSection.swift */; };
+		343648AAF19603AB2C1B4844 /* MapTaskScopeFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AB8A0C79C4EBB1C8B733461 /* MapTaskScopeFilterTests.swift */; };
 		3487C3868E483B785EFDBDBE /* GoogleCalendarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06EE1F6A498560488D7AEFCE /* GoogleCalendarTests.swift */; };
 		34C96BB12BD401C2270472A7 /* NoteEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88A49759EB5628D1EF220D83 /* NoteEditorView.swift */; };
 		35BD96DF37AE470EFB43C8C6 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C8CE9EB8CFBF49AF06A0E61 /* KeychainService.swift */; };
@@ -287,6 +289,7 @@
 		2FEA27D35E52E2D91D44CB52 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		3262E8D2637654501AE38CE4 /* WatchSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSyncService.swift; sourceTree = "<group>"; };
 		375E452CBC16B13A4BC4CF71 /* MapNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapNode.swift; sourceTree = "<group>"; };
+		3AB8A0C79C4EBB1C8B733461 /* MapTaskScopeFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapTaskScopeFilterTests.swift; sourceTree = "<group>"; };
 		3C0FAA414196DF49EB138466 /* TaskRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskRowView.swift; sourceTree = "<group>"; };
 		3CB6A1136C912E0B706FA69C /* GateNagTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GateNagTests.swift; sourceTree = "<group>"; };
 		3E1CD4B33B95F97E8D052535 /* WatchSyncPayloads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSyncPayloads.swift; sourceTree = "<group>"; };
@@ -410,6 +413,7 @@
 		EACDF6D057742DD412CEF1F5 /* FlowSoundService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowSoundService.swift; sourceTree = "<group>"; };
 		ECA435BB3B3F96C9BB8066FA /* ProjectsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectsScreen.swift; sourceTree = "<group>"; };
 		ED7EDBEAC7E69A017446797F /* NodeInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeInspectorView.swift; sourceTree = "<group>"; };
+		EEA88219DC3712CAC56364C9 /* MapTaskScopeFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapTaskScopeFilter.swift; sourceTree = "<group>"; };
 		EF2B89BC96D60401EE682049 /* ScheduleWordingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleWordingTests.swift; sourceTree = "<group>"; };
 		F09A23467F18FE0869E21B90 /* CalendarRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarRootView.swift; sourceTree = "<group>"; };
 		F11CDC07D4642C9F54525A64 /* FlowmapWatchWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FlowmapWatchWidget.entitlements; sourceTree = "<group>"; };
@@ -442,6 +446,7 @@
 				06EE1F6A498560488D7AEFCE /* GoogleCalendarTests.swift */,
 				B6D6B4ED6EA113DC7F2DE427 /* InitiativeTests.swift */,
 				587CA6051D2197466BDCA528 /* LibraryAccordionTests.swift */,
+				3AB8A0C79C4EBB1C8B733461 /* MapTaskScopeFilterTests.swift */,
 				E9ACCD28558625756A7EC6F9 /* MomentTests.swift */,
 				7353BEE22AA834C41FDFC012 /* NotesAttachTests.swift */,
 				DA70316A2391B485D87D81F2 /* PlanNowTests.swift */,
@@ -797,6 +802,7 @@
 				2A2A65534AACBCB3A815D738 /* MapNodeConversion.swift */,
 				BA761013D82B313562E967A6 /* MapNodeView.swift */,
 				027E10DFFDC2C8CACBA7AAEF /* MapOutlineView.swift */,
+				EEA88219DC3712CAC56364C9 /* MapTaskScopeFilter.swift */,
 				2BB184AA6B470B3812EC60EA /* MapTodayScreen.swift */,
 				D8F2A459CF8B13744C34F2D8 /* MapViewModel.swift */,
 				ED7EDBEAC7E69A017446797F /* NodeInspectorView.swift */,
@@ -1000,6 +1006,7 @@
 				3487C3868E483B785EFDBDBE /* GoogleCalendarTests.swift in Sources */,
 				7EC33E90FC28AFEA2DCB3DDF /* InitiativeTests.swift in Sources */,
 				D7155D0F9C06C4BB2891475B /* LibraryAccordionTests.swift in Sources */,
+				343648AAF19603AB2C1B4844 /* MapTaskScopeFilterTests.swift in Sources */,
 				D334D573103B151CE47EC1F4 /* MomentTests.swift in Sources */,
 				C2343E98F1C11700361C18C4 /* NotesAttachTests.swift in Sources */,
 				A9192EA8651F74C1E12B9E3B /* PlanNowTests.swift in Sources */,
@@ -1096,6 +1103,7 @@
 				15A5A85AAEFD9BE14CF180B9 /* MapNodeConversion.swift in Sources */,
 				5CDC1691BEEBB6A72D857545 /* MapNodeView.swift in Sources */,
 				F0C7EFA91F54099ED1158577 /* MapOutlineView.swift in Sources */,
+				328B32CEAD6E691476933809 /* MapTaskScopeFilter.swift in Sources */,
 				2591B80EFB6133CE1A57EA57 /* MapTodayScreen.swift in Sources */,
 				0CA89E95FAE44254C9F857F9 /* MapViewModel.swift in Sources */,
 				8832DEE2AAC0B4F69C14BECB /* ModelContainerFactory.swift in Sources */,

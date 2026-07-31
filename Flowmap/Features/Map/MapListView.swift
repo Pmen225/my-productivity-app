@@ -38,9 +38,18 @@ public struct MapListView: View {
     /// nav bar's centre for its `Map | Today` toggle — two views claiming the
     /// principal slot means one of them silently loses.
     private let showsScreenTitle: Bool
+    /// The Map + Today host passes its chosen horizon through to the canvas.
+    /// Regular library entry points leave this nil, so they remain unfiltered.
+    private let taskScope: TodayScope?
 
     public init(showsScreenTitle: Bool = true) {
         self.showsScreenTitle = showsScreenTitle
+        self.taskScope = nil
+    }
+
+    init(showsScreenTitle: Bool, taskScope: TodayScope?) {
+        self.showsScreenTitle = showsScreenTitle
+        self.taskScope = taskScope
     }
 
     public var body: some View {
@@ -96,7 +105,7 @@ public struct MapListView: View {
         .modifier(OptionalScreenTitle(title: "Maps", isEnabled: showsScreenTitle))
         .searchable(text: $searchText, placement: .automatic, prompt: "Search maps")
         .navigationDestination(for: MapDocument.self) { map in
-            MapDetailView(map: map)
+            MapDetailView(map: map, taskScope: taskScope)
         }
         .alert("Rename map", isPresented: renamingBinding) {
             TextField("Map title", text: $renameDraft)
