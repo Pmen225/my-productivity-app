@@ -550,13 +550,40 @@ final class ScreenshotTests: XCTestCase {
         }
         // FlowCreateSheet's title field has no `.onSubmit` — unlike the old
         // QuickAddTaskView field, return does nothing here. Tap Create.
+        //
+        // Scroll to it first. The sheet grew a PROJECT chip row once the demo
+        // seed started creating projects, which pushed Create below the fold
+        // of the medium detent. `exists` stays true for an off-screen element
+        // and `.tap()` on one silently does nothing, so the helper "succeeded"
+        // while creating no task at all — three tests then failed several
+        // steps later with "the inbox may be empty".
         let createButton = app.buttons["Create"].firstMatch
         guard createButton.waitForExistence(timeout: 3) else {
             XCTFail("Create button not found")
             return
         }
+        for _ in 0..<3 where !createButton.isHittable {
+            app.swipeUp()
+            Thread.sleep(forTimeInterval: 0.4)
+        }
+        guard createButton.isHittable else {
+            XCTFail("Create button never became reachable — the create sheet may be taller than its detent")
+            return
+        }
         createButton.tap()
         Thread.sleep(forTimeInterval: 0.8)
+
+        // Verify the task actually EXISTS, not merely that the text was typed
+        // and Create was tapped. Without this the helper returns quietly when
+        // creation fails and the caller reports something else entirely —
+        // three tests failed with "the inbox may be empty" when the real
+        // question was whether the add had worked at all. The typed-text check
+        // above is a proxy; this is the outcome.
+        let created = app.staticTexts[title].firstMatch
+        XCTAssertTrue(
+            created.waitForExistence(timeout: 5),
+            "Quick capture reported success but no task titled \"\(title)\" appeared"
+        )
     }
 
     /// The shared glass delete card, reached the way decision 11 says a row is
@@ -766,6 +793,35 @@ final class ScreenshotTests: XCTestCase {
             "Expanding the project row revealed no new labels"
         )
         capture(app, named: "iphone-stats-expanded")
+
+        // 2b. Spec row 20's empty state, which only a project with no tasks can
+        //     show. The demo seed gives "Life & Fun" no tasks precisely so this
+        //     branch is reachable — without that it is dead UI nobody can
+        //     photograph, the failure mode CLAUDE.md records for FocusTaskCard's
+        //     unreachable "done / moved / skipped" rows.
+        //
+        //     Scroll to it FIRST: the task-free project is the last row, and
+        //     the assertion below passes on an off-screen element — the first
+        //     run of this step exported a capture named for the empty state
+        //     that photographed the row hidden behind the tab bar.
+        app.swipeUp()
+        Thread.sleep(forTimeInterval: 0.8)
+        let emptyRow = app.buttons
+            .matching(NSPredicate(format: "label BEGINSWITH 'Life & Fun'"))
+            .firstMatch
+        if emptyRow.waitForExistence(timeout: 5) {
+            emptyRow.tap()
+            Thread.sleep(forTimeInterval: 1.2)
+            XCTAssertTrue(
+                app.staticTexts["No tasks in this project yet."].firstMatch.waitForExistence(timeout: 5),
+                "An empty project did not show row 20's empty state when expanded"
+            )
+            capture(app, named: "iphone-stats-empty-project")
+            emptyRow.tap()
+            Thread.sleep(forTimeInterval: 0.8)
+        } else {
+            XCTFail("The task-free demo project is missing — the seed no longer produces one")
+        }
 
         // 3. The XP explainer's five award lines, which were one run-on
         //    paragraph before T7.

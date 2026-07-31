@@ -596,6 +596,22 @@ public struct FlowCreateSheet: View {
     }
 
     public var body: some View {
+        // Scrolls, because this sheet's height is data-dependent: the moment
+        // real projects existed the PROJECT chip row pushed Create below the
+        // medium detent's fold, and with a plain VStack there was no way to
+        // reach it — not for a test, and not for a person. Growing content
+        // must be scrollable rather than trusting it to fit.
+        ScrollView {
+            content
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .background(FlowTheme.background(scheme))
+        .clipShape(
+            .rect(topLeadingRadius: FlowRadius.large, topTrailingRadius: FlowRadius.large)
+        )
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: FlowSpacing.l) {
             header
             kindPicker
@@ -627,10 +643,6 @@ public struct FlowCreateSheet: View {
                 .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         .padding(FlowSpacing.screen)
-        .background(FlowTheme.background(scheme))
-        .clipShape(
-            .rect(topLeadingRadius: FlowRadius.large, topTrailingRadius: FlowRadius.large)
-        )
     }
 
     private var header: some View {
