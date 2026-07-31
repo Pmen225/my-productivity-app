@@ -538,6 +538,35 @@ struct FocusWheelGeometryTests {
         #expect(futurePoint.x > centre.x)
     }
 
+    @Test("The carousel advances clockwise as the clock moves")
+    func carouselAdvancesClockwise() {
+        let before = FocusWheelGeometry.bowlSegmentSpan(start: 600, duration: 30, nowMinutes: 600)
+        let after = FocusWheelGeometry.bowlSegmentSpan(start: 600, duration: 30, nowMinutes: 601)
+
+        #expect((after.start + after.end) / 2 > (before.start + before.end) / 2)
+
+        let centre = CGPoint(x: 100, y: 100)
+        let beforePoint = FocusWheelGeometry.point(
+            centre: centre,
+            radius: 80,
+            angle: (before.start + before.end) / 2
+        )
+        let afterPoint = FocusWheelGeometry.point(
+            centre: centre,
+            radius: 80,
+            angle: (after.start + after.end) / 2
+        )
+        #expect(afterPoint.x < beforePoint.x)
+    }
+
+    @Test("The overview countdown ruler runs from full duration on the left to zero on the right")
+    func overviewRulerCountsDownLeftToRight() {
+        #expect(FocusWheelGeometry.overviewRulerAngle(minutesRemaining: 30, totalMinutes: 30) == 180)
+        #expect(FocusWheelGeometry.overviewRulerAngle(minutesRemaining: 0, totalMinutes: 30) == 360)
+        #expect(FocusWheelGeometry.overviewRulerTickCount(totalMinutes: 4) == 6)
+        #expect(FocusWheelGeometry.overviewRulerTickCount(totalMinutes: 45) == 30)
+    }
+
     @Test("A gap under 9° visible span gets no FREE label; one over it does")
     func gapFreeLabelThreshold() {
         let width: CGFloat = 375

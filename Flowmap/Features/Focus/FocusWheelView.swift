@@ -136,6 +136,7 @@ struct FocusWheelView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Focus wheel")
+        .accessibilityHint("Pinch to zoom the circular carousel")
     }
 
     // MARK: - Time-window bowl
@@ -157,6 +158,10 @@ struct FocusWheelView: View {
             pointer(centre: centre, radius: radius)
         }
         .animation(.easeOut(duration: 0.35), value: radius)
+        // `nowMinutes` advances once per second. Animating the same geometry
+        // axis linearly makes the carousel visibly turn clockwise instead of
+        // jumping between one-second snapshots.
+        .animation(.linear(duration: 1), value: nowMinutes)
         .frame(width: size.width, height: size.height)
     }
 
@@ -502,6 +507,7 @@ struct FocusWheelOverviewView: View {
 
             ZStack {
                 wedges(centre: centre, outerRadius: outerRadius, innerRadius: innerRadius)
+                overviewRuler(centre: centre, outerRadius: outerRadius, innerRadius: innerRadius)
                 pointer(centre: centre, radius: outerRadius)
                 centreReadout()
                     .position(centre)
@@ -597,6 +603,54 @@ struct FocusWheelOverviewView: View {
         .foregroundStyle(item.colour.onSoft)
         .rotationEffect(.degrees(rotation))
         .position(position)
+    }
+
+    // MARK: - Inward countdown ruler
+
+    /// The zoomed-out ring keeps the same countdown language as the close
+    /// dial: full duration on the left, zero on the right. It lives on the
+    /// inner half of the annulus so the complete circular carousel remains
+    /// visible without adding another control or a second task icon.
+    private func overviewRuler(centre: CGPoint, outerRadius: CGFloat, innerRadius: CGFloat) -> some View {
+        let totalMinutes = min(180, max(1, items.first?.minutes ?? 30))
+        let tickCount = FocusWheelGeometry.overviewRulerTickCount(totalMinutes: totalMinutes)
+        let tickRadius = innerRadius + 3
+        let labelRadius = innerRadius + 12
+
+        return ZStack {
+            ForEach(0...tickCount, id: \.self) { index in
+                let remaining = totalMinutes - Int((Double(index) / Double(tickCount) * Double(totalMinutes)).rounded())
+                let angle = FocusWheelGeometry.overviewRulerAngle(
+                    minutesRemaining: remaining,
+                    totalMinutes: totalMinutes
+                )
+                let isMajor = index == 0 || index == tickCount / 2 || index == tickCount
+                let from = FocusWheelGeometry.point(centre: centre, radius: tickRadius, angle: angle)
+                let to = FocusWheelGeometry.point(
+                    centre: centre,
+                    radius: tickRadius + (isMajor ? 9 : 5),
+                    angle: angle
+                )
+
+                Path { path in
+                    path.move(to: from)
+                    path.addLine(to: to)
+                }
+                .stroke(
+                    isMajor ? FlowTheme.accent.opacity(0.78) : FlowTheme.separatorStrong(scheme),
+                    lineWidth: isMajor ? 1.4 : 0.8
+                )
+
+                if isMajor {
+                    Text("\(remaining)")
+                        .font(.system(size: 9, weight: .medium, design: .rounded))
+                        .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                        .position(FocusWheelGeometry.point(centre: centre, radius: labelRadius, angle: angle))
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityHidden(true)
     }
 
     // MARK: - Centre readout

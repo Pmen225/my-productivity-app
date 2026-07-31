@@ -1098,4 +1098,11 @@ final class ScreenshotTests: XCTestCase {
         }
         capture(app, named: "iphone-focus-original-dial-light")
     }
+
+    func testCaptureFocusDialOverviewLight() {
+        let app = launch()
+        guard tapTab(app, "Focus") else { return }
+        selectWheelMode(app, "All")
+        capture(app, named: "iphone-focus-overview-ring-light")
+    }
 }

@@ -54,6 +54,7 @@ struct FocusScreen: View {
         .onAppear {
             page = activeTask == nil ? .today : .subtasks
             cardDetent = activeTask == nil ? .rest : .open
+            pinchBaseline = visibility
         }
         .onChange(of: activeTask?.id) { _, newID in
             page = newID == nil ? .today : .subtasks
@@ -172,7 +173,9 @@ struct FocusScreen: View {
                 .font(.system(size: 16, weight: .regular, design: .rounded))
                 .foregroundStyle(FlowTheme.tertiaryText(scheme))
                 .accessibilityHidden(true)
+            #if !os(macOS)
             visibilityPill
+            #endif
 
             ZStack {
                 Group {

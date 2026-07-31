@@ -372,6 +372,22 @@ public enum FocusWheelGeometry {
         return arcLength >= overviewMinLabelArcLength
     }
 
+    /// Angle for the overview ring's inward countdown ruler. The full
+    /// duration is fixed at the left-hand end of the inner half-ring and zero
+    /// at the right, matching the close dial while keeping the complete ring
+    /// legible when zoomed all the way out.
+    public static func overviewRulerAngle(minutesRemaining: Int, totalMinutes: Int) -> Double {
+        guard totalMinutes > 0 else { return 360 }
+        let fraction = min(1, max(0, Double(minutesRemaining) / Double(totalMinutes)))
+        return 360 - fraction * 180
+    }
+
+    /// Number of overview ruler ticks. A short task gets one tick per minute;
+    /// longer queues stay sparse enough that labels never turn into noise.
+    public static func overviewRulerTickCount(totalMinutes: Int) -> Int {
+        min(30, max(6, totalMinutes))
+    }
+
     // MARK: - Bowl neighbour labels
 
     /// The widest a neighbour wedge's label is ever drawn: the band it sits
