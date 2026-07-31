@@ -207,19 +207,27 @@ public struct TaskDetailInspector: View {
             .onMove(perform: moveSubtasks)
             .onDelete(perform: deleteSubtasks)
 
-            HStack {
-                TextField("Add a subtask", text: $newSubtaskTitle)
-                    .onSubmit(addSubtask)
-                Button(action: addSubtask) {
-                    Image(systemName: "plus.circle.fill")
+            if !hasLiveActiveSession {
+                HStack {
+                    TextField("Add a subtask", text: $newSubtaskTitle)
+                        .onSubmit(addSubtask)
+                    Button(action: addSubtask) {
+                        Image(systemName: "plus.circle.fill")
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(newSubtaskTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityLabel("Add subtask")
                 }
-                .buttonStyle(.plain)
-                .disabled(newSubtaskTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .accessibilityLabel("Add subtask")
             }
         } header: {
             FlowEyebrow("Subtasks")
         }
+    }
+
+    /// Paused sessions are still live hunts: the checklist remains frozen until
+    /// FocusEngine ends the session, not merely while its timer is moving.
+    private var hasLiveActiveSession: Bool {
+        flow?.focusEngine.activeSession?.task?.id == task.id
     }
 
     private func subtaskRow(_ subtask: Subtask) -> some View {

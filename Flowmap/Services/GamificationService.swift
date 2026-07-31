@@ -28,11 +28,21 @@ public struct GamificationService {
     /// the five call sites means none of them can forget it. Optional so tests
     /// and App Intents can build the service without any UI attached.
     private let moments: FlowMomentService?
+    /// The environment composes this with the one shared `FocusEngine`.
+    /// Keeping the dependency as a closure preserves the service layering:
+    /// checklist rows still know only about XP, never timer implementation.
+    private let onChecklistCompleted: ((FlowTask) -> Void)?
 
-    public init(context: ModelContext, settings: AppSettings, moments: FlowMomentService? = nil) {
+    public init(
+        context: ModelContext,
+        settings: AppSettings,
+        moments: FlowMomentService? = nil,
+        onChecklistCompleted: ((FlowTask) -> Void)? = nil
+    ) {
         self.context = context
         self.settings = settings
         self.moments = moments
+        self.onChecklistCompleted = onChecklistCompleted
     }
 
     /// Level, XP-into-level and XP-for-level, computed fresh from the
@@ -71,6 +81,11 @@ public struct GamificationService {
         subtask.toggle()
         if !wasCompleted && subtask.isCompleted {
             award(.subtaskCompleted)
+            if let task = subtask.task,
+               !task.orderedSubtasks.isEmpty,
+               task.orderedSubtasks.allSatisfy(\.isCompleted) {
+                onChecklistCompleted?(task)
+            }
         } else {
             try? context.save()
         }

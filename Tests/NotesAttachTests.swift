@@ -51,8 +51,8 @@ struct NotesAttachTests {
         #expect(result?.id != first.id)
     }
 
-    @Test("Candidate tasks exclude completed and cancelled work; the chip cap is 8")
-    func candidatesExcludeClosedWorkAndCapAtEight() throws {
+    @Test("Candidate tasks exclude completed and cancelled work")
+    func candidatesExcludeClosedWork() throws {
         let world = try TestWorld()
         let open = world.makeTask("Open one")
         _ = world.makeTask("Done", status: .completed)
@@ -62,10 +62,9 @@ struct NotesAttachTests {
         let candidates = LibraryView.noteAttachCandidates(in: allTasks)
 
         #expect(candidates.map(\.id) == [open.id])
-        #expect(NoteAttachRow.chipLimit == 8)
     }
 
-    @Test("A task that closes after being attached stays visible so its chip can still detach it")
+    @Test("A task that closes after being attached stays in the picker for detachment")
     func closedAttachedTaskStaysVisibleForDetach() throws {
         let world = try TestWorld()
         let open = world.makeTask("Open one")
@@ -76,12 +75,12 @@ struct NotesAttachTests {
         // the raw candidate list before checking the merge restores it.
         #expect(!candidates.contains { $0.id == wasAttached.id })
 
-        let merged = NoteAttachRow.displayCandidates(candidates, attached: wasAttached)
+        let merged = NoteAttachCandidates.display(candidates, attached: wasAttached)
 
         #expect(merged.contains { $0.id == wasAttached.id })
         #expect(merged.contains { $0.id == open.id })
         // Already-open candidates are not duplicated when nothing needs merging.
-        #expect(NoteAttachRow.displayCandidates(candidates, attached: open).count == candidates.count)
+        #expect(NoteAttachCandidates.display(candidates, attached: open).count == candidates.count)
     }
 
     @Test("Notes count excludes archived and trashed notes")

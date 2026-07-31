@@ -232,6 +232,7 @@ public final class FocusEngine {
         guard let pending = pendingGate else { return nil }
         if pending.kind == .planGate {
             guard !pending.task.orderedSubtasks.isEmpty else { return nil }
+            guard !pending.task.orderedSubtasks.allSatisfy(\.isCompleted) else { return nil }
             pending.task.hasBeenPlanned = true
             try? context.save()
             gamificationService().award(.taskPlanned)
@@ -309,6 +310,14 @@ public final class FocusEngine {
         activeSession = nil
         voiceService?.sessionEnded(sessionID: session.id)
         advanceToNextTask(now: now, finishedTitle: title, requeue: nil)
+    }
+
+    /// Completes only the task that owns the live focus session. This is the
+    /// checklist's one route into the existing completion path, preserving its
+    /// chime, XP, transition and day-cleared handling without a second finish.
+    public func completeIfActive(task: FlowTask, now: Date = Date()) {
+        guard activeSession?.task?.id == task.id else { return }
+        completeCurrentTask(now: now)
     }
 
     /// Skips the rest of this block without completing the task. The remaining

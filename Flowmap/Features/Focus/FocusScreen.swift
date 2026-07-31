@@ -426,45 +426,29 @@ struct FocusScreen: View {
     }
 
     private var controls: some View {
-        VStack(spacing: FlowSpacing.m) {
-            // Decorative badge, not a button: the task name right above it
-            // already reaches VoiceOver, so this stays out of its way.
-            Image(systemName: activeTask?.iconName ?? "book.closed")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(FlowTheme.primaryText(scheme))
-                .frame(width: FlowControlSize.utility, height: FlowControlSize.utility)
-                .background(neumorphicDisc())
-                .accessibilityHidden(true)
-
-            HStack(spacing: FlowSpacing.l) {
-                if session != nil {
-                    circularControlButton(systemImage: "forward.end", label: "Skip this task and requeue the rest") {
-                        engine?.skipCurrentTask(now: now)
-                    }
-                }
-
-                Button {
-                    if session == nil {
-                        startBestAvailable()
-                    } else {
-                        engine?.togglePause(now: now)
-                    }
-                } label: {
-                    Image(systemName: playPauseSymbol)
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(FlowTheme.accentText(scheme))
-                        .frame(width: FlowControlSize.hero, height: FlowControlSize.hero)
-                        .background(neumorphicDisc())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(playPauseLabel)
-
-                if session != nil {
-                    circularControlButton(systemImage: "checkmark", label: "Complete this task") {
-                        engine?.completeCurrentTask(now: now)
-                    }
+        HStack(spacing: FlowSpacing.l) {
+            if session != nil {
+                circularControlButton(systemImage: "forward.end", label: "Skip this task and requeue the rest") {
+                    engine?.skipCurrentTask(now: now)
                 }
             }
+
+            Button {
+                if session == nil {
+                    startBestAvailable()
+                } else {
+                    engine?.togglePause(now: now)
+                }
+            } label: {
+                Image(systemName: playPauseSymbol)
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(FlowTheme.accentText(scheme))
+                    .frame(width: FlowControlSize.hero, height: FlowControlSize.hero)
+                    .background(neumorphicDisc())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(playPauseLabel)
+
         }
     }
 

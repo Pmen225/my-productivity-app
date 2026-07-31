@@ -208,6 +208,10 @@ struct LibraryView: View {
     /// `NoteEditorView` a push from `NotesListView` would (ruling 7, T6
     /// stage 2), as a sheet to match `inspectedTask`'s presentation above.
     @State private var inspectedNote: Note?
+    /// Hosted on this screen's top-level List, not inside the Notes accordion:
+    /// a presentation modifier below a nested Section can silently fail to
+    /// present. The contextual menu only selects the note to attach.
+    @State private var attachmentPickerNote: Note?
     /// Which accordion rows are open, keyed by a stable id per row.
     @State private var expandedRows: Set<String> = []
     /// The prioritise duel and plan-preview sheets `PlanInboxSection`'s
@@ -361,6 +365,14 @@ struct LibraryView: View {
         .sheet(item: $inspectedNote) { note in
             NavigationStack { NoteEditorView(note: note) }
         }
+        .sheet(item: $attachmentPickerNote) { note in
+            NoteAttachPickerView(
+                candidates: NoteAttachCandidates.display(noteCandidates, attached: note.task),
+                current: note.task
+            ) { task in
+                toggleAttach(note: note, task: task)
+            }
+        }
         // Hosted here, not on `PlanInboxSection`'s `Section`. A `.sheet`
         // attached to a `Section` nested inside this `List` never presents:
         // the flag flips and nothing appears, with no error and no test
@@ -504,11 +516,12 @@ struct LibraryView: View {
                 emptyRow("No notes yet.")
             } else {
                 ForEach(notes) { note in
-                    VStack(alignment: .leading, spacing: FlowSpacing.s) {
+                    NoteAttachRow(note: note, candidates: noteCandidates) { task in
+                        toggleAttach(note: note, task: task)
+                    } content: {
                         notePreviewRow(note)
-                        NoteAttachRow(note: note, candidates: noteCandidates) { task in
-                            toggleAttach(note: note, task: task)
-                        }
+                    } onShowPicker: {
+                        attachmentPickerNote = note
                     }
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
@@ -549,6 +562,9 @@ struct LibraryView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { inspectedNote = note }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint("Opens note")
     }
 
     /// Attach is single-select (ruling 4): tapping the already-attached

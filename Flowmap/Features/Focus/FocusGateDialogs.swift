@@ -13,6 +13,7 @@ struct PlanGateDialog: View {
     /// exact wording rather than re-typing it and drifting.
     static let gateMessage = "Break it down. A clear checklist stops the endless tweaking."
     static let blockedMessage = "Add at least one subtask — that is your definition of done."
+    static let allCompletedBlockedMessage = "Everything here is already ticked — un-tick or add what is left."
 
     /// The mockup labels the list `SUBTASKS · N`, so the count travels with
     /// the eyebrow rather than sitting in a separate badge.
@@ -42,10 +43,10 @@ struct PlanGateDialog: View {
             subtaskList
 
             if showsBlockedMessage {
-                Text(Self.blockedMessage)
+                Text(blockedMessage)
                     .font(FlowFont.caption)
                     .foregroundStyle(FlowTheme.accent)
-                    .accessibilityLabel(Self.blockedMessage)
+                    .accessibilityLabel(blockedMessage)
             }
 
             PrimaryActionButton("Start task", action: attemptStart)
@@ -126,7 +127,17 @@ struct PlanGateDialog: View {
             showsBlockedMessage = true
             return
         }
+        guard !task.orderedSubtasks.allSatisfy(\.isCompleted) else {
+            showsBlockedMessage = true
+            return
+        }
         onStart()
+    }
+
+    private var blockedMessage: String {
+        !task.orderedSubtasks.isEmpty && task.orderedSubtasks.allSatisfy(\.isCompleted)
+            ? Self.allCompletedBlockedMessage
+            : Self.blockedMessage
     }
 }
 

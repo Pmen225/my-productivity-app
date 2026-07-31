@@ -443,7 +443,7 @@ final class ScreenshotTests: XCTestCase {
                 // Shape assertion, never a named demo task: the demo's
                 // auto-plan schedules fewer tasks as the evening wears on, so
                 // a title like "Reading" fails against working code. Unfolding
-                // Notes adds the eyebrow and one chip per candidate task.
+                // Notes reveals its note preview rows in place.
                 if noteCount > 0 {
                     XCTAssertFalse(
                         visibleLabels().subtracting(before).isEmpty,

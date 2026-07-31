@@ -81,7 +81,7 @@ public enum FocusWheelGeometry {
         return min(requested, available)
     }
 
-    // MARK: - Bottom-arc dial
+    // MARK: - Bottom-arc dial and closed visibility rings
     //
     // The mock's dial is a shallow bowl cut from a much larger, mostly
     // off-screen circle: real clock time sweeps under a fixed pointer at the
@@ -93,6 +93,10 @@ public enum FocusWheelGeometry {
 
     /// Clearance kept between the dial's lowest point and the pointer beneath it.
     public static let pointerInset: CGFloat = 14
+
+    /// The pointer tip extends this far beyond a ring's outer edge. Keeping
+    /// the value in geometry lets the closed ring reserve it without clipping.
+    public static let pointerMarkerOffset: CGFloat = 15
 
     /// Degrees of arc every minute of the day sweeps under the fixed
     /// pointer — one constant across every zoom level. The "5M vs 1 vs 2 vs
@@ -112,9 +116,7 @@ public enum FocusWheelGeometry {
     /// the visible chord.
     public static func bowlTargetRadiusFraction(for visibility: WheelVisibility) -> Double {
         switch visibility {
-        case .one: return 1150.0 / 375.0
-        case .two, .all: return 680.0 / 375.0
-        case .three: return 500.0 / 375.0
+        case .one, .two, .three, .all: return overviewOuterRadiusFraction
         case .fiveMinute:
             let halfDegrees = 2.5 * degreesPerMinute
             return 0.5 / sin(halfDegrees * .pi / 180)
@@ -124,6 +126,86 @@ public enum FocusWheelGeometry {
     /// The bowl's target radius, in points, for a dial `width` wide.
     public static func bowlTargetRadius(forWidth width: CGFloat, visibility: WheelVisibility) -> CGFloat {
         width * CGFloat(bowlTargetRadiusFraction(for: visibility))
+    }
+
+    /// The 1, 2 and 3 views are closed rings. `5M` stays a magnifying bowl
+    /// and `All` owns its separate duration-proportional overview ring.
+    public static func usesClosedRing(for visibility: WheelVisibility) -> Bool {
+        switch visibility {
+        case .one, .two, .three: true
+        case .fiveMinute, .all: false
+        }
+    }
+
+    /// The closed ring is sized from the smaller canvas edge so it remains
+    /// wholly visible in a short Focus layout as well as a square preview.
+    public static func closedRingOuterRadius(width: CGFloat, height: CGFloat) -> CGFloat {
+        min(
+            min(width, height) * overviewOuterRadiusFraction,
+            max(0, (height - pointerMarkerOffset) / 2)
+        )
+    }
+
+    /// Positions the full ring high enough to retain the fixed bottom pointer
+    /// within the dial's bounds, while never pushing its top edge off screen.
+    public static func closedRingCentre(width: CGFloat, height: CGFloat) -> CGPoint {
+        let radius = closedRingOuterRadius(width: width, height: height)
+        return CGPoint(x: width / 2, y: height - radius - pointerMarkerOffset)
+    }
+
+    /// The ring thickness preserves the overview ring's established 96:146
+    /// ratio instead of inventing a second visual scale for 1, 2 and 3.
+    public static func closedRingThickness(width: CGFloat, height: CGFloat) -> CGFloat {
+        let diameter = min(width, height)
+        return diameter * (overviewOuterRadiusFraction - overviewInnerRadiusFraction)
+    }
+
+    /// The number of task wedges the chosen closed ring may expose. The
+    /// remainder of the ring is deliberately left as the day's free span.
+    public static func closedRingVisibleCount(for visibility: WheelVisibility, queueCount: Int) -> Int {
+        let available = max(1, queueCount)
+        guard let requested = visibility.visibleCount else { return available }
+        return min(requested, available)
+    }
+
+    /// Each visible task owns one part of a ring whose final part remains free.
+    /// That keeps a one-task view recognisably a complete day ring rather than
+    /// turning its active task into a solid 360 degree disc.
+    public static func closedRingSweep(visibleCount: Int) -> Double {
+        360 / Double(max(1, visibleCount + 1))
+    }
+
+    /// The active ruler stays inside its closed-ring wedge using the same
+    /// span-derived half-angle that it used in the bowl.
+    public static func closedRingRulerHalfAngle(visibleCount: Int) -> Double {
+        closedRingSweep(visibleCount: visibleCount) / 2
+    }
+
+    /// The visual separator between adjacent task wedges. It belongs with the
+    /// spans so every dial variant uses one angular gap policy.
+    public static func wedgeGap(itemCount: Int) -> Double {
+        itemCount > 1 ? 1.6 : 0
+    }
+
+    /// The active wedge is always centred at the bottom; later queue wedges
+    /// advance anticlockwise, leaving one final sweep for the free span.
+    public static func closedRingSpan(index: Int, visibleCount: Int) -> (start: Double, end: Double) {
+        let sweep = closedRingSweep(visibleCount: visibleCount)
+        let centre = bottomAngle - Double(index) * sweep
+        return (centre - sweep / 2, centre + sweep / 2)
+    }
+
+    /// The unfilled portion of a closed ring. Keeping this in geometry makes
+    /// the free label obey the same clipped-midpoint rule as the bowl.
+    public static func closedRingFreeSpan(visibleCount: Int) -> (start: Double, end: Double) {
+        let active = closedRingSpan(index: 0, visibleCount: visibleCount)
+        let last = closedRingSpan(index: max(0, visibleCount - 1), visibleCount: visibleCount)
+        return (start: active.end, end: last.start + 360)
+    }
+
+    public static func closedRingFreeLabelAngle(visibleCount: Int) -> Double {
+        let free = closedRingFreeSpan(visibleCount: visibleCount)
+        return (free.start + free.end) / 2
     }
 
     /// The ring is always this fraction of the dial's width thick, regardless

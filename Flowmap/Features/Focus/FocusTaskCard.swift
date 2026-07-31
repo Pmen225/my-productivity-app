@@ -86,11 +86,15 @@ struct FocusTaskCard: View {
     /// remaining time counts down without a timer of its own.
     private var now: Date { flow?.now ?? Date() }
 
-    /// Rest height leaves the wheel its own space; expanded covers three fifths.
-    static func restingHeight(for total: CGFloat) -> CGFloat { max(180, total * 0.28) }
+    /// Rest is a deliberate peek: a full handle target and one calm status row,
+    /// leaving the wheel as the screen's visual anchor instead of crushing a
+    /// scroll page against the tab bar.
+    nonisolated static func restingHeight(for total: CGFloat) -> CGFloat {
+        FlowControlSize.hero + FlowControlSize.utility + FlowSpacing.xxxl
+    }
     /// Comfortably past the three fifths of the screen the spec asks for, once
     /// the status bar and tab bar are taken out of `total`.
-    static func expandedHeight(for total: CGFloat) -> CGFloat { max(340, total * 0.72) }
+    nonisolated static func expandedHeight(for total: CGFloat) -> CGFloat { max(340, total * 0.72) }
 
     var body: some View {
         GeometryReader { proxy in
@@ -125,10 +129,9 @@ struct FocusTaskCard: View {
             #if !os(macOS)
             grabber
             #endif
-            // Collapsed, the card is a handle and nothing else — its contents
-            // would otherwise draw straight over the dial, which is the whole
-            // point of collapsing it.
-            if detent != .hidden {
+            if detent == .rest {
+                collapsedPeek
+            } else if detent == .open {
                 header
                 content
             }
@@ -143,6 +146,7 @@ struct FocusTaskCard: View {
         .background(
             shape
                 .fill(FlowTheme.surface(scheme))
+                .overlay(shape.strokeBorder(FlowTheme.separator(scheme), lineWidth: 1))
                 .shadow(color: FlowTheme.shadow(scheme), radius: 18, y: -4)
         )
         #if !os(macOS)
@@ -195,6 +199,33 @@ struct FocusTaskCard: View {
             pageDots
             #endif
         }
+    }
+
+    /// The resting card intentionally previews one thought instead of clipping
+    /// a full page. The handle remains the stable, 44pt route to expand it.
+    private var collapsedPeek: some View {
+        HStack(spacing: FlowSpacing.s) {
+            Image(systemName: "checklist")
+                .foregroundStyle(FlowTheme.secondaryText(scheme))
+                .accessibilityHidden(true)
+            Text(collapsedPeekText)
+                .font(FlowFont.caption)
+                .foregroundStyle(FlowTheme.secondaryText(scheme))
+                .lineLimit(1)
+            Spacer(minLength: FlowSpacing.s)
+        }
+        .padding(.vertical, FlowSpacing.s)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Task card preview: \(collapsedPeekText)")
+    }
+
+    private var collapsedPeekText: String {
+        guard let task = activeTask else { return "No task running" }
+        let progress = task.subtaskProgressLabel ?? "No checklist"
+        guard let next = task.orderedSubtasks.first(where: { !$0.isCompleted }) else {
+            return "\(progress) · Ready to finish"
+        }
+        return "\(progress) · \(next.title)"
     }
 
     private var pageDots: some View {

@@ -166,6 +166,35 @@ struct FocusEngineTests {
         #expect(task.actualMinutes == 20)
     }
 
+    @Test("Completing the final active checklist item follows the normal focus completion path")
+    func finalChecklistItemCompletesActiveFocusTask() throws {
+        let world = try TestWorld()
+        let task = world.makeTask("Reading", minutes: 30, planned: true)
+        let first = Subtask(title: "Choose chapter", task: task)
+        let second = Subtask(title: "Read notes", task: task)
+        world.context.insert(first)
+        world.context.insert(second)
+        try world.context.save()
+
+        let focus = engine(world)
+        _ = focus.start(task: task, now: world.date(hour: 9))
+        let gamification = GamificationService(
+            context: world.context,
+            settings: world.settings,
+            onChecklistCompleted: { completedTask in
+                focus.completeIfActive(task: completedTask, now: world.date(hour: 9, minute: 20))
+            }
+        )
+
+        gamification.toggleSubtask(first)
+        #expect(focus.activeSession?.task?.id == task.id)
+        #expect(task.status != .completed)
+
+        gamification.toggleSubtask(second)
+        #expect(focus.activeSession == nil)
+        #expect(task.status == .completed)
+    }
+
     @Test("Skipping requeues the remaining time rather than dropping it")
     func skipRequeuesRemainder() throws {
         let world = try TestWorld()
@@ -278,6 +307,25 @@ struct FocusGateTests {
         #expect(focus.pendingGate == nil)
     }
 
+    @Test("A fully ticked checklist cannot pass the plan gate")
+    func completedChecklistBlocksStart() throws {
+        let world = try TestWorld()
+        let task = world.makeTask("Reading", minutes: 30, planned: false)
+        let subtask = Subtask(title: "Read chapter", task: task)
+        subtask.isCompleted = true
+        world.context.insert(subtask)
+        try world.context.save()
+        let focus = engine(world)
+
+        _ = focus.start(task: task, now: world.date(hour: 9))
+        let blocked = focus.resolveGate(now: world.date(hour: 9))
+
+        #expect(blocked == nil)
+        #expect(focus.activeSession == nil)
+        #expect(focus.pendingGate?.task.id == task.id)
+        #expect(task.hasBeenPlanned == false)
+    }
+
     @Test("A planned task returning via a continuation gets clock-in, not the gate")
     func plannedTaskGetsClockIn() throws {
         let world = try TestWorld()
@@ -327,42 +375,54 @@ struct FocusGateTests {
 
 @Suite("Focus wheel geometry")
 struct FocusWheelGeometryTests {
-    @Test("The active task sits at the bottom in every visibility mode")
-    func activeTaskIsAlwaysAtTheBottom() {
-        for visibility in WheelVisibility.allCases {
-            let count = FocusWheelGeometry.visibleCount(for: visibility, queueCount: 8)
-            let angle = FocusWheelGeometry.centreAngle(index: 0, visibleCount: count)
-            #expect(angle == FocusWheelGeometry.bottomAngle)
+    @Test("Each 1, 2 and 3 view is a complete ring with the active wedge at the bottom")
+    func closedRingModesAreFullyVisibleAndCentred() {
+        let canvas: CGFloat = 320
+        for visibility in [WheelVisibility.one, .two, .three] {
+            let count = FocusWheelGeometry.closedRingVisibleCount(for: visibility, queueCount: 8)
+            let active = FocusWheelGeometry.closedRingSpan(index: 0, visibleCount: count)
+            let radius = FocusWheelGeometry.closedRingOuterRadius(width: canvas, height: canvas)
+            let centre = FocusWheelGeometry.closedRingCentre(width: canvas, height: canvas)
+            let free = FocusWheelGeometry.closedRingFreeSpan(visibleCount: count)
+
+            #expect(abs((active.start + active.end) / 2 - FocusWheelGeometry.bottomAngle) < 0.0001)
+            #expect(centre.y - radius >= 0)
+            #expect(centre.y + radius + FocusWheelGeometry.pointerMarkerOffset <= canvas)
+            #expect(free.end - free.start > 0)
         }
     }
 
-    @Test("Upcoming tasks sit ahead of the bottom, so they arrive turning clockwise")
-    func upcomingTasksApproachClockwise() {
-        let count = 4
-        let active = FocusWheelGeometry.centreAngle(index: 0, visibleCount: count)
-        let next = FocusWheelGeometry.centreAngle(index: 1, visibleCount: count)
+    @Test("Closed-ring queue wedges sit ahead of the bottom, so they arrive turning clockwise")
+    func closedRingUpcomingTasksApproachClockwise() {
+        let count = 3
+        let active = FocusWheelGeometry.closedRingSpan(index: 0, visibleCount: count)
+        let next = FocusWheelGeometry.closedRingSpan(index: 1, visibleCount: count)
         // Increasing angle is clockwise, so the next task must start at a lower
         // angle and travel up to the bottom.
-        #expect(next < active)
-        #expect(active - next == FocusWheelGeometry.sweep(visibleCount: count))
+        #expect((next.start + next.end) / 2 < (active.start + active.end) / 2)
+        #expect(abs(active.start - next.end) < 0.0001)
     }
 
-    @Test("Segments divide the circle exactly, with no gap or overlap")
-    func segmentsTileTheCircle() {
-        for count in 1...8 {
-            let sweep = FocusWheelGeometry.sweep(visibleCount: count)
-            #expect(abs(sweep * Double(count) - 360) < 0.0001)
+    @Test("Closed-ring task wedges are contiguous and preserve a free span")
+    func closedRingWedgesLeaveFreeSpan() {
+        for count in 1...3 {
+            let sweep = FocusWheelGeometry.closedRingSweep(visibleCount: count)
+            let free = FocusWheelGeometry.closedRingFreeSpan(visibleCount: count)
+            #expect(abs(free.end - free.start - sweep) < 0.0001)
 
-            let first = FocusWheelGeometry.span(index: 0, visibleCount: count)
-            let second = FocusWheelGeometry.span(index: 1, visibleCount: count)
-            // The next segment ends exactly where the active one begins.
-            #expect(abs(second.end - first.start) < 0.0001)
+            if count > 1 {
+                let first = FocusWheelGeometry.closedRingSpan(index: 0, visibleCount: count)
+                let second = FocusWheelGeometry.closedRingSpan(index: 1, visibleCount: count)
+                #expect(abs(second.end - first.start) < 0.0001)
+            }
         }
     }
 
-    @Test("The active task's label is horizontal, because it sits at the bottom")
-    func activeLabelIsUpright() {
-        #expect(FocusWheelGeometry.labelRotation(index: 0, visibleCount: 3) == 0)
+    @Test("The active closed-ring label is horizontal, because it sits at the bottom")
+    func closedRingActiveLabelIsUpright() {
+        let span = FocusWheelGeometry.closedRingSpan(index: 0, visibleCount: 3)
+        let angle = (span.start + span.end) / 2
+        #expect(FocusWheelGeometry.readableRotation(atAngle: angle) == 0)
     }
 
     @Test("Visibility never asks for more segments than there are tasks")
@@ -458,7 +518,7 @@ struct FocusWheelGeometryTests {
     @Test("A finished segment renders left of the pointer; one still ahead renders right")
     func pastAndFutureSegmentsSitOnOppositeSides() {
         let width: CGFloat = 375
-        let radius = FocusWheelGeometry.bowlTargetRadius(forWidth: width, visibility: .two)
+        let radius = FocusWheelGeometry.bowlTargetRadius(forWidth: width, visibility: .fiveMinute)
         let centre = CGPoint(x: 100, y: 100)
         let now = 600.0 // 10:00
 
@@ -475,36 +535,10 @@ struct FocusWheelGeometryTests {
         #expect(futurePoint.x > centre.x)
     }
 
-    @Test("A segment entirely outside the visible window is skipped")
-    func segmentOutsideWindowIsSkipped() {
-        let width: CGFloat = 375
-        let radius = FocusWheelGeometry.bowlTargetRadius(forWidth: width, visibility: .one)
-        let window = FocusWheelGeometry.bowlVisibleWindow(radius: radius, width: width)
-
-        // Three hours out on a dial zoomed in enough that it has scrolled
-        // well clear of the visible chord.
-        let span = FocusWheelGeometry.bowlSegmentSpan(start: 900, duration: 30, nowMinutes: 600)
-        #expect(FocusWheelGeometry.bowlSegmentIsVisible(span: span, window: window) == false)
-
-        // Sanity check on the same dial: a segment straddling "now" IS visible.
-        let visibleSpan = FocusWheelGeometry.bowlSegmentSpan(start: 590, duration: 20, nowMinutes: 600)
-        #expect(FocusWheelGeometry.bowlSegmentIsVisible(span: visibleSpan, window: window) == true)
-
-        // A segment LONGER than the visible window must still be drawn. The
-        // window here spans roughly 82 minutes, so a two-hour task overflows
-        // both ends — and it is usually the active task, the one thing that
-        // must never vanish. Containment-instead-of-overlap here emptied the
-        // whole dial once already.
-        let longSpan = FocusWheelGeometry.bowlSegmentSpan(start: 540, duration: 120, nowMinutes: 600)
-        #expect(longSpan.start < window.min)
-        #expect(longSpan.end > window.max)
-        #expect(FocusWheelGeometry.bowlSegmentIsVisible(span: longSpan, window: window) == true)
-    }
-
     @Test("A gap under 9° visible span gets no FREE label; one over it does")
     func gapFreeLabelThreshold() {
         let width: CGFloat = 375
-        let radius = FocusWheelGeometry.bowlTargetRadius(forWidth: width, visibility: .two)
+        let radius: CGFloat = width * 2
         let window = FocusWheelGeometry.bowlVisibleWindow(radius: radius, width: width)
         let now = 600.0
 
@@ -518,7 +552,7 @@ struct FocusWheelGeometryTests {
     @Test("The FREE label is placed inside the window, not at the gap's raw midpoint")
     func gapFreeLabelSitsInsideWindow() {
         let width: CGFloat = 375
-        let radius = FocusWheelGeometry.bowlTargetRadius(forWidth: width, visibility: .two)
+        let radius: CGFloat = width * 2
         let window = FocusWheelGeometry.bowlVisibleWindow(radius: radius, width: width)
         // The demo day's real gap: 08:00 until the plan starts, here 15:00. It
         // qualifies for a label on the few degrees still on screen, but its raw
@@ -537,10 +571,10 @@ struct FocusWheelGeometryTests {
         #expect(abs(straddlingAngle - (straddling.start + straddling.end) / 2) < 0.001)
     }
 
-    @Test("5M's radius dwarfs view 1's, so it reads as an almost-flat horizon")
-    func fiveMinuteRadiusFarExceedsViewOne() {
+    @Test("5M's radius dwarfs the closed ring, so it remains the horizon magnifier")
+    func fiveMinuteRadiusFarExceedsClosedRing() {
         let width: CGFloat = 375
-        let viewOne = FocusWheelGeometry.bowlTargetRadius(forWidth: width, visibility: .one)
+        let viewOne = FocusWheelGeometry.closedRingOuterRadius(width: width, height: width)
         let fiveMinute = FocusWheelGeometry.bowlTargetRadius(forWidth: width, visibility: .fiveMinute)
         #expect(fiveMinute > viewOne * 5)
     }

@@ -55,9 +55,17 @@ public final class AppEnvironment {
         self.notificationService = NotificationService()
         self.voiceService = FocusVoiceService(moments: moments)
         self.searchService = SearchService(context: context)
-        self.gamification = GamificationService(context: context, settings: settings, moments: moments)
-        self.focusEngine = FocusEngine(
+        let focusEngine = FocusEngine(
             context: context, settings: settings, voiceService: voiceService, moments: moments
+        )
+        self.focusEngine = focusEngine
+        self.gamification = GamificationService(
+            context: context,
+            settings: settings,
+            moments: moments,
+            onChecklistCompleted: { [weak focusEngine] task in
+                focusEngine?.completeIfActive(task: task)
+            }
         )
 
         let settings = self.settings

@@ -44,7 +44,11 @@ private struct PointerTriangle: Shape {
 /// ring — kept in one place so a future tweak to its shape or offset can't
 /// drift between the two the way a duplicated angle once did.
 private func wheelPointer(centre: CGPoint, radius: CGFloat) -> some View {
-    let tip = FocusWheelGeometry.point(centre: centre, radius: radius + 15, angle: FocusWheelGeometry.bottomAngle)
+    let tip = FocusWheelGeometry.point(
+        centre: centre,
+        radius: radius + FocusWheelGeometry.pointerMarkerOffset,
+        angle: FocusWheelGeometry.bottomAngle
+    )
     return PointerTriangle()
         .fill(FlowTheme.accent)
         .frame(width: 16, height: 11)
@@ -99,7 +103,8 @@ private struct BowlWedgeShape: Shape {
     }
 }
 
-/// The focus dial: a time-based bowl, not a task-slot fan.
+/// The focus dial: a time-based bowl at 5M and a closed visibility ring at
+/// 1, 2 and 3. The All overview remains its own duration-proportional ring.
 ///
 /// Every segment is placed by clock time under a fixed pointer at the
 /// bottom — as real time advances the whole ring of segments sweeps under
@@ -127,26 +132,137 @@ struct FocusWheelView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let width = proxy.size.width
-            let radius = FocusWheelGeometry.bowlTargetRadius(forWidth: width, visibility: visibility)
-            let thickness = FocusWheelGeometry.bowlThickness(forWidth: width)
-            let centreX = width / 2
-            let pointerY = proxy.size.height - FocusWheelGeometry.pointerInset
-            let centre = CGPoint(x: centreX, y: pointerY - radius)
-            let window = FocusWheelGeometry.bowlVisibleWindow(radius: radius, width: width)
-            let halfAngle = FocusWheelGeometry.bowlHalfVisibleDegrees(radius: radius, width: width)
-
-            ZStack {
-                wedges(centreX: centreX, pointerY: pointerY, centre: centre, radius: radius, thickness: thickness, window: window)
-                gaps(centre: centre, radius: radius, thickness: thickness, window: window)
-                ruler(centre: centre, radius: radius, thickness: thickness, halfAngle: halfAngle)
-                pointer(centre: centre, radius: radius)
+            if FocusWheelGeometry.usesClosedRing(for: visibility) {
+                closedRing(in: proxy.size)
+            } else {
+                bowl(in: proxy.size)
             }
-            .animation(.easeOut(duration: 0.35), value: radius)
-            .frame(width: proxy.size.width, height: proxy.size.height)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Focus wheel")
+    }
+
+    private func bowl(in size: CGSize) -> some View {
+        let width = size.width
+        let radius = FocusWheelGeometry.bowlTargetRadius(forWidth: width, visibility: visibility)
+        let thickness = FocusWheelGeometry.bowlThickness(forWidth: width)
+        let centreX = width / 2
+        let pointerY = size.height - FocusWheelGeometry.pointerInset
+        let centre = CGPoint(x: centreX, y: pointerY - radius)
+        let window = FocusWheelGeometry.bowlVisibleWindow(radius: radius, width: width)
+        let halfAngle = FocusWheelGeometry.bowlHalfVisibleDegrees(radius: radius, width: width)
+
+        return ZStack {
+            wedges(centreX: centreX, pointerY: pointerY, centre: centre, radius: radius, thickness: thickness, window: window)
+            gaps(centre: centre, radius: radius, thickness: thickness, window: window)
+            ruler(centre: centre, radius: radius, thickness: thickness, halfAngle: halfAngle)
+            pointer(centre: centre, radius: radius)
+        }
+        .animation(.easeOut(duration: 0.35), value: radius)
+        .frame(width: size.width, height: size.height)
+    }
+
+    private func closedRing(in size: CGSize) -> some View {
+        let radius = FocusWheelGeometry.closedRingOuterRadius(width: size.width, height: size.height)
+        let thickness = FocusWheelGeometry.closedRingThickness(width: size.width, height: size.height)
+        let centre = FocusWheelGeometry.closedRingCentre(width: size.width, height: size.height)
+        let visibleCount = FocusWheelGeometry.closedRingVisibleCount(for: visibility, queueCount: items.count)
+        let visibleItems = Array(items.prefix(visibleCount))
+        let halfAngle = FocusWheelGeometry.closedRingRulerHalfAngle(visibleCount: visibleCount)
+
+        return ZStack {
+            WheelWedgeShape(
+                startAngle: 0,
+                endAngle: 360,
+                thickness: thickness,
+                radius: radius,
+                centre: centre
+            )
+            .fill(FlowTheme.surface(scheme))
+            .overlay(
+                WheelWedgeShape(
+                    startAngle: 0,
+                    endAngle: 360,
+                    thickness: thickness,
+                    radius: radius,
+                    centre: centre
+                )
+                .stroke(FlowTheme.separator(scheme), lineWidth: 1)
+            )
+
+            closedRingWedges(
+                visibleItems: visibleItems,
+                visibleCount: visibleCount,
+                centre: centre,
+                radius: radius,
+                thickness: thickness
+            )
+
+            Text("FREE")
+                .font(FlowFont.eyebrow)
+                .tracking(1.5)
+                .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                .position(
+                    FocusWheelGeometry.point(
+                        centre: centre,
+                        radius: radius - thickness / 2,
+                        angle: FocusWheelGeometry.closedRingFreeLabelAngle(visibleCount: visibleCount)
+                    )
+                )
+                .accessibilityHidden(true)
+
+            ruler(centre: centre, radius: radius, thickness: thickness, halfAngle: halfAngle)
+            pointer(centre: centre, radius: radius)
+        }
+        .animation(.easeOut(duration: 0.35), value: visibleCount)
+        .frame(width: size.width, height: size.height)
+    }
+
+    private func closedRingWedges(
+        visibleItems: [WheelItem],
+        visibleCount: Int,
+        centre: CGPoint,
+        radius: CGFloat,
+        thickness: CGFloat
+    ) -> some View {
+        let gap = FocusWheelGeometry.wedgeGap(itemCount: visibleItems.count)
+
+        return ForEach(Array(visibleItems.enumerated()), id: \.element.id) { index, item in
+            let span = FocusWheelGeometry.closedRingSpan(index: index, visibleCount: visibleCount)
+
+            ZStack {
+                WheelWedgeShape(
+                    startAngle: span.start + gap,
+                    endAngle: span.end - gap,
+                    thickness: thickness,
+                    radius: radius,
+                    centre: centre
+                )
+                .fill(item.isActive ? item.colour.softStrong : item.colour.soft)
+                .overlay(
+                    WheelWedgeShape(
+                        startAngle: span.start + gap,
+                        endAngle: span.end - gap,
+                        thickness: thickness,
+                        radius: radius,
+                        centre: centre
+                    )
+                    .stroke(FlowTheme.separatorStrong(scheme), lineWidth: 1)
+                )
+
+                if item.isActive {
+                    activeTitle(item: item, span: span, centre: centre, radius: radius, thickness: thickness)
+                } else {
+                    neighbourLabel(item: item, span: span, centre: centre, radius: radius, thickness: thickness)
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(
+                item.isActive
+                    ? "Current: \(item.title), \(DurationFormatter.spoken(minutes: item.minutes))"
+                    : "Next: \(item.title), \(DurationFormatter.spoken(minutes: item.minutes))"
+            )
+        }
     }
 
     // MARK: - Wedges
@@ -161,7 +277,7 @@ struct FocusWheelView: View {
     ) -> some View {
         // Small angular gap between wedges reads as the mock's double rim
         // between segments rather than one continuous band.
-        let gap = items.count > 1 ? 1.6 : 0.0
+        let gap = FocusWheelGeometry.wedgeGap(itemCount: items.count)
 
         return ForEach(items) { item in
             let span = FocusWheelGeometry.bowlSegmentSpan(start: item.startMinutes, duration: Double(item.minutes), nowMinutes: nowMinutes)
@@ -406,7 +522,7 @@ struct FocusWheelOverviewView: View {
 
     private func wedges(centre: CGPoint, outerRadius: CGFloat, innerRadius: CGFloat) -> some View {
         // Same double-rim gap the bowl uses between wedges.
-        let gap = items.count > 1 ? 1.6 : 0.0
+        let gap = FocusWheelGeometry.wedgeGap(itemCount: items.count)
         let thickness = outerRadius - innerRadius
         let durations = items.map(\.minutes)
         let midRadius = (outerRadius + innerRadius) / 2

@@ -20,6 +20,14 @@ struct GateCopyTests {
         #expect(PlanGateDialog.blockedMessage == "Add at least one subtask — that is your definition of done.")
     }
 
+    @Test("A completed checklist names the exact start block")
+    func completedChecklistBlockedMessage() {
+        #expect(
+            PlanGateDialog.allCompletedBlockedMessage
+                == "Everything here is already ticked — un-tick or add what is left."
+        )
+    }
+
     @Test("The subtasks eyebrow carries the count")
     func subtasksEyebrowCount() {
         #expect(PlanGateDialog.subtasksEyebrow(count: 0) == "Subtasks · 0")
