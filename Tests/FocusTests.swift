@@ -734,6 +734,13 @@ struct FocusWheelGeometryTests {
         #expect(FocusWheelGeometry.overviewRulerAngle(minutesRemaining: 0, totalMinutes: 30) == 360)
         #expect(FocusWheelGeometry.overviewRulerTickCount(totalMinutes: 4) == 6)
         #expect(FocusWheelGeometry.overviewRulerTickCount(totalMinutes: 45) == 30)
+
+        // The overview shares the close dial's fixed lower track, so its
+        // endpoint numerals must follow the circular tangent too.
+        let fullAngle = FocusWheelGeometry.overviewRulerAngle(minutesRemaining: 30, totalMinutes: 30)
+        let zeroAngle = FocusWheelGeometry.overviewRulerAngle(minutesRemaining: 0, totalMinutes: 30)
+        #expect(abs(FocusWheelGeometry.carouselRulerLabelRotation(angle: fullAngle) + 90) < 0.0001)
+        #expect(abs(FocusWheelGeometry.carouselRulerLabelRotation(angle: zeroAngle) - 90) < 0.0001)
     }
 
     @Test("A gap under 9° visible span gets no FREE label; one over it does")

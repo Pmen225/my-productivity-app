@@ -815,6 +815,7 @@ struct FocusWheelOverviewView: View {
                         .font(.system(size: 9, weight: .medium, design: .rounded))
                         .foregroundStyle(FlowTheme.tertiaryText(scheme))
                         .position(FocusWheelGeometry.point(centre: centre, radius: labelRadius, angle: angle))
+                        .rotationEffect(.degrees(FocusWheelGeometry.carouselRulerLabelRotation(angle: angle)))
                 }
             }
         }
