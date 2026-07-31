@@ -254,7 +254,10 @@ struct FocusWheelView: View {
             }
         }
         .foregroundStyle(item.colour.onSoft)
-        .frame(maxWidth: item.isActive ? 160 : label.width)
+        // Keep the centre readout inside the hole. The ruler may pass above
+        // that hole on a rotated slice, so a wide one-line title would collide
+        // with its curved numerals.
+        .frame(maxWidth: item.isActive ? 124 : label.width)
         .rotationEffect(.degrees(rotation))
         .position(position)
         .accessibilityElement(children: .combine)
@@ -267,7 +270,8 @@ struct FocusWheelView: View {
         activeSpan: (start: Double, end: Double),
         totalMinutes: Int
     ) -> some View {
-        let step = totalMinutes > 60 ? 5 : 1
+        let step = FocusWheelGeometry.carouselRulerTickStep(totalMinutes: totalMinutes)
+        let majorStep = FocusWheelGeometry.carouselRulerMajorStep(totalMinutes: totalMinutes)
         // Keep the ruler just inside the track. Task labels live on the outer
         // band, leaving the centre hole calm enough for the play control.
         let labelRadius = max(20, innerRadius + 8)
@@ -278,7 +282,7 @@ struct FocusWheelView: View {
                     totalMinutes: totalMinutes,
                     span: activeSpan
                 )
-                let isMajor = remaining == totalMinutes || remaining == 0 || remaining % (step * 5) == 0
+                let isMajor = remaining == totalMinutes || remaining == 0 || remaining % majorStep == 0
                 let from = FocusWheelGeometry.point(centre: centre, radius: innerRadius + 5, angle: angle)
                 let to = FocusWheelGeometry.point(centre: centre, radius: innerRadius + (isMajor ? 19 : 13), angle: angle)
 
@@ -288,7 +292,7 @@ struct FocusWheelView: View {
                 }
                 .stroke(
                     isMajor ? FlowTheme.accent.opacity(0.82) : FlowTheme.separatorStrong(scheme),
-                    lineWidth: isMajor ? 1.5 : 0.8
+                    lineWidth: isMajor ? 1.5 : 0.95
                 )
 
                 if isMajor {
@@ -296,6 +300,7 @@ struct FocusWheelView: View {
                         .font(.system(size: 10, weight: .medium, design: .rounded))
                         .foregroundStyle(FlowTheme.tertiaryText(scheme))
                         .position(FocusWheelGeometry.point(centre: centre, radius: labelRadius, angle: angle))
+                        .rotationEffect(.degrees(FocusWheelGeometry.carouselRulerLabelRotation(angle: angle)))
                 }
             }
         }

@@ -508,6 +508,21 @@ struct FocusWheelGeometryTests {
         ) == ruler.start)
     }
 
+    @Test("Carousel ruler keeps one-minute ticks and bends labels tangentially")
+    func carouselRulerCadenceAndCurve() {
+        #expect(FocusWheelGeometry.carouselRulerTickStep(totalMinutes: 30) == 1)
+        #expect(FocusWheelGeometry.carouselRulerTickStep(totalMinutes: 120) == 1)
+        #expect(FocusWheelGeometry.carouselRulerMajorStep(totalMinutes: 30) == 5)
+        #expect(FocusWheelGeometry.carouselRulerMajorStep(totalMinutes: 120) == 10)
+
+        // Tangents at the cardinal points: horizontal at top/bottom and
+        // vertical at either side. This is the curved-text invariant.
+        #expect(abs(FocusWheelGeometry.carouselRulerLabelRotation(angle: 0) - 90) < 0.0001)
+        #expect(abs(FocusWheelGeometry.carouselRulerLabelRotation(angle: 90)) < 0.0001)
+        #expect(abs(FocusWheelGeometry.carouselRulerLabelRotation(angle: 180) + 90) < 0.0001)
+        #expect(abs(FocusWheelGeometry.carouselRulerLabelRotation(angle: 270)) < 0.0001)
+    }
+
     @Test("Overview spans divide the full circle proportionally to duration")
     func overviewSpansSumFullCircle() {
         let durations = [30, 60, 10, 20]

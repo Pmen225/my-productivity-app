@@ -141,6 +141,32 @@ public enum FocusWheelGeometry {
         return span.start + (span.end - span.start) * fraction
     }
 
+    /// Keep the minute scale dense at every zoom level. The ruler is a real
+    /// measuring track, so even a long block keeps one tick per minute; only
+    /// the numbered cadence relaxes for durations over an hour.
+    public static func carouselRulerTickStep(totalMinutes: Int) -> Int {
+        1
+    }
+
+    /// Number every five minutes on short blocks and every ten on long ones.
+    /// Endpoints are always added by the renderer, even when they are not on
+    /// this cadence.
+    public static func carouselRulerMajorStep(totalMinutes: Int) -> Int {
+        totalMinutes > 60 ? 10 : 5
+    }
+
+    /// Rotates a numeral onto the tangent of the circular ruler while keeping
+    /// it upright. At the top and bottom the text is horizontal; at the sides
+    /// it turns with the ring rather than remaining a straight screen label.
+    public static func carouselRulerLabelRotation(angle: Double) -> Double {
+        var tangent = (angle + 90).truncatingRemainder(dividingBy: 360)
+        if tangent > 180 { tangent -= 360 }
+        if tangent < -180 { tangent += 360 }
+        if tangent > 90 { tangent -= 180 }
+        if tangent < -90 { tangent += 180 }
+        return tangent
+    }
+
     // MARK: - Bottom-arc dial
     //
     // The mock's dial is a shallow bowl cut from a much larger, mostly
