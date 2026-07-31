@@ -53,9 +53,11 @@ struct FocusScreen: View {
         // active task itself actually changes.
         .onAppear {
             page = activeTask == nil ? .today : .subtasks
+            cardDetent = activeTask == nil ? .rest : .open
         }
         .onChange(of: activeTask?.id) { _, newID in
             page = newID == nil ? .today : .subtasks
+            if newID != nil { cardDetent = .open }
         }
         #if os(macOS)
         .toolbar { toolbarContent }
@@ -161,29 +163,38 @@ struct FocusScreen: View {
         let dialWidth = size.width - FlowSpacing.screen * 2
         // Collapsing the card is a request to see the dial, so its ceiling
         // lifts with it — otherwise the freed height is just empty screen.
-        let dialCeiling: CGFloat = cardDetent == .hidden ? 280 : 190
+        let dialCeiling: CGFloat = cardDetent == .hidden ? 500 : 430
         let dialHeight = max(120, min(dialCeiling, size.height - reserved - chromeReserve))
 
         return VStack(spacing: FlowSpacing.m) {
             titleBar
-            centreContent
+            Text("Pinch to zoom")
+                .font(.system(size: 16, weight: .regular, design: .rounded))
+                .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                .accessibilityHidden(true)
+            visibilityPill
 
-            Group {
-                if visibility == .all {
-                    FocusWheelOverviewView(
-                        items: wheelItems,
-                        isSessionActive: session != nil,
-                        centreCountdownText: countdownMinutesText,
-                        centreCountdownAccessibilityLabel: countdownAccessibilityLabel
-                    )
-                } else {
-                    FocusWheelView(
-                        items: wheelItems,
-                        progress: progress,
-                        activeID: wheelItems.first?.id,
-                        nowMinutes: nowMinutes,
-                        visibility: visibility
-                    )
+            ZStack {
+                Group {
+                    if visibility == .all {
+                        FocusWheelOverviewView(
+                            items: wheelItems,
+                            isSessionActive: session != nil,
+                            centreCountdownText: countdownMinutesText,
+                            centreCountdownAccessibilityLabel: countdownAccessibilityLabel
+                        )
+                    } else {
+                        FocusWheelView(
+                            items: wheelItems,
+                            progress: progress,
+                            activeID: wheelItems.first?.id,
+                            nowMinutes: nowMinutes,
+                            visibility: visibility
+                        )
+                    }
+                }
+                if visibility != .all {
+                    focusDialCentre
                 }
             }
             .frame(width: dialWidth, height: dialHeight)
@@ -197,21 +208,13 @@ struct FocusScreen: View {
         #endif
     }
 
-    /// The mock's top row — a stable options button, the screen's own small
-    /// centred title, and an appearance button. The selected zoom lives on the
-    /// options button as a quiet badge, keeping the dial as the visual anchor.
+    /// The reference's top row is deliberately quiet: one stable menu button
+    /// and one appearance control, with the dial's zoom control below it.
     private var titleBar: some View {
         HStack {
             #if !os(macOS)
-            visibilityMenu
-            Spacer(minLength: FlowSpacing.s)
-            // The mock's title is a small centred word in the content, not
-            // a system large title — this screen hides the navigation bar.
-            Text("Focus")
-                .font(FlowFont.screenTitleCompact)
-                .foregroundStyle(FlowTheme.primaryText(scheme))
-                .accessibilityAddTraits(.isHeader)
-            Spacer(minLength: FlowSpacing.s)
+            optionsButton
+            Spacer()
             cornerButton(systemImage: appearanceSymbol, label: "Change appearance, currently \(flow?.settings.appearance.displayName ?? "System")") {
                 cycleAppearance()
             }
@@ -221,50 +224,60 @@ struct FocusScreen: View {
     }
 
     #if !os(macOS)
-    /// Native progressive disclosure keeps the original quiet chrome while
-    /// keeping five zoom choices out of the way until they are wanted.
-    private var visibilityMenu: some View {
-        Menu {
-            Button("Choose focus duration", systemImage: "timer") {
-                showingDurationPicker = true
-            }
-            Menu("Dial zoom") {
-                ForEach(WheelVisibility.allCases, id: \.self) { mode in
-                    Button {
-                        setVisibility(mode)
-                    } label: {
-                        if mode == visibility {
-                            Label(mode.displayName, systemImage: "checkmark")
-                        } else {
-                            Text(mode.displayName)
-                        }
-                    }
-                    .accessibilityIdentifier("focus-wheel-mode-\(mode.rawValue)")
-                    .accessibilityLabel(mode.announcement)
-                }
-            }
-        } label: {
-            ZStack(alignment: .topTrailing) {
-                Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(FlowTheme.primaryText(scheme))
-                    .frame(width: 34, height: 34)
-                    .background(Circle().fill(FlowTheme.surface(scheme)))
-                    .overlay(Circle().strokeBorder(FlowTheme.separatorStrong(scheme), lineWidth: 1))
-
-                Text(visibility.displayName)
-                    .font(FlowFont.durationChip)
-                    .foregroundStyle(.white)
-                    .frame(minWidth: 27, minHeight: 27)
-                    .background(Circle().fill(FlowTheme.accentFill))
-                    .offset(x: 8, y: -7)
-            }
-            .frame(width: 44, height: 44)
-            .contentShape(Rectangle())
+    private var optionsButton: some View {
+        Button { showingDurationPicker = true } label: {
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 20, weight: .regular))
+                .foregroundStyle(FlowTheme.secondaryText(scheme))
+                .frame(width: 58, height: 58)
+                .background(Circle().fill(FlowTheme.surface(scheme)))
+                .overlay(Circle().strokeBorder(FlowTheme.separator(scheme), lineWidth: 1))
+                .shadow(color: FlowTheme.shadow(scheme), radius: 10, y: 5)
         }
+        .buttonStyle(.plain)
         .accessibilityLabel("Open focus options")
         .accessibilityValue(visibility.announcement)
-        .accessibilityHint("Choose a focus duration or dial zoom")
+        .accessibilityHint("Choose a focus duration")
+    }
+
+    /// The zoom state is always visible, as in the reference, so the user
+    /// never has to remember which level the dial is using.
+    private var visibilityPill: some View {
+        HStack(spacing: FlowSpacing.s) {
+            Text("View:")
+                .foregroundStyle(FlowTheme.secondaryText(scheme))
+                .fixedSize()
+            ForEach([WheelVisibility.one, .two, .three, .all], id: \.self) { mode in
+                if mode == .all {
+                    Rectangle()
+                        .fill(FlowTheme.separator(scheme))
+                        .frame(width: 1, height: 20)
+                        .padding(.horizontal, FlowSpacing.xs)
+                }
+                Button {
+                    setVisibility(mode)
+                } label: {
+                    Text(mode.displayName)
+                        .font(.system(size: 16, weight: mode == visibility ? .semibold : .regular, design: .rounded))
+                        .foregroundStyle(mode == visibility ? .white : FlowTheme.primaryText(scheme))
+                        .frame(width: mode == .fiveMinute ? 38 : 34, height: 34)
+                        .fixedSize()
+                        .background {
+                            if mode == visibility { Circle().fill(FlowTheme.accent) }
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("focus-wheel-mode-\(mode.rawValue)")
+                .accessibilityLabel(mode.announcement)
+            }
+        }
+        .padding(.horizontal, FlowSpacing.m)
+        .padding(.vertical, FlowSpacing.xs)
+        .background(Capsule().fill(FlowTheme.surface(scheme)))
+        .overlay(Capsule().strokeBorder(FlowTheme.separator(scheme), lineWidth: 1))
+        .shadow(color: FlowTheme.shadow(scheme), radius: 8, y: 3)
+        .frame(minWidth: 250)
+        .accessibilityElement(children: .contain)
     }
 
     private var appearanceSymbol: String {
@@ -319,6 +332,36 @@ struct FocusScreen: View {
     }
 
     // MARK: - Centre
+
+    /// The dial keeps a calm, tactile centre: the task icon is a visual
+    /// anchor, the live readout stays available, and the same pause/start
+    /// control remains in the place the reference establishes.
+    private var focusDialCentre: some View {
+        VStack(spacing: FlowSpacing.s) {
+            Image(systemName: activeTask?.iconName ?? "timer")
+                .font(.system(size: 23, weight: .medium))
+                .foregroundStyle(FlowTheme.accentText(scheme))
+                .frame(width: 62, height: 62)
+                .background(Circle().fill(FlowTheme.surface(scheme)))
+                .shadow(color: FlowTheme.shadow(scheme), radius: 9, y: 4)
+                .accessibilityHidden(true)
+            Button {
+                if session == nil { startBestAvailable() }
+                else { engine?.togglePause(now: now) }
+            } label: {
+                Image(systemName: playPauseSymbol)
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(FlowTheme.accentText(scheme))
+                    .frame(width: FlowControlSize.hero, height: FlowControlSize.hero)
+                    .background(neumorphicDisc())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(playPauseLabel)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .padding(.top, FlowSpacing.s)
+        .accessibilityElement(children: .contain)
+    }
 
     /// The running clock is the focal point. The task name belongs on the
     /// dial itself, so the centre stays quiet and leaves the arc unobscured.

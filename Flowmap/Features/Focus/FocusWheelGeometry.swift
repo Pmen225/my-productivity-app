@@ -246,7 +246,11 @@ public enum FocusWheelGeometry {
     /// asymmetric) elapsed/remaining split — the ruler stays the
     /// artificially-centred overlay it has always been since task 57 fixed
     /// its numbering, decoupled from where the real wedge now sits.
-    public static let dialActiveFraction: Double = 0.56
+    /// Keep the ruler nearly as wide as the visible task block. The original
+    /// design deliberately lets the full-duration and zero marks breathe at
+    /// the two ends; a narrow overlay made captures begin at `26` and finish
+    /// at `1`, which broke the dial's most important arithmetic cue.
+    public static let dialActiveFraction: Double = 0.88
 
     /// Angular span of the active wedge's ruler overlay, centred at
     /// `bottomAngle` — unchanged since task 57; the bowl's per-segment

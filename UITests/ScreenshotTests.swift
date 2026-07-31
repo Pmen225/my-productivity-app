@@ -41,24 +41,8 @@ final class ScreenshotTests: XCTestCase {
         add(attachment)
     }
 
-    /// Pick a wheel zoom from the native options menu. The dial keeps its
-    /// original quiet surface; zoom choices are progressively disclosed under
-    /// the menu's "Dial zoom" submenu.
+    /// Pick a wheel zoom from the always-visible reference pill.
     private func selectWheelMode(_ app: XCUIApplication, _ mode: String) {
-        let options = app.buttons["Open focus options"].firstMatch
-        guard options.waitForExistence(timeout: 10) else {
-            XCTFail("Focus options button not found before selecting \(mode)")
-            return
-        }
-        options.tap()
-
-        let zoomMenu = app.buttons["Dial zoom"].firstMatch
-        guard zoomMenu.waitForExistence(timeout: 5) else {
-            XCTFail("Dial zoom submenu not found before selecting \(mode)")
-            return
-        }
-        zoomMenu.tap()
-
         let announcement = mode == "5M"
             ? "Zoomed to a five-minute window"
             : mode == "All" ? "All tasks visible" : "\(mode) tasks visible"

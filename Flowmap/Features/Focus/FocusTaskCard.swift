@@ -94,7 +94,10 @@ struct FocusTaskCard: View {
     }
     /// Comfortably past the three fifths of the screen the spec asks for, once
     /// the status bar and tab bar are taken out of `total`.
-    nonisolated static func expandedHeight(for total: CGFloat) -> CGFloat { max(340, total * 0.72) }
+    /// The reference keeps the checklist visible without swallowing the dial;
+    /// a compact 42% sheet is enough room for four subtasks and leaves the
+    /// circular control readable above it.
+    nonisolated static func expandedHeight(for total: CGFloat) -> CGFloat { max(330, total * 0.42) }
 
     var body: some View {
         GeometryReader { proxy in
