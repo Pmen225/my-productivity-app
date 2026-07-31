@@ -232,6 +232,7 @@ struct LibraryView: View {
     /// screen's own `List` never presents.
     @State private var showCreateList = false
     @State private var pendingListDelete: TaskList?
+    @State private var pendingProjectDelete: Project?
 
     /// Ordered peers in the Plan tab's task surface. Inbox is deliberately
     /// page zero because it is the capture-to-triage entry point; completed is
@@ -367,6 +368,12 @@ struct LibraryView: View {
             } message: {
                 Text("Tasks inside stay in Flowmap and move to Inbox.")
             }
+            .flowDeleteConfirmation(
+                isPresented: projectDeleteBinding,
+                itemTitle: pendingProjectDelete?.title ?? "",
+                hasChildren: !(pendingProjectDelete?.tasks ?? []).isEmpty,
+                onDelete: deletePendingProject
+            )
     }
 
     @ViewBuilder
@@ -563,9 +570,33 @@ struct LibraryView: View {
                     }
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
+                    #if os(iOS)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button {
+                            pendingProjectDelete = project
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                        .tint(FlowTheme.destructive)
+                    }
+                    #endif
                 }
             }
         }
+    }
+
+    private var projectDeleteBinding: Binding<Bool> {
+        Binding(
+            get: { pendingProjectDelete != nil },
+            set: { if !$0 { pendingProjectDelete = nil } }
+        )
+    }
+
+    private func deletePendingProject() {
+        guard let project = pendingProjectDelete else { return }
+        context.delete(project)
+        try? context.save()
+        pendingProjectDelete = nil
     }
 
     // MARK: - Notes accordion

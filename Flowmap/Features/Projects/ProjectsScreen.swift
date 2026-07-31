@@ -10,6 +10,7 @@ public struct ProjectsScreen: View {
     @State private var isAddingProject = false
     @State private var searchText = ""
     @State private var statusFilter: ProjectStatus?
+    @State private var pendingProjectDelete: Project?
 
     public init() {}
 
@@ -44,8 +45,20 @@ public struct ProjectsScreen: View {
                     }
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
+                    #if os(iOS)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        // Keep the confirmation card alive after the swipe
+                        // closes; a destructive role rebuilds this row and
+                        // loses the pending state before the card can present.
+                        Button {
+                            pendingProjectDelete = project
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                        .tint(FlowTheme.destructive)
+                    }
+                    #endif
                 }
-                .onDelete(perform: deleteProjects)
             }
         }
         .navigationTitle("Projects")
@@ -54,6 +67,12 @@ public struct ProjectsScreen: View {
         .navigationDestination(for: Project.self) { project in
             ProjectDetailView(project: project)
         }
+        .flowDeleteConfirmation(
+            isPresented: projectDeleteBinding,
+            itemTitle: pendingProjectDelete?.title ?? "",
+            hasChildren: !(pendingProjectDelete?.tasks ?? []).isEmpty,
+            onDelete: deletePendingProject
+        )
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
@@ -84,8 +103,17 @@ public struct ProjectsScreen: View {
         return result
     }
 
-    private func deleteProjects(at offsets: IndexSet) {
-        for index in offsets { context.delete(filteredProjects[index]) }
+    private var projectDeleteBinding: Binding<Bool> {
+        Binding(
+            get: { pendingProjectDelete != nil },
+            set: { if !$0 { pendingProjectDelete = nil } }
+        )
+    }
+
+    private func deletePendingProject() {
+        guard let project = pendingProjectDelete else { return }
+        context.delete(project)
         try? context.save()
+        pendingProjectDelete = nil
     }
 }
