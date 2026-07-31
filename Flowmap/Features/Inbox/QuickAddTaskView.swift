@@ -370,13 +370,10 @@ public struct QuickAddTaskView: View {
         case .project(let p): project = p
         }
 
-        var status: TaskStatus = .inbox
-        if smartView == .someday, list == nil, project == nil { status = .planned }
-
         let task = FlowTask(
             title: trimmed,
             details: note.trimmingCharacters(in: .whitespacesAndNewlines),
-            status: status,
+            status: .inbox,
             priority: priority,
             estimatedMinutes: minutes,
             dueDate: hasDate ? date : nil,

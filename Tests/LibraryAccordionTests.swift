@@ -32,6 +32,6 @@ struct LibraryAccordionTests {
     @Test("Inbox is not one of the TASKS section's accordion rows")
     func inboxExcludedFromAccordions() {
         #expect(!LibraryView.taskAccordionViews.contains(.inbox))
-        #expect(LibraryView.taskAccordionViews.count == 6)
+        #expect(LibraryView.taskAccordionViews.count == 5)
     }
 }

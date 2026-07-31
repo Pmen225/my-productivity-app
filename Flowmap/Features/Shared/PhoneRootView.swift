@@ -222,13 +222,13 @@ struct LibraryView: View {
     @State private var showingPlanPreview = false
     @State private var planProposal: PlanProposal?
 
-    /// The six `SmartView` cases the TASKS section shows as accordions.
+    /// The five `SmartView` cases the TASKS section shows as accordions.
     /// `.inbox` is left out on purpose: `PlanInboxSection` already renders
     /// the whole inbox inline with editing directly above, and the tab
     /// already carries the inbox badge — unfolding it a second time here
     /// would be duplication, not parity. Exposed so a test can assert this
     /// list directly rather than reading the view body.
-    static let taskAccordionViews: [SmartView] = [.today, .upcoming, .anytime, .someday, .allTasks, .completed]
+    static let taskAccordionViews: [SmartView] = [.today, .upcoming, .anytime, .allTasks, .completed]
 
     /// The exact tasks a TASKS accordion shows, sorted for display. Both the
     /// header's count and the unfolded rows read this one array, never two

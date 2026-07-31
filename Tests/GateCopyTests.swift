@@ -11,13 +11,13 @@ struct GateCopyTests {
     func planGateMessage() {
         #expect(
             PlanGateDialog.gateMessage
-                == "Define what \"done\" means. A clear destination stops the endless tweaking."
+                == "Break it down. A clear checklist stops the endless tweaking."
         )
     }
 
     @Test("Blocking the start names what is missing")
     func planGateBlockedMessage() {
-        #expect(PlanGateDialog.blockedMessage == "Write definition done first")
+        #expect(PlanGateDialog.blockedMessage == "Add at least one subtask — that is your definition of done.")
     }
 
     @Test("The subtasks eyebrow carries the count")

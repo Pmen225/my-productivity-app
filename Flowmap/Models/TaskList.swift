@@ -3,7 +3,7 @@ import SwiftData
 
 /// A user-created list of tasks.
 ///
-/// Inbox, Today, Upcoming, Anytime, Someday, All Tasks and Completed are *not*
+/// Inbox, Today, Upcoming, Anytime, All Tasks and Completed are *not*
 /// stored here — they are query-backed smart views (`SmartView`) so a task is
 /// never duplicated into a second container.
 @Model

@@ -1,9 +1,9 @@
 import SwiftUI
 
 /// The compulsory planning gate — the mock's "define done before you start"
-/// modal. Demands a free-text Definition of Done plus an inline subtask
-/// list; "Start task" is blocked (not merely dimmed) until the definition
-/// is non-empty, surfacing the design's own copy for the block.
+/// modal. Demands an inline subtask checklist; "Start task" is blocked (not
+/// merely dimmed) until the task has at least one subtask — the checklist
+/// itself is the definition of done (feedback task 21).
 struct PlanGateDialog: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.modelContext) private var context
@@ -11,17 +11,16 @@ struct PlanGateDialog: View {
 
     /// The mockup's own gate copy, held as statics so the tests can pin the
     /// exact wording rather than re-typing it and drifting.
-    static let gateMessage = "Define what \"done\" means. A clear destination stops the endless tweaking."
-    static let blockedMessage = "Write definition done first"
+    static let gateMessage = "Break it down. A clear checklist stops the endless tweaking."
+    static let blockedMessage = "Add at least one subtask — that is your definition of done."
 
     /// The mockup labels the list `SUBTASKS · N`, so the count travels with
     /// the eyebrow rather than sitting in a separate badge.
     static func subtasksEyebrow(count: Int) -> String { "Subtasks · \(count)" }
 
     let task: FlowTask
-    let onStart: (String) -> Void
+    let onStart: () -> Void
 
-    @State private var definition: String = ""
     @State private var newSubtaskTitle: String = ""
     @State private var showsBlockedMessage = false
 
@@ -40,7 +39,6 @@ struct PlanGateDialog: View {
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
 
-            definitionField
             subtaskList
 
             if showsBlockedMessage {
@@ -57,28 +55,17 @@ struct PlanGateDialog: View {
         .frame(maxWidth: 340)
         .flowGlass(radius: FlowRadius.sheet)
         .accessibilityElement(children: .contain)
-        .onAppear { definition = task.definitionOfDone }
+        // A task arriving at the gate with old prose but no subtasks yet
+        // (written before this checklist existed) gets that text seeded as
+        // its first subtask, so nothing anyone wrote is lost.
+        .onAppear { seedSubtaskFromDefinitionOfDoneIfNeeded() }
     }
 
-    private var definitionField: some View {
-        TextField(
-            "Definition of done — e.g. '10 pages read & summarised'",
-            text: $definition,
-            axis: .vertical
-        )
-        .font(FlowFont.body)
-        .lineLimit(2...4)
-        .padding(FlowSpacing.m)
-        .background(
-            RoundedRectangle(cornerRadius: FlowRadius.field, style: .continuous)
-                .fill(FlowTheme.surface(scheme))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: FlowRadius.field, style: .continuous)
-                .strokeBorder(FlowTheme.separatorStrong(scheme), lineWidth: 1)
-        )
-        .accessibilityLabel("Definition of done")
-        .onChange(of: definition) { _, _ in showsBlockedMessage = false }
+    private func seedSubtaskFromDefinitionOfDoneIfNeeded() {
+        let trimmed = task.definitionOfDone.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard task.orderedSubtasks.isEmpty, !trimmed.isEmpty else { return }
+        newSubtaskTitle = trimmed
+        addSubtask()
     }
 
     /// Mirrors `TaskDetailInspector`'s subtask row/add-box idiom so the same
@@ -131,15 +118,15 @@ struct PlanGateDialog: View {
         context.insert(subtask)
         try? context.save()
         newSubtaskTitle = ""
+        showsBlockedMessage = false
     }
 
     private func attemptStart() {
-        let trimmed = definition.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
+        guard !task.orderedSubtasks.isEmpty else {
             showsBlockedMessage = true
             return
         }
-        onStart(trimmed)
+        onStart()
     }
 }
 

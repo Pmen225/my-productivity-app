@@ -330,6 +330,21 @@ struct SmartViewTests {
         #expect(inbox.map(\.title) == ["Loose"])
     }
 
+    @Test("Inbox also holds the old Someday resident: open, undated, unscheduled, non-inbox status")
+    func inboxAbsorbsFormerSomeday() throws {
+        let world = try TestWorld()
+        let parked = world.makeTask("Parked", status: .planned)
+        let dated = world.makeTask("Dated", due: world.date(hour: 17), status: .planned)
+        let scheduled = world.makeTask("Scheduled", status: .planned)
+        world.makeSegment(for: scheduled, start: world.date(hour: 10), minutes: 30)
+        let done = world.makeTask("Done", status: .planned)
+        done.markCompleted()
+
+        let tasks = [parked, dated, scheduled, done]
+        let inbox = SmartView.inbox.matches(tasks, now: world.date(hour: 9), calendar: world.calendar)
+        #expect(inbox.map(\.title) == ["Parked"])
+    }
+
     @Test("Today includes work scheduled today, due today, or flagged for today")
     func todayContents() throws {
         let world = try TestWorld()

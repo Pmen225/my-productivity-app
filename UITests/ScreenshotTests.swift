@@ -474,8 +474,12 @@ final class ScreenshotTests: XCTestCase {
             let startButton = app.buttons["Start focus"].firstMatch
             if startButton.waitForExistence(timeout: 8) {
                 startButton.tap()
-                let definitionField = app.textFields["Definition of done"].firstMatch
-                if definitionField.waitForExistence(timeout: 5) {
+                // T21 replaced the free-text Definition of Done field with the
+                // subtask checklist; the gate's own headline is the marker now.
+                let gateHeadline = app.staticTexts.matching(
+                    NSPredicate(format: "label BEGINSWITH 'Break it down'")
+                ).firstMatch
+                if gateHeadline.waitForExistence(timeout: 5) {
                     Thread.sleep(forTimeInterval: 1)
                     capture(app, named: "iphone-focus-gate")
                 } else {

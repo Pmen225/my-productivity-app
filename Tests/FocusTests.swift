@@ -250,8 +250,8 @@ struct FocusGateTests {
         #expect(focus.pendingGate?.task.id == task.id)
     }
 
-    @Test("An empty Definition of Done cannot start the task")
-    func emptyDefinitionBlocksStart() throws {
+    @Test("A task with no subtasks cannot start")
+    func noSubtasksBlocksStart() throws {
         let world = try TestWorld()
         let task = world.makeTask("Reading", minutes: 30, planned: false)
         let segment = world.makeSegment(for: task, start: world.date(hour: 9), minutes: 30)
@@ -260,18 +260,21 @@ struct FocusGateTests {
         _ = focus.start(segment: segment, now: world.date(hour: 9))
         #expect(focus.pendingGate != nil)
 
-        // Whitespace-only text does not satisfy the gate.
-        let blocked = focus.resolveGate(definitionOfDone: "   ", now: world.date(hour: 9))
+        // No subtasks yet: the gate does not satisfy.
+        let blocked = focus.resolveGate(now: world.date(hour: 9))
         #expect(blocked == nil)
         #expect(focus.activeSession == nil)
         #expect(focus.pendingGate != nil) // still blocked, not silently cleared
         #expect(task.hasBeenPlanned == false)
 
-        // Real text resolves the same gate and starts the clock.
-        let started = focus.resolveGate(definitionOfDone: "10 pages read", now: world.date(hour: 9))
+        // Adding a subtask resolves the same gate and starts the clock.
+        let subtask = Subtask(title: "Read 10 pages", task: task)
+        world.context.insert(subtask)
+        try world.context.save()
+
+        let started = focus.resolveGate(now: world.date(hour: 9))
         #expect(started != nil)
         #expect(task.hasBeenPlanned == true)
-        #expect(task.definitionOfDone == "10 pages read")
         #expect(focus.pendingGate == nil)
     }
 
@@ -303,7 +306,12 @@ struct FocusGateTests {
 
         _ = focus.start(segment: segment, now: world.date(hour: 9))
         #expect(focus.pendingGate?.kind == .planGate)
-        _ = focus.resolveGate(definitionOfDone: "Done when read", now: world.date(hour: 9))
+
+        let subtask = Subtask(title: "Read until done", task: task)
+        world.context.insert(subtask)
+        try world.context.save()
+
+        _ = focus.resolveGate(now: world.date(hour: 9))
         #expect(focus.activeSession != nil)
 
         // Finish this run, then start a fresh (non-continuation) segment for

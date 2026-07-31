@@ -10,7 +10,6 @@ public enum SmartView: String, CaseIterable, Identifiable, Sendable {
     case today
     case upcoming
     case anytime
-    case someday
     case allTasks
     case completed
 
@@ -22,7 +21,6 @@ public enum SmartView: String, CaseIterable, Identifiable, Sendable {
         case .today: "Today"
         case .upcoming: "Upcoming"
         case .anytime: "Anytime"
-        case .someday: "Someday"
         case .allTasks: "All Tasks"
         case .completed: "Completed"
         }
@@ -34,7 +32,6 @@ public enum SmartView: String, CaseIterable, Identifiable, Sendable {
         case .today: "sun.max"
         case .upcoming: "calendar"
         case .anytime: "square.stack"
-        case .someday: "archivebox"
         case .allTasks: "list.bullet"
         case .completed: "checkmark.circle"
         }
@@ -46,7 +43,6 @@ public enum SmartView: String, CaseIterable, Identifiable, Sendable {
         case .today: .peach
         case .upcoming: .blue
         case .anytime: .teal
-        case .someday: .lavender
         case .allTasks: .green
         case .completed: .yellow
         }
@@ -58,7 +54,6 @@ public enum SmartView: String, CaseIterable, Identifiable, Sendable {
         case .today: "Nothing is scheduled yet. Plan your day to fill it in."
         case .upcoming: "Nothing is dated beyond today."
         case .anytime: "No undated work waiting."
-        case .someday: "Nothing parked for later."
         case .allTasks: "No tasks yet."
         case .completed: "Nothing completed yet."
         }
@@ -74,7 +69,7 @@ public enum SmartView: String, CaseIterable, Identifiable, Sendable {
 
         switch self {
         case .inbox:
-            return tasks.filter { $0.status == .inbox && !$0.isScheduled }
+            return tasks.filter { !$0.isScheduled && ($0.status == .inbox || ($0.status.isOpen && $0.dueDate == nil)) }
 
         case .today:
             return tasks.filter { task in
@@ -93,9 +88,6 @@ public enum SmartView: String, CaseIterable, Identifiable, Sendable {
 
         case .anytime:
             return tasks.filter { $0.status.isOpen && $0.dueDate == nil && $0.isScheduled }
-
-        case .someday:
-            return tasks.filter { $0.status.isOpen && $0.dueDate == nil && !$0.isScheduled && $0.status != .inbox }
 
         case .allTasks:
             return tasks.filter { $0.status != .cancelled }

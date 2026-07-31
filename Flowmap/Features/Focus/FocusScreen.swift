@@ -51,6 +51,17 @@ struct FocusScreen: View {
         .onReceive(ticker) { date in
             flow?.tick(date)
         }
+        // Feedback task 17: the checklist is the task's externalised working
+        // memory, so the card opens straight to it whenever a task is
+        // active. Keyed on the id, not the task object, so the user's own
+        // mid-session swipe away from Subtasks is respected until the
+        // active task itself actually changes.
+        .onAppear {
+            page = activeTask == nil ? .today : .subtasks
+        }
+        .onChange(of: activeTask?.id) { _, newID in
+            page = newID == nil ? .today : .subtasks
+        }
         #if os(macOS)
         .toolbar { toolbarContent }
         #endif
@@ -571,8 +582,8 @@ struct FocusScreen: View {
         if let pendingGate {
             switch pendingGate.kind {
             case .planGate:
-                PlanGateDialog(task: pendingGate.task) { definitionOfDone in
-                    _ = engine?.resolveGate(definitionOfDone: definitionOfDone, now: now)
+                PlanGateDialog(task: pendingGate.task) {
+                    _ = engine?.resolveGate(now: now)
                 }
             case .clockIn:
                 ClockInDialog(task: pendingGate.task) {

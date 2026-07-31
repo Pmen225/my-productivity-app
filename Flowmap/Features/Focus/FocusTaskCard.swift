@@ -365,12 +365,6 @@ struct FocusTaskCard: View {
         let task = segment.task
         let subtasks = task?.orderedSubtasks ?? []
         return VStack(alignment: .leading, spacing: FlowSpacing.xs) {
-            if let dod = task?.definitionOfDone, !dod.isEmpty {
-                Text(dod)
-                    .font(FlowFont.caption)
-                    .foregroundStyle(FlowTheme.secondaryText(scheme))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
             if subtasks.isEmpty {
                 Text("No subtasks.")
                     .font(FlowFont.caption)

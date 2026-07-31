@@ -173,7 +173,11 @@ struct GamificationWiringTests {
         #expect(blocked == nil)
         #expect(engine.pendingGate?.kind == .planGate)
 
-        let session = engine.resolveGate(definitionOfDone: "Paper summarised in 5 bullets")
+        let subtask = Subtask(title: "Summarise in 5 bullets", task: task)
+        world.context.insert(subtask)
+        try world.context.save()
+
+        let session = engine.resolveGate()
         #expect(session != nil)
         #expect(world.settings.totalXP == 10)
 

@@ -216,24 +216,22 @@ public final class FocusEngine {
         return nil
     }
 
-    /// Resolves `pendingGate`: records the Definition of Done and marks the
-    /// task planned (first-time gate only), then starts the segment or task
-    /// it was blocking. This call IS the gate's resolution, so it starts via
-    /// the private `begin…` helpers directly rather than asking
-    /// `gateDecision` again — asking again would just re-block on a task
-    /// this same call is about to mark planned.
+    /// Resolves `pendingGate`: marks the task planned (first-time gate only),
+    /// then starts the segment or task it was blocking. This call IS the
+    /// gate's resolution, so it starts via the private `begin…` helpers
+    /// directly rather than asking `gateDecision` again — asking again would
+    /// just re-block on a task this same call is about to mark planned.
     ///
-    /// Enforced here, not just in the view: an empty Definition of Done
-    /// leaves `pendingGate` untouched and returns `nil` — "blocked" means
-    /// blocked even for a caller that skips `PlanGateDialog` entirely.
+    /// Enforced here, not just in the view: a task with no subtasks leaves
+    /// `pendingGate` untouched and returns `nil` — "blocked" means blocked
+    /// even for a caller that skips `PlanGateDialog` entirely. Feedback task
+    /// 21: the checklist itself is the definition of done, so this no longer
+    /// takes or writes `definitionOfDone` text.
     @discardableResult
-    public func resolveGate(definitionOfDone: String? = nil, now: Date = Date()) -> FocusSession? {
+    public func resolveGate(now: Date = Date()) -> FocusSession? {
         guard let pending = pendingGate else { return nil }
         if pending.kind == .planGate {
-            let trimmed = (definitionOfDone ?? pending.task.definitionOfDone)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { return nil }
-            pending.task.definitionOfDone = trimmed
+            guard !pending.task.orderedSubtasks.isEmpty else { return nil }
             pending.task.hasBeenPlanned = true
             try? context.save()
             gamificationService().award(.taskPlanned)
