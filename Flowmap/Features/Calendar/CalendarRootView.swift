@@ -32,7 +32,6 @@ struct CalendarRootView: View {
     @State private var anchorDate: Date = Date()
     @State private var page: CalendarPanelPage = .agenda
     @State private var isPickingMonth = false
-    @State private var quickAddSheet: CalendarQuickAddSheet?
 
     /// Opening the jump panel swaps out half the screen — a spring settle.
     /// Reduce Motion drops straight to a plain cross-fade.
@@ -59,11 +58,6 @@ struct CalendarRootView: View {
         .background(FlowTheme.background(scheme))
         .navigationTitle("Calendar")
         .flowScreenTitle("Calendar")
-        .sheet(item: $quickAddSheet) { sheet in
-            CalendarQuickAddSheetHost(sheet: sheet, anchorDate: anchorDate) {
-                quickAddSheet = nil
-            }
-        }
         .task(id: monthWindowKey) {
             flow?.refreshCalendarWindow(around: anchorDate)
         }
@@ -84,10 +78,10 @@ struct CalendarRootView: View {
     }
 
     private var header: some View {
-        HStack(spacing: FlowSpacing.s) {
+        HStack(spacing: FlowSpacing.xs) {
             Button { step(-1) } label: {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(FlowFont.caption.weight(.semibold))
                     .foregroundStyle(FlowTheme.tertiaryText(scheme))
             }
             .flowHitTarget()
@@ -100,10 +94,10 @@ struct CalendarRootView: View {
             } label: {
                 HStack(spacing: FlowSpacing.xs) {
                     Text(titleLabel)
-                        .font(.system(size: 17, weight: .heavy))
+                        .font(FlowFont.sectionTitle)
                         .foregroundStyle(FlowTheme.primaryText(scheme))
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(FlowFont.caption.weight(.bold))
                         .foregroundStyle(FlowTheme.tertiaryText(scheme))
                         .rotationEffect(.degrees(isPickingMonth ? 180 : 0))
                 }
@@ -121,23 +115,19 @@ struct CalendarRootView: View {
                 }
                 .font(FlowFont.caption.weight(.semibold))
                 .foregroundStyle(FlowTheme.accentText(scheme))
+                .flowHitTarget()
             }
 
             Button { step(1) } label: {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(FlowFont.caption.weight(.semibold))
                     .foregroundStyle(FlowTheme.tertiaryText(scheme))
             }
             .flowHitTarget()
             .accessibilityLabel("Next month")
-
-            CalendarQuickAddMenu(activeSheet: $quickAddSheet)
         }
-        .padding(.horizontal, FlowSpacing.m)
-        .padding(.vertical, FlowSpacing.s)
-        .flowGlass(radius: FlowRadius.pill)
         .padding(.horizontal, FlowSpacing.screen)
-        .padding(.vertical, FlowSpacing.s)
+        .padding(.vertical, FlowSpacing.xs)
         .animation(scopeChangeAnimation, value: isOnToday)
     }
 
