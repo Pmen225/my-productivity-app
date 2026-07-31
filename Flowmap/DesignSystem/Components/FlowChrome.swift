@@ -589,6 +589,7 @@ public struct FlowCreateSheet: View {
     /// same as duration and project start with a default rather than "none".
     @Binding private var hasDue: Bool
     @Binding private var dueDate: Date
+    @Binding private var preferredPeriod: DayPeriod
     @Binding private var recurrence: RecurrenceFrequency
     /// Subtask titles typed here before the task exists. Plain strings rather
     /// than `Subtask` models: nothing is inserted into the store until Create
@@ -609,6 +610,7 @@ public struct FlowCreateSheet: View {
     /// The subtask being typed. Local, because a half-typed row is not part of
     /// what the sheet is making until return commits it.
     @State private var draftSubtask = ""
+    @State private var alarmEnabled = false
 
     public init(
         kind: Binding<FlowCreateKind>,
@@ -617,6 +619,7 @@ public struct FlowCreateSheet: View {
         projectID: Binding<UUID?>,
         hasDue: Binding<Bool>,
         dueDate: Binding<Date>,
+        preferredPeriod: Binding<DayPeriod>,
         recurrence: Binding<RecurrenceFrequency>,
         subtaskTitles: Binding<[String]>,
         note: Binding<String>,
@@ -634,6 +637,7 @@ public struct FlowCreateSheet: View {
         self._projectID = projectID
         self._hasDue = hasDue
         self._dueDate = dueDate
+        self._preferredPeriod = preferredPeriod
         self._recurrence = recurrence
         self._subtaskTitles = subtaskTitles
         self._note = note
@@ -668,7 +672,9 @@ public struct FlowCreateSheet: View {
             kindPicker
             titleField
             if showsDurationAndProject {
-                durationSection
+                if kind != .task {
+                    durationSection
+                }
                 if !projects.isEmpty {
                     projectSection
                 }
@@ -677,8 +683,11 @@ public struct FlowCreateSheet: View {
             // or an initiative is the thing those hang off, not a unit of work.
             // A due date is the same: only a task is ever scheduled or dated.
             if kind == .task {
+                timeOfDaySection
                 dueSection
+                durationSection
                 repeatSection
+                alarmSection
                 subtasksSection
                 noteSection
             }
@@ -701,22 +710,31 @@ public struct FlowCreateSheet: View {
 
     private var header: some View {
         HStack {
-            Text("New")
-                .font(FlowFont.sectionTitle)
-                .foregroundStyle(FlowTheme.primaryText(scheme))
-                .accessibilityAddTraits(.isHeader)
-            Spacer()
             Button(action: onClose) {
                 Image(systemName: "xmark")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(FlowTheme.secondaryText(scheme))
+                    .flowHitTarget()
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Close")
+            Text(kind == .task ? "Add task" : "New")
+                .font(FlowFont.sectionTitle)
+                .foregroundStyle(FlowTheme.primaryText(scheme))
+                .accessibilityAddTraits(.isHeader)
+            Spacer()
+            Button(action: onCreate) {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? FlowTheme.tertiaryText(scheme) : FlowTheme.accent)
                     // HIG override 1: a 14pt glyph on its own reads well
                     // under 44pt — the tappable area is grown around it
                     // rather than the ✕ itself being scaled up.
                     .flowHitTarget()
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Close")
+            .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .accessibilityLabel("Create task")
         }
     }
 
@@ -744,9 +762,12 @@ public struct FlowCreateSheet: View {
 
     private var titleField: some View {
         TextField(kind.namePlaceholder, text: $title)
-            .font(FlowFont.cardTitle)
+            .font(FlowFont.body)
             .textFieldStyle(.plain)
-            .modifier(FieldChrome(scheme: scheme))
+            .padding(.horizontal, FlowSpacing.m)
+            .frame(minHeight: 52)
+            .background(RoundedRectangle(cornerRadius: FlowRadius.field, style: .continuous).fill(FlowTheme.surface(scheme)))
+            .overlay(RoundedRectangle(cornerRadius: FlowRadius.field, style: .continuous).strokeBorder(FlowTheme.separatorStrong(scheme), lineWidth: 1))
             .accessibilityLabel("\(kind.title) name")
     }
 
@@ -778,9 +799,14 @@ public struct FlowCreateSheet: View {
                 .font(FlowFont.secondary)
                 .submitLabel(.done)
                 .onSubmit(addDraftSubtask)
-                .modifier(FieldChrome(scheme: scheme))
+                .padding(.horizontal, FlowSpacing.m)
+                .frame(minHeight: 44)
+                .background(RoundedRectangle(cornerRadius: FlowRadius.field, style: .continuous).fill(FlowTheme.surface(scheme)))
+                .overlay(RoundedRectangle(cornerRadius: FlowRadius.field, style: .continuous).strokeBorder(FlowTheme.separator(scheme), style: StrokeStyle(lineWidth: 1, dash: [4, 4])))
                 .accessibilityLabel("Add a subtask")
         }
+        .padding(FlowSpacing.m)
+        .background(RoundedRectangle(cornerRadius: FlowRadius.medium, style: .continuous).fill(FlowTheme.surface(scheme)))
     }
 
     private var noteSection: some View {
@@ -789,7 +815,10 @@ public struct FlowCreateSheet: View {
             TextField("Optional note — attaches to this task…", text: $note, axis: .vertical)
                 .font(FlowFont.secondary)
                 .lineLimit(1...4)
-                .modifier(FieldChrome(scheme: scheme))
+                .padding(FlowSpacing.m)
+                .frame(minHeight: 76, alignment: .topLeading)
+                .background(RoundedRectangle(cornerRadius: FlowRadius.field, style: .continuous).fill(FlowTheme.surface(scheme)))
+                .overlay(RoundedRectangle(cornerRadius: FlowRadius.field, style: .continuous).strokeBorder(FlowTheme.separator(scheme), lineWidth: 1))
                 .accessibilityLabel("Note")
         }
     }
@@ -801,67 +830,117 @@ public struct FlowCreateSheet: View {
         draftSubtask = ""
     }
 
-    /// The wheel is still the same adjustable control; the prompt names the
-    /// time being priced without adding a second explanatory caption.
+    /// Duration stays a compact in-context choice so the sheet reads like a
+    /// Tiimo task card; the full focus wheel remains on the Focus surface.
     private var durationSection: some View {
-        VStack(alignment: .leading, spacing: FlowSpacing.s) {
-            FlowEyebrow("Worth · how much of your time?")
-            FlowDurationWheel(minutes: $minutes, options: durations)
+        rowLabel("Duration", symbol: "clock") {
+            Menu {
+                ForEach(durations, id: \.self) { value in
+                    Button {
+                        minutes = value
+                    } label: {
+                        Text(DurationFormatter.compact(minutes: value))
+                    }
+                }
+            } label: {
+                rowValue(DurationFormatter.compact(minutes: minutes))
+            }
         }
+    }
+
+    private var timeOfDaySection: some View {
+        rowLabel("Time of day", symbol: "clock") {
+            Menu {
+                ForEach(DayPeriod.allCases, id: \.self) { period in
+                    Button {
+                        preferredPeriod = period
+                    } label: {
+                        HStack {
+                            if period == preferredPeriod {
+                                Image(systemName: "checkmark")
+                            }
+                            Text(period.displayName)
+                        }
+                    }
+                }
+            } label: {
+                rowValue(preferredPeriod.displayName)
+            }
+        }
+    }
+
+    private var alarmSection: some View {
+        Toggle(isOn: $alarmEnabled) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Alarm").font(FlowFont.secondary)
+                Text("Keeps ringing until you respond")
+                    .font(FlowFont.caption)
+                    .foregroundStyle(FlowTheme.tertiaryText(scheme))
+            }
+        }
+        .tint(FlowTheme.accent)
+        .padding(.horizontal, FlowSpacing.m)
+        .frame(minHeight: 52)
+        .background(RoundedRectangle(cornerRadius: FlowRadius.field, style: .continuous).fill(FlowTheme.surface(scheme)))
+        .accessibilityHint("Alarm preference is not saved yet")
     }
 
     /// Mirrors `QuickAddTaskView.dateControl`: a collapsed, self-labelled
     /// control that expands into a date+time picker.
     private var dueSection: some View {
-        Group {
+        rowLabel("Date", symbol: "calendar") {
             if hasDue {
-                HStack(spacing: FlowSpacing.xs) {
-                    Image(systemName: "calendar").font(.system(size: 13, weight: .semibold))
-                    DatePicker("", selection: $dueDate, displayedComponents: [.date, .hourAndMinute])
-                        .labelsHidden()
-                    Button {
-                        hasDue = false
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Clear due date")
-                }
-                .foregroundStyle(FlowTheme.primaryText(scheme))
+                DatePicker("", selection: $dueDate, displayedComponents: [.date, .hourAndMinute])
+                    .labelsHidden()
             } else {
                 Button {
                     hasDue = true
                 } label: {
-                    HStack(spacing: FlowSpacing.xs) {
-                        Image(systemName: "calendar").font(.system(size: 13, weight: .semibold))
-                        Text("Due").font(FlowFont.caption.weight(.semibold))
-                    }
-                    .foregroundStyle(FlowTheme.primaryText(scheme))
+                    rowValue("Anytime")
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Add due date")
             }
         }
-        .padding(.horizontal, FlowSpacing.m)
-        .frame(minHeight: 44)
-        .background(Capsule().fill(FlowTheme.surfaceSunken(scheme)))
     }
 
     /// Same self-labelled control idiom as `dueSection` — one control, no
     /// eyebrow or explanatory caption.
     private var repeatSection: some View {
-        HStack(spacing: FlowSpacing.xs) {
-            Image(systemName: "repeat").font(.system(size: 13, weight: .semibold))
+        rowLabel("Repeat", symbol: "repeat") {
             Picker("Repeat", selection: $recurrence) {
                 ForEach(RecurrenceFrequency.allCases, id: \.self) { Text($0.displayName).tag($0) }
             }
             .pickerStyle(.menu)
             .labelsHidden()
         }
-        .foregroundStyle(FlowTheme.primaryText(scheme))
+    }
+
+    private func rowLabel<Content: View>(
+        _ title: String,
+        symbol: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        HStack(spacing: FlowSpacing.s) {
+            Label(title, systemImage: symbol)
+                .font(FlowFont.secondary)
+                .foregroundStyle(FlowTheme.primaryText(scheme))
+            Spacer(minLength: FlowSpacing.s)
+            content()
+        }
         .padding(.horizontal, FlowSpacing.m)
-        .frame(minHeight: 44)
-        .background(Capsule().fill(FlowTheme.surfaceSunken(scheme)))
+        .frame(minHeight: 52)
+        .background(RoundedRectangle(cornerRadius: FlowRadius.field, style: .continuous).fill(FlowTheme.surface(scheme)))
+        .overlay(RoundedRectangle(cornerRadius: FlowRadius.field, style: .continuous).strokeBorder(FlowTheme.separator(scheme), lineWidth: 1))
+    }
+
+    private func rowValue(_ value: String) -> some View {
+        Text(value)
+            .font(FlowFont.caption.weight(.semibold))
+            .foregroundStyle(FlowTheme.secondaryText(scheme))
+            .padding(.horizontal, FlowSpacing.s)
+            .padding(.vertical, FlowSpacing.xs)
+            .background(Capsule().fill(FlowTheme.surfaceSunken(scheme)))
     }
 
     private var projectSection: some View {

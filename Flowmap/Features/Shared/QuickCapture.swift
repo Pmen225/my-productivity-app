@@ -167,6 +167,7 @@ struct QuickCaptureView: View {
     @State private var projectID: UUID?
     @State private var hasDue = false
     @State private var dueDate = Date()
+    @State private var preferredPeriod: DayPeriod = .anytime
     @State private var recurrence: RecurrenceFrequency = .none
     @State private var subtaskTitles: [String] = []
     @State private var note = ""
@@ -188,6 +189,7 @@ struct QuickCaptureView: View {
             projectID: $projectID,
             hasDue: $hasDue,
             dueDate: $dueDate,
+            preferredPeriod: $preferredPeriod,
             recurrence: $recurrence,
             subtaskTitles: $subtaskTitles,
             note: $note,
@@ -224,6 +226,7 @@ struct QuickCaptureView: View {
                 dueDate: due,
                 project: project
             )
+            task.preferredPeriod = preferredPeriod
             task.recurrence = recurrence
             context.insert(task)
             attachSubtasks(to: task)
@@ -251,6 +254,7 @@ struct QuickCaptureView: View {
         initiativeID = nil
         hasDue = false
         dueDate = Date()
+        preferredPeriod = .anytime
         recurrence = .none
         dismiss()
     }
