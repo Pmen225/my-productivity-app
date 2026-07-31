@@ -51,7 +51,6 @@ public struct TaskListScreen: View {
     @State private var isAddingTask = false
     @State private var searchText = ""
     @State private var filterPriority: TaskPriority?
-    @State private var showEllipsisMenu = false
     @State private var showCreateList = false
     @State private var showEditLists = false
     @State private var showDuel = false
@@ -79,15 +78,6 @@ public struct TaskListScreen: View {
             .flowScreenTitle(source.title)
             .searchable(text: $searchText, placement: .automatic, prompt: "Search tasks")
             .toolbar { toolbarContent }
-            .popover(isPresented: $showEllipsisMenu) {
-                ListEllipsisMenu(
-                    isPresented: $showEllipsisMenu,
-                    currentGrouping: currentGrouping,
-                    onSelectGrouping: setGrouping,
-                    onCreateList: { showCreateList = true },
-                    onEditLists: { showEditLists = true }
-                )
-            }
             .sheet(isPresented: $showCreateList) { CreateListSheet() }
             .sheet(isPresented: $showEditLists) { EditListsView() }
             .sheet(isPresented: $showDuel) { PrioritiseDuelView(tasks: filteredTasks) }
@@ -240,12 +230,12 @@ public struct TaskListScreen: View {
         }
         #endif
         ToolbarItem(placement: .primaryAction) {
-            Button {
-                showEllipsisMenu = true
-            } label: {
-                Image(systemName: "ellipsis.circle")
-            }
-            .accessibilityLabel("List options")
+            ListEllipsisMenu(
+                currentGrouping: currentGrouping,
+                onSelectGrouping: setGrouping,
+                onCreateList: { showCreateList = true },
+                onEditLists: { showEditLists = true }
+            )
         }
     }
 

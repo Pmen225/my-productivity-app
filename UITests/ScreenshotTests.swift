@@ -76,6 +76,19 @@ final class ScreenshotTests: XCTestCase {
             return false
         }
         button.tap()
+        Thread.sleep(forTimeInterval: 0.6)
+        // A cold simulator launch can report the tab button as present before
+        // the first TabView transaction is ready to receive its accessibility
+        // tap. Retry the button's own centre once, then assert the outcome so
+        // a later screen cannot be photographed under the wrong filename.
+        if !button.isSelected {
+            button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            Thread.sleep(forTimeInterval: 0.8)
+        }
+        guard button.isSelected else {
+            XCTFail("Tab \(label) did not become selected after tapping")
+            return false
+        }
         Thread.sleep(forTimeInterval: 2.5)
         return true
     }
@@ -937,6 +950,58 @@ final class ScreenshotTests: XCTestCase {
         app.swipeUp()
         Thread.sleep(forTimeInterval: 1)
         capture(app, named: "iphone-stats-bottom")
+    }
+
+    /// The list actions must stay attached to the list that opened them. On a
+    /// compact iPhone, a custom `.popover` attached to the screen body adapts
+    /// into a blank sheet, so this captures the native `Menu` anchored to the
+    /// toolbar ellipsis and checks every top-level action is reachable.
+    func testCaptureListOptionsMenu() {
+        let app = launch()
+        guard tapTab(app, "Plan") else { return }
+
+        let personalList = app.buttons.matching(
+            NSPredicate(format: "label == 'Personal'")
+        ).firstMatch
+        guard personalList.waitForExistence(timeout: 8) else {
+            XCTFail("Seeded Personal list was not visible on Plan")
+            return
+        }
+        personalList.tap()
+
+        let listTitle = app.navigationBars["Personal"].firstMatch
+        guard listTitle.waitForExistence(timeout: 8) else {
+            XCTFail("Personal list did not open its task-list screen")
+            return
+        }
+
+        let options = app.buttons["List options"].firstMatch
+        guard options.waitForExistence(timeout: 5) else {
+            XCTFail("List options menu button was not reachable")
+            return
+        }
+        options.tap()
+
+        XCTAssertTrue(app.buttons["Create new list"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Edit lists"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Grouping options"].waitForExistence(timeout: 5))
+        capture(app, named: "iphone-list-options-menu")
+
+        app.buttons["Grouping options"].tap()
+        XCTAssertTrue(app.buttons["Priority"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Manual"].waitForExistence(timeout: 5))
+        app.buttons["Manual"].tap()
+
+        let optionsAfterGrouping = app.buttons["List options"].firstMatch
+        optionsAfterGrouping.tap()
+        app.buttons["Create new list"].tap()
+        XCTAssertTrue(app.navigationBars["New List"].waitForExistence(timeout: 5))
+        app.buttons["Cancel"].tap()
+
+        optionsAfterGrouping.tap()
+        app.buttons["Edit lists"].tap()
+        XCTAssertTrue(app.navigationBars["Edit Lists"].waitForExistence(timeout: 5))
+        app.buttons["Done"].tap()
     }
 
     /// Dark-scheme passes of the two signature screens, via the legacy
