@@ -286,10 +286,12 @@ struct FocusWheelView: View {
         )
 
         return HStack(spacing: FlowSpacing.xs) {
-            if !item.isActive {
-                Image(systemName: item.iconName)
-                    .font(.system(size: 11, weight: .semibold))
-            }
+            // The task icon belongs to the task block itself. Keep it in the
+            // active title slot (the separate floating centre icon is gone),
+            // while the explicit combined label remains the VoiceOver source.
+            Image(systemName: item.iconName)
+                .font(.system(size: 13, weight: .semibold))
+                .accessibilityHidden(true)
             Text(item.title)
                 .font(item.isActive ? FlowFont.wheelSegment : (label.isTight ? FlowFont.wheelSegmentCompact : FlowFont.wheelSegment))
                 .lineLimit(1)
@@ -304,7 +306,7 @@ struct FocusWheelView: View {
         // Keep the centre readout inside the hole. The ruler stays on its
         // fixed lower track, so a compact one-line title cannot collide with
         // its curved numerals.
-        .frame(width: item.isActive ? 112 : label.width)
+        .frame(width: item.isActive ? 136 : label.width)
         .clipped()
         .rotationEffect(.degrees(rotation))
         .position(position)
