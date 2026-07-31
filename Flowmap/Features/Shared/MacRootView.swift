@@ -86,6 +86,9 @@ struct MacRootView: View {
         .sheet(isPresented: $showingCapture) {
             QuickCaptureView()
         }
+        .sheet(item: rolloverReviewBinding) { _ in
+            RolloverReviewView()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .flowmapOpenDeepLink)) { notification in
             guard let request = notification.object as? DeepLinkRequest else { return }
             selection = destination(for: request.destination)
@@ -193,6 +196,15 @@ struct MacRootView: View {
         case .note: selection = .notes
         case .assistantThread: selection = .assistant
         }
+    }
+
+    private var rolloverReviewBinding: Binding<RolloverReview?> {
+        Binding(
+            get: { flow?.pendingRolloverReview },
+            set: { value in
+                if value == nil { flow?.pendingRolloverReview = nil }
+            }
+        )
     }
 }
 #endif

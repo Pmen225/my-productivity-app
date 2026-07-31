@@ -120,6 +120,9 @@ struct PhoneRootView: View {
         .sheet(isPresented: $showingToday) {
             NavigationStack { TodayView() }
         }
+        .sheet(item: rolloverReviewBinding) { _ in
+            RolloverReviewView()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .flowmapOpenDeepLink)) { notification in
             guard let request = notification.object as? DeepLinkRequest else { return }
             switch request.destination {
@@ -159,6 +162,15 @@ struct PhoneRootView: View {
         case .mapNode: tab = .map
         case .assistantThread: showingAssistant = true
         }
+    }
+
+    private var rolloverReviewBinding: Binding<RolloverReview?> {
+        Binding(
+            get: { flow?.pendingRolloverReview },
+            set: { value in
+                if value == nil { flow?.pendingRolloverReview = nil }
+            }
+        )
     }
 }
 

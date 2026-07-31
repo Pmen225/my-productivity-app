@@ -199,6 +199,44 @@ public enum SeedData {
         return workspace
     }
 
+    /// Creates one deterministic unfinished sealed-day task for the review
+    /// screenshot and UI smoke path. It is opt-in through a launch argument and
+    /// never runs during an ordinary user launch.
+    @MainActor
+    public static func loadRolloverReviewDemo(into context: ModelContext, settings: AppSettings) {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let sourceDay = calendar.date(byAdding: .day, value: -1, to: today) ?? today
+        let task = FlowTask(
+            title: "Review the unfinished brief",
+            status: .planned,
+            estimatedMinutes: 30,
+            sortOrder: 0
+        )
+        task.sealedForDay = sourceDay
+        task.hasBeenPlanned = true
+        context.insert(task)
+
+        let start = calendar.date(
+            bySettingHour: settings.workdayStartHour,
+            minute: settings.workdayStartMinute,
+            second: 0,
+            of: sourceDay
+        ) ?? sourceDay
+        context.insert(TaskSegment(
+            task: task,
+            startDate: start,
+            endDate: start.addingTimeInterval(30 * 60),
+            state: .scheduled,
+            source: .autoPlanned
+        ))
+        settings.sealedPlanDay = sourceDay
+        settings.lastRolloverReviewedDay = nil
+        settings.appearance = .light
+        settings.touch()
+        try? context.save()
+    }
+
     /// Removes demo content so the user can start clean.
     @MainActor
     public static func reset(in context: ModelContext, settings: AppSettings) {

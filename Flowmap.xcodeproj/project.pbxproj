@@ -81,6 +81,7 @@
 		561A9786DE4B16B112C91893 /* PrioritiseDuel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5551BB650F287F82F27DF2AB /* PrioritiseDuel.swift */; };
 		56832A79CB0A9D7204F891CA /* CalendarAccountRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CFB458CEA5ED386D8370B3E /* CalendarAccountRow.swift */; };
 		581D5696DFB74C3572E7BE82 /* DurationFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0445857E5428A7957338906D /* DurationFormatter.swift */; };
+		5A1C048D188AF97F62AD77D7 /* RolloverReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50E10EAFC9C5D75972C49D70 /* RolloverReviewView.swift */; };
 		5ABB4A31FC300FDCD6E5D5A9 /* CalendarWeeklyPlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46F53133461F55CE9BC41D66 /* CalendarWeeklyPlanView.swift */; };
 		5B3A7287C352C2AFF6FF7E78 /* AssistantConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E16183C63A9438933AF44DC5 /* AssistantConversationView.swift */; };
 		5C406986BC8715C793148098 /* LibraryAccordionRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B01CC2A253C9A5F0F98FF43 /* LibraryAccordionRow.swift */; };
@@ -185,6 +186,7 @@
 		E7A1FF167A20F7F770D00E97 /* LaunchUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40BA7D92EA187980C0530783 /* LaunchUITests.swift */; };
 		E81F69336C940567B5AF4569 /* Project.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCB88FF804A5D540239434E7 /* Project.swift */; };
 		E8846AFF0934BE3E42D3B0F4 /* ProjectTasksTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0F610FA9645988CDEAF350A /* ProjectTasksTab.swift */; };
+		EB43A8992CBC827068033CD2 /* SealedTodayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 428EAE8A07F31D396920A8A9 /* SealedTodayTests.swift */; };
 		EC6E77BFA296769C83BC262B /* AssistantThread.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E5DBB4D086FC56330264D5 /* AssistantThread.swift */; };
 		EDF00CC710C3D0A93FB5AC3A /* CalendarHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8915375C86D791354947538E /* CalendarHub.swift */; };
 		EE5F4CA0643C5BE019764BD3 /* CreateListSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20C468ABBC0E19C9A93FF318 /* CreateListSheet.swift */; };
@@ -295,6 +297,7 @@
 		3E1CD4B33B95F97E8D052535 /* WatchSyncPayloads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSyncPayloads.swift; sourceTree = "<group>"; };
 		40BA7D92EA187980C0530783 /* LaunchUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchUITests.swift; sourceTree = "<group>"; };
 		4106483AA8C1DD1D7FFA42A5 /* FlowMomentService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowMomentService.swift; sourceTree = "<group>"; };
+		428EAE8A07F31D396920A8A9 /* SealedTodayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SealedTodayTests.swift; sourceTree = "<group>"; };
 		42C7ACDC2383B2070CAE3863 /* QuickCommandParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickCommandParser.swift; sourceTree = "<group>"; };
 		44C495F40A7DD9C21174FB03 /* NoteBlock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteBlock.swift; sourceTree = "<group>"; };
 		456CAB4E8F890B1F08777A0F /* SmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmokeTests.swift; sourceTree = "<group>"; };
@@ -304,6 +307,7 @@
 		480665FD0AF4CF77A77B6D1E /* Spacing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Spacing.swift; sourceTree = "<group>"; };
 		4C48AC66A1C7F254B5B76F8B /* FlowmapWatchWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FlowmapWatchWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		501B9417F2666EAC5CF81025 /* Subtask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Subtask.swift; sourceTree = "<group>"; };
+		50E10EAFC9C5D75972C49D70 /* RolloverReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RolloverReviewView.swift; sourceTree = "<group>"; };
 		5551BB650F287F82F27DF2AB /* PrioritiseDuel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrioritiseDuel.swift; sourceTree = "<group>"; };
 		56CC30784A6DA0DA4A5838CB /* Flowmap.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Flowmap.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		57ABF4D658B9AFD07818B8CE /* SupportingEnums.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportingEnums.swift; sourceTree = "<group>"; };
@@ -455,6 +459,7 @@
 				86304997C9D32819EBDD206F /* ReviewRegressionTests.swift */,
 				EF2B89BC96D60401EE682049 /* ScheduleWordingTests.swift */,
 				2E31B3506918265E9FD29EFE /* SchedulingTests.swift */,
+				428EAE8A07F31D396920A8A9 /* SealedTodayTests.swift */,
 				456CAB4E8F890B1F08777A0F /* SmokeTests.swift */,
 				80319115A86F025106E5496C /* StatsTrackingTests.swift */,
 				14B4AE3AC055511103EDA15F /* TestSupport.swift */,
@@ -497,6 +502,7 @@
 				74CB887121BE85E2A4EB68B6 /* NoteAttachChip.swift */,
 				1910EFCFB759F0FA0C47D492 /* PhoneRootView.swift */,
 				D22693D164B2E1005B34F95C /* QuickCapture.swift */,
+				50E10EAFC9C5D75972C49D70 /* RolloverReviewView.swift */,
 				DCA70554D0B0A357184CF0E7 /* SmartView.swift */,
 			);
 			path = Shared;
@@ -1015,6 +1021,7 @@
 				86DE4BEBE5C4EAE1FD26C314 /* ReviewRegressionTests.swift in Sources */,
 				5025C02377C94EF22C395B6F /* ScheduleWordingTests.swift in Sources */,
 				DBCA770ED3DF5E69935F5826 /* SchedulingTests.swift in Sources */,
+				EB43A8992CBC827068033CD2 /* SealedTodayTests.swift in Sources */,
 				A8290C73E415F4AC1D6644C5 /* SmokeTests.swift in Sources */,
 				C0300AF93217F470BB904C18 /* StatsTrackingTests.swift in Sources */,
 				21C6297CD07A59A419A7F809 /* TestSupport.swift in Sources */,
@@ -1138,6 +1145,7 @@
 				AF774E1D7FD485D029C0CA87 /* QuickAddTaskView.swift in Sources */,
 				47A6582CA14AA9A3644403BA /* QuickCapture.swift in Sources */,
 				B4B0DF59CA95CACC3EA1C769 /* QuickCommandParser.swift in Sources */,
+				5A1C048D188AF97F62AD77D7 /* RolloverReviewView.swift in Sources */,
 				A931A5FB6FAB26DC4D526AFD /* RootView.swift in Sources */,
 				D66DBC98BC9703A6D42B7870 /* ScheduleWording.swift in Sources */,
 				4D04FBD68E348E3CBE1E112B /* SchedulingEngine.swift in Sources */,

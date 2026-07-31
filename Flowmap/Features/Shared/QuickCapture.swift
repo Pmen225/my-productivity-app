@@ -213,7 +213,10 @@ struct QuickCaptureView: View {
         switch kind {
         case .task:
             let project = projects.first { $0.id == projectID }
-            let due = hasDue ? dueDate : nil
+            let due = flow?.scheduling().dueDateForNewTask(
+                hasDue ? dueDate : nil,
+                now: flow?.now ?? Date()
+            )
             let task = FlowTask(
                 title: trimmed,
                 status: .inbox,

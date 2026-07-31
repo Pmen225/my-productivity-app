@@ -25,6 +25,15 @@ final class ScreenshotTests: XCTestCase {
         return app
     }
 
+    private func launchRolloverReview() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments += ["-flowmapSeedRolloverReview"]
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30))
+        Thread.sleep(forTimeInterval: 3)
+        return app
+    }
+
     private func capture(_ app: XCUIApplication, named name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name
@@ -485,6 +494,16 @@ final class ScreenshotTests: XCTestCase {
                 XCTFail("Start focus button not found")
             }
         }
+    }
+
+    func testCaptureRolloverReview() {
+        let app = launchRolloverReview()
+        let heading = app.staticTexts["Remaining tasks"].firstMatch
+        XCTAssertTrue(heading.waitForExistence(timeout: 10), "Rollover review did not open")
+        XCTAssertTrue(app.buttons["Tomorrow"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["More choices for Review the unfinished brief"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["I'm done reviewing"].firstMatch.waitForExistence(timeout: 5))
+        capture(app, named: "iphone-rollover-review")
     }
 
     /// Adds one quick task from the shell's floating create button, so the

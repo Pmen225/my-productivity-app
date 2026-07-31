@@ -18,7 +18,6 @@ struct FocusWheelSettingsSection: View {
                     visibleTasksRow(flow)
                     Toggle("Haptics", isOn: binding(flow, \.focusHapticsEnabled))
                     Toggle("Automatically start next task", isOn: binding(flow, \.autoStartNextTask))
-                    requeueRow(flow)
                     reducedMotionRow
                 }
             }
@@ -45,15 +44,6 @@ struct FocusWheelSettingsSection: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .accessibilityValue(flow.settings.wheelVisibility.announcement)
-        }
-    }
-
-    private func requeueRow(_ flow: AppEnvironment) -> some View {
-        VStack(alignment: .leading, spacing: FlowSpacing.xxs) {
-            Toggle("Prefer later today over tomorrow", isOn: binding(flow, \.requeuePrefersLaterToday))
-            Text("Unfinished work always gets requeued automatically — this only chooses where it goes first.")
-                .font(FlowFont.caption)
-                .foregroundStyle(FlowTheme.tertiaryText(scheme))
         }
     }
 

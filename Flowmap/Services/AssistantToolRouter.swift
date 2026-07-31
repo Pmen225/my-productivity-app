@@ -304,7 +304,10 @@ public struct AssistantToolRouter {
             title: title,
             priority: args.priority.flatMap(TaskPriority.init(rawValue:)) ?? .none,
             estimatedMinutes: args.minutes ?? flow.settings.defaultTaskMinutes,
-            dueDate: date(from: args.dueDateISO8601),
+            dueDate: flow.scheduling().dueDateForNewTask(
+                date(from: args.dueDateISO8601),
+                now: flow.now
+            ),
             project: project
         )
         context.insert(task)

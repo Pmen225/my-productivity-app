@@ -47,6 +47,11 @@ public final class AppSettings {
     /// Requeued work always goes somewhere; this only chooses *where first*.
     public var requeuePrefersLaterToday: Bool = true
     public var autoPlanOnAppOpen: Bool = false
+    /// Calendar day whose accepted plan is closed to spontaneous additions.
+    /// Optional keeps older CloudKit records valid while the boundary is introduced.
+    public var sealedPlanDay: Date? = nil
+    /// The most recent sealed day for which the compulsory review was finished.
+    public var lastRolloverReviewedDay: Date? = nil
 
     // Calendar
     public var calendarIntegrationEnabled: Bool = false

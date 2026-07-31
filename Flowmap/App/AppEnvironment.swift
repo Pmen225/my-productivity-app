@@ -43,6 +43,9 @@ public final class AppEnvironment {
 
     /// Banner shown after reconciliation moved work. Cleared when dismissed.
     public var requeueBanner: RequeueOutcome?
+    /// The compulsory end-of-day review. It is intentionally separate from the
+    /// non-blocking requeue banner so no tab can hide unfinished work.
+    public var pendingRolloverReview: RolloverReview?
     /// Undo handle for the most recent plan, offered right after applying it.
     public var lastPlanSnapshot: ScheduleSnapshot?
 
@@ -155,11 +158,16 @@ public final class AppEnvironment {
 
         refreshCalendarWindow(around: moment)
 
-        focusEngine.processElapsedSessionIfNeeded(now: moment)
-        focusEngine.checkVoiceAnnouncements(now: moment)
-
-        let outcomes = scheduling().reconcileMissedWork(now: moment)
-        if let first = outcomes.first { requeueBanner = first }
+        if pendingRolloverReview == nil {
+            if let review = scheduling().prepareRolloverReview(now: moment) {
+                pendingRolloverReview = review
+            } else {
+                focusEngine.processElapsedSessionIfNeeded(now: moment)
+                focusEngine.checkVoiceAnnouncements(now: moment)
+                let outcomes = scheduling().reconcileMissedWork(now: moment)
+                if let first = outcomes.first { requeueBanner = first }
+            }
+        }
 
         notificationService.rescheduleAll(
             segments: upcomingSegments(from: moment),
@@ -238,7 +246,51 @@ public final class AppEnvironment {
 
     public func applyPlan(_ proposal: PlanProposal, replanExisting: Bool = false) {
         let snapshot = scheduling().apply(proposal, replanExisting: replanExisting, for: now)
+        if !proposal.isEmpty {
+            scheduling().sealPlan(for: now)
+        }
         lastPlanSnapshot = snapshot
+        notificationService.rescheduleAll(
+            segments: upcomingSegments(from: now),
+            settings: settings
+        )
+    }
+
+    // MARK: - Sealed-day review
+
+    public func resolveRolloverItem(
+        _ itemID: UUID,
+        with resolution: RolloverResolution
+    ) {
+        guard var review = pendingRolloverReview,
+              let index = review.items.firstIndex(where: { $0.id == itemID }),
+              review.items[index].resolution == nil
+        else { return }
+
+        let taskID = review.items[index].taskID
+        let service = scheduling()
+        let succeeded: Bool
+        switch resolution {
+        case .tomorrow:
+            succeeded = service.moveRolloverTaskToTomorrow(
+                taskID: taskID,
+                sourceDay: review.sourceDay,
+                now: now
+            )
+        case .backlog:
+            succeeded = service.backlogRolloverTask(taskID: taskID)
+        case .deleted:
+            succeeded = service.deleteRolloverTask(taskID: taskID)
+        }
+        guard succeeded else { return }
+        review.items[index].resolution = resolution
+        pendingRolloverReview = review
+    }
+
+    public func finishRolloverReview() {
+        guard let review = pendingRolloverReview, review.isComplete else { return }
+        scheduling().finishRolloverReview(for: review.sourceDay)
+        pendingRolloverReview = nil
         notificationService.rescheduleAll(
             segments: upcomingSegments(from: now),
             settings: settings

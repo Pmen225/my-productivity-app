@@ -25,9 +25,11 @@ struct FlowmapApp: App {
                     UNUserNotificationCenter.current().delegate = notificationRouter
                     // Screenshot and demo runs seed themselves so the app is
                     // photographed with real content rather than empty states.
-                    if ProcessInfo.processInfo.arguments.contains("-flowmapSeedDemo") {
+                    if ProcessInfo.processInfo.arguments.contains("-flowmapSeedRolloverReview") {
+                        SeedData.loadRolloverReviewDemo(into: container.mainContext, settings: environment.settings)
+                    } else if ProcessInfo.processInfo.arguments.contains("-flowmapSeedDemo") {
                         SeedData.load(into: container.mainContext, settings: environment.settings)
-                        _ = environment.applyPlan(environment.planToday())
+                        environment.applyPlan(environment.planToday())
                     }
                     environment.reconcileOnActivation()
                     #if os(iOS)

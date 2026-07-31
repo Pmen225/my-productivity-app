@@ -9,6 +9,7 @@ import SwiftUI
 /// disclosure. There is never a permanent full-width "Add it to your list" row;
 /// this view only exists on screen while its parent's `+` has been pressed.
 public struct QuickAddTaskView: View {
+    @Environment(\.flow) private var flow
     @Environment(\.modelContext) private var context
     @Environment(\.colorScheme) private var scheme
     @Query(sort: \TaskList.sortOrder) private var lists: [TaskList]
@@ -376,7 +377,10 @@ public struct QuickAddTaskView: View {
             status: .inbox,
             priority: priority,
             estimatedMinutes: minutes,
-            dueDate: hasDate ? date : nil,
+            dueDate: flow?.scheduling().dueDateForNewTask(
+                hasDate ? date : nil,
+                now: flow?.now ?? Date()
+            ),
             list: list,
             project: project
         )
@@ -386,7 +390,10 @@ public struct QuickAddTaskView: View {
         task.minimumChunkMinutes = minimumChunkMinutes
         if hasEarliestStart { task.earliestStart = earliestStart }
         if hasLatestFinish { task.latestFinish = latestFinish }
-        if smartView == .today, !hasDate { task.isFlaggedForToday = true }
+        if smartView == .today, !hasDate,
+           !(flow?.scheduling().isPlanSealed(on: flow?.now ?? Date()) ?? false) {
+            task.isFlaggedForToday = true
+        }
 
         context.insert(task)
 

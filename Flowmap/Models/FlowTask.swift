@@ -34,6 +34,10 @@ public final class FlowTask {
     // Carryover metadata — surfaced as neutral copy, never as a scolding.
     public var carryoverCount: Int = 0
     public var lastCarriedAt: Date?
+    /// Set when this task belongs to the original plan for a sealed day.
+    public var sealedForDay: Date? = nil
+    /// Set once this task consumes one completion credit as a replacement.
+    public var admittedToSealedDay: Date? = nil
 
     // MARK: - Compulsory planning phase
 

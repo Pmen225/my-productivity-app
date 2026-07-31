@@ -64,6 +64,7 @@ public enum BackupService {
         public var colourToken: String, iconName: String, recurrenceFrequencyRaw: String
         public var isFlaggedForToday: Bool, completedAt: Date?
         public var carryoverCount: Int, lastCarriedAt: Date?
+        public var sealedForDay: Date?, admittedToSealedDay: Date?
         public var listID: UUID?, projectID: UUID?, workspaceID: UUID?
         public var createdAt: Date, updatedAt: Date
     }
@@ -190,6 +191,7 @@ public enum BackupService {
                     recurrenceFrequencyRaw: $0.recurrenceFrequencyRaw,
                     isFlaggedForToday: $0.isFlaggedForToday, completedAt: $0.completedAt,
                     carryoverCount: $0.carryoverCount, lastCarriedAt: $0.lastCarriedAt,
+                    sealedForDay: $0.sealedForDay, admittedToSealedDay: $0.admittedToSealedDay,
                     listID: $0.list?.id, projectID: $0.project?.id,
                     workspaceID: $0.workspace?.id, createdAt: $0.createdAt, updatedAt: $0.updatedAt
                 )
@@ -454,6 +456,8 @@ public enum BackupService {
                     model.completedAt = dto.completedAt
                     model.carryoverCount = dto.carryoverCount
                     model.lastCarriedAt = dto.lastCarriedAt
+                    model.sealedForDay = dto.sealedForDay
+                    model.admittedToSealedDay = dto.admittedToSealedDay
                     model.list = dto.listID.flatMap { lists[$0] }
                     model.project = dto.projectID.flatMap { projects[$0] }
                     model.workspace = dto.workspaceID.flatMap { workspaces[$0] }

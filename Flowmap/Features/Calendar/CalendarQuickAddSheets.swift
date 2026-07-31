@@ -67,6 +67,7 @@ struct CalendarQuickAddSheetHost: View {
 /// A plain task, unscheduled by default — it lands in the Inbox and gets
 /// planned like any other task. No segment is created here.
 private struct AddTaskSheet: View {
+    @Environment(\.flow) private var flow
     @Environment(\.modelContext) private var context
     let anchorDate: Date
     let onDismiss: () -> Void
@@ -110,7 +111,10 @@ private struct AddTaskSheet: View {
         let task = FlowTask(
             title: title.trimmingCharacters(in: .whitespacesAndNewlines),
             estimatedMinutes: estimatedMinutes,
-            dueDate: hasDueDate ? dueDate : nil,
+            dueDate: flow?.scheduling().dueDateForNewTask(
+                hasDueDate ? dueDate : nil,
+                now: flow?.now ?? Date()
+            ),
             workspace: nil
         )
         context.insert(task)

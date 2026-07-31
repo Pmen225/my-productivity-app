@@ -24,6 +24,52 @@ public struct RequeueOutcome: Identifiable, Sendable {
     }
 }
 
+/// The compulsory choices shown when a sealed day's unfinished work reaches
+/// the next day. This is value data rather than a SwiftData object so the
+/// review can survive presentation changes without retaining a model graph.
+public enum RolloverResolution: String, Sendable {
+    case tomorrow
+    case backlog
+    case deleted
+}
+
+public struct RolloverReviewItem: Identifiable, Sendable {
+    public let id: UUID
+    public let taskID: UUID
+    public let taskTitle: String
+    public let minutes: Int
+    public var resolution: RolloverResolution?
+
+    public init(
+        id: UUID = UUID(),
+        taskID: UUID,
+        taskTitle: String,
+        minutes: Int,
+        resolution: RolloverResolution? = nil
+    ) {
+        self.id = id
+        self.taskID = taskID
+        self.taskTitle = taskTitle
+        self.minutes = minutes
+        self.resolution = resolution
+    }
+}
+
+public struct RolloverReview: Identifiable, Sendable {
+    public let id: UUID
+    public let sourceDay: Date
+    public var items: [RolloverReviewItem]
+
+    public init(id: UUID = UUID(), sourceDay: Date, items: [RolloverReviewItem]) {
+        self.id = id
+        self.sourceDay = sourceDay
+        self.items = items
+    }
+
+    public var unresolvedCount: Int { items.count { $0.resolution == nil } }
+    public var isComplete: Bool { unresolvedCount == 0 }
+}
+
 /// Bridges the pure `SchedulingEngine` to the SwiftData store: reads the current
 /// schedule, applies proposals, undoes them, and reconciles missed work.
 @MainActor
@@ -103,6 +149,87 @@ public struct SchedulingService {
         return map
     }
 
+    // MARK: - Sealed-day policy
+
+    private func dayStart(_ date: Date) -> Date { calendar.startOfDay(for: date) }
+
+    private func sameDay(_ lhs: Date, _ rhs: Date) -> Bool {
+        calendar.isDate(lhs, inSameDayAs: rhs)
+    }
+
+    /// Whether an accepted plan has closed this calendar day to new work.
+    public func isPlanSealed(on day: Date) -> Bool {
+        guard let sealed = settings.sealedPlanDay else { return false }
+        return sameDay(sealed, day)
+    }
+
+    /// Records the boundary only after a plan has been accepted. Every task
+    /// already holding a block on that day becomes original sealed work.
+    public func sealPlan(for day: Date) {
+        let start = dayStart(day)
+        settings.sealedPlanDay = start
+        for task in allTasks() where task.liveSegments.contains(where: { sameDay($0.startDate, start) }) {
+            task.sealedForDay = start
+        }
+        settings.touch()
+        try? context.save()
+    }
+
+    /// A requested date that lands on a sealed day is moved to tomorrow. An
+    /// undated capture remains in Inbox, which is the deliberate backlog lane.
+    public func dueDateForNewTask(_ requested: Date?, now: Date) -> Date? {
+        guard let requested, isPlanSealed(on: now), sameDay(requested, now) else {
+            return requested
+        }
+        return calendar.date(byAdding: .day, value: 1, to: dayStart(now))
+    }
+
+    private func originalCompletionCredits(on day: Date) -> Int {
+        let originals = allTasks().filter {
+            guard let sealed = $0.sealedForDay else { return false }
+            return sameDay(sealed, day)
+        }
+        return originals.count { task in
+            task.status == .completed
+                || task.allSegmentsOrdered.contains {
+                    sameDay($0.startDate, day) && $0.state == .completed
+                }
+        }
+    }
+
+    private func consumedAdmissionCredits(on day: Date) -> Int {
+        allTasks().count {
+            guard let admitted = $0.admittedToSealedDay else { return false }
+            return sameDay(admitted, day)
+        }
+    }
+
+    private func admissionCredits(on day: Date) -> Int {
+        max(0, originalCompletionCredits(on: day) - consumedAdmissionCredits(on: day))
+    }
+
+    private func isOriginalOrAdmitted(_ task: FlowTask, on day: Date) -> Bool {
+        if let sealed = task.sealedForDay, sameDay(sealed, day) { return true }
+        if let admitted = task.admittedToSealedDay, sameDay(admitted, day) { return true }
+        return false
+    }
+
+    private func queueEnd(on day: Date, floor: Date?) -> Date {
+        let latest = allSegments()
+            .filter { $0.state.occupiesTimeline && sameDay($0.startDate, day) }
+            .map(\.endDate)
+            .max() ?? (floor ?? dayStart(day))
+        if let floor, latest < floor { return floor }
+        return latest
+    }
+
+    private func later(_ lhs: Date, than rhs: Date) -> Date { lhs > rhs ? lhs : rhs }
+
+    private func markAdmittedIfNeeded(_ task: FlowTask, on day: Date) {
+        guard isPlanSealed(on: day), !isOriginalOrAdmitted(task, on: day) else { return }
+        task.admittedToSealedDay = dayStart(day)
+    }
+
     // MARK: - Planning
 
     /// Builds a plan for `day` without writing anything.
@@ -150,16 +277,28 @@ public struct SchedulingService {
         // Tasks whose lifted segments now count as unscheduled again.
         let liftedMinutesByTask = liftedMinutes(for: movableSegmentIDs)
 
+        var reservedAdmissionCredits = admissionCredits(on: day)
+        var currentQueueEnd = queueEnd(on: day, floor: floor)
+
         for task in engine.candidates(from: allTasks(), on: day, now: now) {
+            let spontaneous = isToday && isPlanSealed(on: day) && !isOriginalOrAdmitted(task, on: day)
+            if spontaneous {
+                guard reservedAdmissionCredits > 0 else { continue }
+                reservedAdmissionCredits -= 1
+            }
             let outstanding = task.unscheduledMinutes + (liftedMinutesByTask[task.id] ?? 0)
             guard outstanding > 0 else { continue }
+
+            let taskFloor = spontaneous
+                ? later(currentQueueEnd, than: floor ?? dayStart)
+                : floor
 
             let result = place(
                 task: task,
                 outstandingMinutes: outstanding,
                 day: day,
                 busyByDay: &busyByDay,
-                notBefore: floor,
+                notBefore: taskFloor,
                 source: .autoPlanned,
                 startingSequenceIndex: task.liveSegments.count
             )
@@ -170,6 +309,9 @@ public struct SchedulingService {
                 proposal.unplaceable[task.id] = engine.unplaceableReason(
                     for: task, remainingMinutes: result.remainingMinutes
                 )
+            }
+            if spontaneous, let end = result.blocks.map(\.end).max() {
+                currentQueueEnd = later(currentQueueEnd, than: end)
             }
         }
 
@@ -264,6 +406,9 @@ public struct SchedulingService {
             context.insert(segment)
             created.insert(segment.id)
             if task.status == .inbox { task.status = .planned }
+            if isPlanSealed(on: day) {
+                markAdmittedIfNeeded(task, on: day)
+            }
         }
 
         // Saved first so pending deletes are actually applied: until then a
@@ -500,6 +645,156 @@ public struct SchedulingService {
         )
     }
 
+    // MARK: - Compulsory rollover review
+
+    /// Marks unfinished work from the sealed day as missed without placing a
+    /// continuation. The caller must present the returned choices before any
+    /// rollover is written, so the founder's no-silent-carry rule is preserved.
+    public func prepareRolloverReview(now: Date = Date()) -> RolloverReview? {
+        guard let sealedDay = settings.sealedPlanDay else { return nil }
+        let sourceDay = dayStart(sealedDay)
+        guard sourceDay < dayStart(now) else { return nil }
+        if let last = settings.lastRolloverReviewedDay, sameDay(last, sourceDay) {
+            return nil
+        }
+
+        let unfinishedStates: Set<SegmentState> = [.scheduled, .elapsed, .missed]
+        let tasks = allTasks().filter { task in
+            guard task.status.isOpen else { return false }
+            guard task.sealedForDay.map({ sameDay($0, sourceDay) }) == true
+                || task.admittedToSealedDay.map({ sameDay($0, sourceDay) }) == true
+            else { return false }
+            return task.allSegmentsOrdered.contains {
+                sameDay($0.startDate, sourceDay) && unfinishedStates.contains($0.state)
+            }
+        }
+
+        for task in tasks {
+            for segment in task.allSegmentsOrdered
+            where sameDay(segment.startDate, sourceDay) && segment.state == .scheduled {
+                segment.state = .missed
+            }
+        }
+        try? context.save()
+
+        guard !tasks.isEmpty else {
+            settings.lastRolloverReviewedDay = sourceDay
+            try? context.save()
+            return nil
+        }
+
+        return RolloverReview(
+            sourceDay: sourceDay,
+            items: tasks
+                .sorted { $0.createdAt < $1.createdAt }
+                .map { task in
+                    let minutes = task.allSegmentsOrdered
+                        .filter { sameDay($0.startDate, sourceDay) && unfinishedStates.contains($0.state) }
+                        .reduce(0) { $0 + $1.durationMinutes }
+                    return RolloverReviewItem(
+                        taskID: task.id,
+                        taskTitle: task.title,
+                        minutes: max(SchedulingEngine.snapMinutes, minutes)
+                    )
+                }
+        )
+    }
+
+    @discardableResult
+    public func moveRolloverTaskToTomorrow(
+        taskID: UUID,
+        sourceDay: Date,
+        now: Date = Date()
+    ) -> Bool {
+        guard let task = allTasks().first(where: { $0.id == taskID }) else { return false }
+        let source = dayStart(sourceDay)
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: source) ?? source
+        let unfinishedStates: Set<SegmentState> = [.scheduled, .elapsed, .missed]
+        let sourceSegments = task.allSegmentsOrdered.filter {
+            sameDay($0.startDate, source) && unfinishedStates.contains($0.state)
+        }
+        guard !sourceSegments.isEmpty else { return false }
+
+        let alreadyMoved = task.allSegmentsOrdered.contains {
+            $0.state.occupiesTimeline && $0.startDate >= tomorrow
+        }
+        if !alreadyMoved {
+            var busyByDay = busyMap(from: tomorrow, dayCount: Self.lookaheadDays)
+            let minutes = max(
+                SchedulingEngine.snapMinutes,
+                sourceSegments.reduce(0) { $0 + $1.durationMinutes }
+            )
+            let result = place(
+                task: task,
+                outstandingMinutes: minutes,
+                day: tomorrow,
+                busyByDay: &busyByDay,
+                notBefore: nil,
+                source: .carryover,
+                startingSequenceIndex: task.liveSegments.count
+            )
+            guard let first = result.blocks.first else {
+                task.status = .inbox
+                task.dueDate = tomorrow
+                task.isFlaggedForToday = false
+                try? context.save()
+                return true
+            }
+            for segment in sourceSegments { segment.state = .missed }
+            for block in result.blocks {
+                context.insert(TaskSegment(
+                    task: task,
+                    startDate: block.start,
+                    endDate: block.end,
+                    state: .scheduled,
+                    isLocked: false,
+                    sequenceIndex: block.sequenceIndex,
+                    source: .carryover,
+                    continuationOfSegmentID: sourceSegments.first?.id
+                ))
+            }
+            task.status = .planned
+            task.dueDate = tomorrow
+            task.isFlaggedForToday = false
+            task.carryoverCount += 1
+            task.lastCarriedAt = now
+            _ = first
+        } else {
+            task.dueDate = tomorrow
+            task.isFlaggedForToday = false
+        }
+        try? context.save()
+        return true
+    }
+
+    @discardableResult
+    public func backlogRolloverTask(taskID: UUID) -> Bool {
+        guard let task = allTasks().first(where: { $0.id == taskID }) else { return false }
+        for segment in task.allSegmentsOrdered where segment.state == .scheduled || segment.state == .elapsed || segment.state == .missed {
+            context.delete(segment)
+        }
+        task.status = .inbox
+        task.dueDate = nil
+        task.isFlaggedForToday = false
+        task.sealedForDay = nil
+        task.admittedToSealedDay = nil
+        try? context.save()
+        return true
+    }
+
+    @discardableResult
+    public func deleteRolloverTask(taskID: UUID) -> Bool {
+        guard let task = allTasks().first(where: { $0.id == taskID }) else { return false }
+        context.delete(task)
+        try? context.save()
+        return true
+    }
+
+    public func finishRolloverReview(for sourceDay: Date) {
+        settings.lastRolloverReviewedDay = dayStart(sourceDay)
+        try? context.save()
+    }
+
     // MARK: - Manual placement
 
     /// Whether a block may sit at `start` for `minutes`, ignoring itself.
@@ -531,6 +826,10 @@ public struct SchedulingService {
     ) -> TaskSegment? {
         let snapped = engine.snapNearest(start)
         let length = minutes ?? max(SchedulingEngine.snapMinutes, task.unscheduledMinutes)
+        if isPlanSealed(on: snapped), !isOriginalOrAdmitted(task, on: snapped) {
+            guard admissionCredits(on: snapped) > 0 else { return nil }
+            guard snapped >= queueEnd(on: snapped, floor: snapped) else { return nil }
+        }
         guard canPlace(minutes: length, at: snapped) else { return nil }
 
         let segment = TaskSegment(
@@ -543,6 +842,7 @@ public struct SchedulingService {
         )
         context.insert(segment)
         if task.status == .inbox { task.status = .planned }
+        markAdmittedIfNeeded(task, on: snapped)
         try? context.save()
         return segment
     }
@@ -570,13 +870,26 @@ public struct SchedulingService {
         let searchStart = calendar.date(byAdding: .day, value: -1, to: firstDay) ?? firstDay
         let map = busyMap(from: searchStart, dayCount: lookaheadDays + 1)
 
+        let sealedToday = isPlanSealed(on: now) && !isOriginalOrAdmitted(task, on: now)
+        let hasTodayAdmission = !sealedToday || admissionCredits(on: now) > 0
+        let todayFloor = sealedToday
+            ? later(now, than: queueEnd(on: now, floor: now))
+            : now
+
         for offset in 0..<lookaheadDays {
             guard let day = calendar.date(byAdding: .day, value: offset, to: firstDay) else { continue }
+            if offset == 0 && !hasTodayAdmission { continue }
             // Adjacent days too: a block starting yesterday can still be
             // running into this one, and busyMap buckets it under its start.
             let previous = calendar.date(byAdding: .day, value: -1, to: day) ?? day
             let busy = (map[day] ?? []) + (map[previous] ?? [])
-            let slots = engine.freeSlots(on: day, busy: busy, notBefore: offset == 0 ? now : nil)
+            let floor: Date?
+            if offset == 0 {
+                floor = sealedToday ? todayFloor : now
+            } else {
+                floor = nil
+            }
+            let slots = engine.freeSlots(on: day, busy: busy, notBefore: floor)
             for slot in slots {
                 guard let usable = engine.constrain(slot: slot, for: task, on: day),
                       usable.minutes >= minutes
