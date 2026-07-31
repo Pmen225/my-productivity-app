@@ -272,6 +272,33 @@ public enum FocusWheelGeometry {
         return span.start + (span.end - span.start) * fraction
     }
 
+    /// Position of a live ruler tick on the same clock-time axis as its task.
+    /// Elapsed minutes move clockwise away from the task's start; remaining
+    /// minutes therefore read from the left/past side toward zero on the right.
+    public static func bowlRulerAngle(
+        elapsedMinutes: Double,
+        activeStartMinutes: Double,
+        nowMinutes: Double
+    ) -> Double {
+        bottomAngle + (nowMinutes - (activeStartMinutes + elapsedMinutes)) * degreesPerMinute
+    }
+
+    /// The value printed beside a ruler major tick.
+    public static func bowlRulerRemaining(elapsedMinutes: Double, totalMinutes: Int) -> Int {
+        max(0, totalMinutes - Int(elapsedMinutes.rounded()))
+    }
+
+    /// Source-spec ruler cadence: zoom controls how much arithmetic is shown,
+    /// not the meaning of the clock. The close modes deliberately get fewer
+    /// labels as the ring opens out, while 5M exposes ten-second detail.
+    public static func bowlRulerMajorStep(radius: CGFloat) -> Int {
+        radius > 3_000 ? 1 : radius >= 900 ? 5 : radius >= 550 ? 10 : 15
+    }
+
+    public static func bowlRulerSubdivisions(radius: CGFloat) -> Int {
+        radius > 3_000 ? 6 : 1
+    }
+
     // MARK: - All-mode overview ring
     //
     // The mock's `All` view swaps the bowl for a small, fully-closed 360°

@@ -457,6 +457,35 @@ struct FocusWheelGeometryTests {
         #expect(zeroPoint.x > centre.x)
     }
 
+    @Test("The live ruler follows the task clock and counts down left to right")
+    func liveRulerUsesTaskTimeAxis() {
+        let start = 600.0
+        let now = 615.0
+        let full = FocusWheelGeometry.bowlRulerAngle(
+            elapsedMinutes: 0,
+            activeStartMinutes: start,
+            nowMinutes: now
+        )
+        let zero = FocusWheelGeometry.bowlRulerAngle(
+            elapsedMinutes: 30,
+            activeStartMinutes: start,
+            nowMinutes: now
+        )
+        #expect(full > FocusWheelGeometry.bottomAngle)
+        #expect(zero < FocusWheelGeometry.bottomAngle)
+        #expect(FocusWheelGeometry.bowlRulerRemaining(elapsedMinutes: 0, totalMinutes: 30) == 30)
+        #expect(FocusWheelGeometry.bowlRulerRemaining(elapsedMinutes: 30, totalMinutes: 30) == 0)
+    }
+
+    @Test("Ruler cadence follows the source zoom radii")
+    func rulerCadenceMatchesZoom() {
+        #expect(FocusWheelGeometry.bowlRulerMajorStep(radius: 9_311) == 1)
+        #expect(FocusWheelGeometry.bowlRulerSubdivisions(radius: 9_311) == 6)
+        #expect(FocusWheelGeometry.bowlRulerMajorStep(radius: 1_150) == 5)
+        #expect(FocusWheelGeometry.bowlRulerMajorStep(radius: 680) == 10)
+        #expect(FocusWheelGeometry.bowlRulerMajorStep(radius: 500) == 15)
+    }
+
     @Test("Overview labels disappear once a wedge is too narrow to hold one, rather than overlapping its neighbour")
     func overviewHidesLabelWhenArcTooShort() {
         let labelRadius: CGFloat = 100

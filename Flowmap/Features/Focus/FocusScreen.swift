@@ -333,33 +333,24 @@ struct FocusScreen: View {
 
     // MARK: - Centre
 
-    /// The dial keeps a calm, tactile centre: the task icon is a visual
-    /// anchor, the live readout stays available, and the same pause/start
-    /// control remains in the place the reference establishes.
+    /// The dial keeps one calm, tactile control in the centre. The task icon
+    /// belongs to the active ring block; repeating it here made the focus
+    /// state compete with itself and did not exist in the chosen reference.
     private var focusDialCentre: some View {
-        VStack(spacing: FlowSpacing.s) {
-            Image(systemName: activeTask?.iconName ?? "timer")
-                .font(.system(size: 23, weight: .medium))
+        Button {
+            if session == nil { startBestAvailable() }
+            else { engine?.togglePause(now: now) }
+        } label: {
+            Image(systemName: playPauseSymbol)
+                .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(FlowTheme.accentText(scheme))
-                .frame(width: 62, height: 62)
-                .background(Circle().fill(FlowTheme.surface(scheme)))
-                .shadow(color: FlowTheme.shadow(scheme), radius: 9, y: 4)
-                .accessibilityHidden(true)
-            Button {
-                if session == nil { startBestAvailable() }
-                else { engine?.togglePause(now: now) }
-            } label: {
-                Image(systemName: playPauseSymbol)
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(FlowTheme.accentText(scheme))
-                    .frame(width: FlowControlSize.hero, height: FlowControlSize.hero)
-                    .background(neumorphicDisc())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(playPauseLabel)
+                .frame(width: FlowControlSize.hero, height: FlowControlSize.hero)
+                .background(neumorphicDisc())
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel(playPauseLabel)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding(.top, FlowSpacing.s)
+        .padding(.top, FlowControlSize.hero + FlowSpacing.m)
         .accessibilityElement(children: .contain)
     }
 
