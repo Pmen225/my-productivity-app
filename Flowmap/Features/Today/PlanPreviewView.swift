@@ -86,9 +86,11 @@ struct PlanPreviewView: View {
                             }
                         }
                     }
+                    .scrollContentBackground(.hidden)
                 }
             }
             .navigationTitle("Plan my day")
+            .background(FlowTheme.background(scheme).ignoresSafeArea())
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
