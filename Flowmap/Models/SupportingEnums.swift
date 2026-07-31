@@ -296,14 +296,18 @@ public enum AppearanceMode: String, Codable, CaseIterable, Sendable {
 
 /// How many wheel segments the Focus screen reveals at once.
 public enum WheelVisibility: String, Codable, CaseIterable, Sendable {
-    // Declaration order is display order (`focus-wheel-spec.md` §1's chip
-    // row and both pickers iterate `allCases`): `5M` sits before `1` as the
-    // most zoomed-in step, `All` remains the most zoomed-out.
+    // Declaration order preserves the legacy bowl sequence for persisted data;
+    // the current circular dial uses `carouselModes` for its visible order.
     case fiveMinute = "fiveMinute"
     case one
     case two
     case three
     case all
+
+    /// The production carousel states exposed by the current circular dial.
+    /// `fiveMinute` remains in the model for legacy bowl geometry and persisted
+    /// data, but it is not a state the circular UI can display or select.
+    public static let carouselModes: [WheelVisibility] = [.one, .two, .three, .all]
 
     public var displayName: String {
         switch self {

@@ -401,6 +401,12 @@ struct FocusGateTests {
 
 @Suite("Focus wheel geometry")
 struct FocusWheelGeometryTests {
+    @Test("The circular dial exposes the same four states to chips and pinch")
+    func carouselModesExcludeLegacyFiveMinuteState() {
+        #expect(WheelVisibility.carouselModes == [.one, .two, .three, .all])
+        #expect(!WheelVisibility.carouselModes.contains(.fiveMinute))
+    }
+
     @Test("Close views keep the original bowl and zoom by radius")
     func closeModesUseOriginalBowlZoom() {
         let width: CGFloat = 375

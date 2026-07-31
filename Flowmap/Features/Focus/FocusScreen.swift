@@ -95,7 +95,12 @@ struct FocusScreen: View {
 
     private var hasAnythingToShow: Bool { session != nil || !queue.isEmpty }
 
-    private var visibility: WheelVisibility { flow?.settings.wheelVisibility ?? .two }
+    private var visibility: WheelVisibility {
+        let stored = flow?.settings.wheelVisibility ?? .two
+        // A previous bowl build could persist `5M`; the current circular dial
+        // has no visible 5M state, so fall back to the nearest exposed zoom.
+        return WheelVisibility.carouselModes.contains(stored) ? stored : .one
+    }
 
     /// The active task first, then the queue behind it, each carrying the
     /// clock time it starts. The time-based bowl needs every scheduled
@@ -237,7 +242,7 @@ struct FocusScreen: View {
             Text("View:")
                 .foregroundStyle(FlowTheme.secondaryText(scheme))
                 .fixedSize()
-            ForEach([WheelVisibility.one, .two, .three, .all], id: \.self) { mode in
+            ForEach(WheelVisibility.carouselModes, id: \.self) { mode in
                 if mode == .all {
                     Rectangle()
                         .fill(FlowTheme.separator(scheme))
@@ -640,7 +645,7 @@ struct FocusScreen: View {
     private var pinchGesture: some Gesture {
         MagnifyGesture(minimumScaleDelta: 0.08)
             .onChanged { value in
-                let modes = WheelVisibility.allCases
+                let modes = WheelVisibility.carouselModes
                 guard let baseIndex = modes.firstIndex(of: pinchBaseline) else { return }
                 // Spreading reveals more of the day; pinching narrows the focus.
                 let step = value.magnification > 1 ? 1 : -1
@@ -661,7 +666,7 @@ struct FocusScreen: View {
                 get: { visibility },
                 set: { setVisibility($0) }
             )) {
-                ForEach(WheelVisibility.allCases, id: \.self) { mode in
+                ForEach(WheelVisibility.carouselModes, id: \.self) { mode in
                     Text(mode.displayName).tag(mode)
                 }
             }
