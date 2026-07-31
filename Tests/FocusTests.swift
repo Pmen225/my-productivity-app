@@ -508,6 +508,13 @@ struct FocusWheelGeometryTests {
         ) == ruler.start)
     }
 
+    @Test("A narrow overview slice widens its inner ruler instead of crowding labels")
+    func narrowCarouselRulerGetsReadableArc() {
+        let ruler = FocusWheelGeometry.carouselRulerSpan(activeSpan: (start: 70, end: 110))
+        #expect(abs((ruler.end - ruler.start) - 180) < 0.0001)
+        #expect(abs((ruler.start + ruler.end) / 2 - 90) < 0.0001)
+    }
+
     @Test("Carousel ruler keeps one-minute ticks and bends labels tangentially")
     func carouselRulerCadenceAndCurve() {
         #expect(FocusWheelGeometry.carouselRulerTickStep(totalMinutes: 30) == 1)

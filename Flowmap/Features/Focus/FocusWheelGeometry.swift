@@ -119,10 +119,14 @@ public enum FocusWheelGeometry {
     }
 
     /// The ruler span is the active block's own span, except when that block
-    /// is the whole ring. In that case a 300° inner arc preserves the clear
-    /// countdown direction while the outer track remains a complete circle.
+    /// is too narrow to carry a readable scale. A wider inner arc preserves
+    /// the countdown direction while the outer overview ring remains intact.
     public static func carouselRulerSpan(activeSpan: (start: Double, end: Double)) -> (start: Double, end: Double) {
         let width = activeSpan.end - activeSpan.start
+        if width < 96 {
+            let centre = (activeSpan.start + activeSpan.end) / 2
+            return (centre - 90, centre + 90)
+        }
         guard width > 320 else { return activeSpan }
         let centre = (activeSpan.start + activeSpan.end) / 2
         return (centre - 150, centre + 150)

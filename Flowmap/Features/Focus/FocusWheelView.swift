@@ -257,7 +257,8 @@ struct FocusWheelView: View {
         // Keep the centre readout inside the hole. The ruler may pass above
         // that hole on a rotated slice, so a wide one-line title would collide
         // with its curved numerals.
-        .frame(maxWidth: item.isActive ? 124 : label.width)
+        .frame(width: item.isActive ? 112 : label.width)
+        .clipped()
         .rotationEffect(.degrees(rotation))
         .position(position)
         .accessibilityElement(children: .combine)
