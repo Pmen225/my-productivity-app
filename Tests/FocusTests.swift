@@ -408,6 +408,106 @@ struct FocusWheelGeometryTests {
         #expect(FocusWheelGeometry.visibleCount(for: .all, queueCount: 0) == 1)
     }
 
+    @Test("Close carousel views divide the ring into the requested visible blocks")
+    func carouselSlicesMatchZoom() {
+        let durations = [30, 20, 15]
+
+        for visibility in [WheelVisibility.one, .two, .three] {
+            let count = FocusWheelGeometry.visibleCount(
+                for: visibility,
+                queueCount: durations.count
+            )
+            let spans = (0..<count).map {
+                FocusWheelGeometry.carouselSpan(
+                    index: $0,
+                    visibility: visibility,
+                    durations: durations,
+                    rotation: 0
+                )
+            }
+            let widths = spans.map { $0.end - $0.start }
+
+            #expect(widths.allSatisfy { $0 > 0 })
+            if visibility == .one {
+                #expect(abs(widths[0] - 300) < 0.0001)
+            } else {
+                #expect(abs(widths.reduce(0, +) - 360) < 0.0001)
+            }
+        }
+    }
+
+    @Test("Carousel rotation advances every slice clockwise by one shared angle")
+    func carouselRotationIsSharedAndClockwise() {
+        let durations = [30, 20, 15]
+        let before = FocusWheelGeometry.carouselSpan(
+            index: 0,
+            visibility: .two,
+            durations: durations,
+            rotation: 0
+        )
+        let after = FocusWheelGeometry.carouselSpan(
+            index: 0,
+            visibility: .two,
+            durations: durations,
+            rotation: 18
+        )
+
+        #expect(abs((after.start - before.start) - 18) < 0.0001)
+        #expect(abs((after.end - before.end) - 18) < 0.0001)
+    }
+
+    @Test("Carousel ruler counts down from full duration on the left to zero on the right")
+    func carouselRulerCountsDownLeftToRight() {
+        let active = FocusWheelGeometry.carouselSpan(
+            index: 0,
+            visibility: .two,
+            durations: [30, 20],
+            rotation: 0
+        )
+        let full = FocusWheelGeometry.carouselRulerAngle(
+            minutesRemaining: 30,
+            totalMinutes: 30,
+            span: active
+        )
+        let zero = FocusWheelGeometry.carouselRulerAngle(
+            minutesRemaining: 0,
+            totalMinutes: 30,
+            span: active
+        )
+
+        #expect(abs(full - active.end) < 0.0001)
+        #expect(abs(zero - active.start) < 0.0001)
+
+        let centre = CGPoint(x: 100, y: 100)
+        let fullPoint = FocusWheelGeometry.point(centre: centre, radius: 50, angle: full)
+        let zeroPoint = FocusWheelGeometry.point(centre: centre, radius: 50, angle: zero)
+        #expect(fullPoint.x < centre.x)
+        #expect(zeroPoint.x > centre.x)
+    }
+
+    @Test("A full-ring carousel keeps a distinct inner ruler arc")
+    func fullRingRulerKeepsCountdownEnds() {
+        let full = FocusWheelGeometry.carouselSpan(
+            index: 0,
+            visibility: .all,
+            durations: [30],
+            rotation: 0
+        )
+        let ruler = FocusWheelGeometry.carouselRulerSpan(activeSpan: full)
+
+        #expect(ruler.end - ruler.start == 300)
+        #expect(FocusWheelGeometry.carouselRulerAngle(
+            minutesRemaining: 30,
+            totalMinutes: 30,
+            span: ruler
+        ) == ruler.end)
+        #expect(FocusWheelGeometry.carouselRulerAngle(
+            minutesRemaining: 0,
+            totalMinutes: 30,
+            span: ruler
+        ) == ruler.start)
+    }
+
     @Test("Overview spans divide the full circle proportionally to duration")
     func overviewSpansSumFullCircle() {
         let durations = [30, 60, 10, 20]

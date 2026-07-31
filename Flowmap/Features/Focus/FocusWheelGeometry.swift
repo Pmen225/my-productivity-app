@@ -81,6 +81,66 @@ public enum FocusWheelGeometry {
         return min(requested, available)
     }
 
+    // MARK: - Circular carousel
+
+    /// The close views are still the same dial at every zoom level: a true
+    /// annulus, with the fixed pointer at the bottom and the next block
+    /// entering from the right. Zoom changes how many blocks are allocated a
+    /// slice; it never changes the fact that the track closes into a circle.
+    public static func carouselSweep(for visibility: WheelVisibility, queueCount: Int) -> Double {
+        let count = visibleCount(for: visibility, queueCount: queueCount)
+        // A single visible block keeps a quiet free-space window so its ruler
+        // has distinct left and right ends instead of collapsing into a full
+        // 360° loop.
+        if count == 1 && visibility != .all { return 300 }
+        return 360 / Double(max(1, count))
+    }
+
+    /// The angular slice for a block after the carousel has turned clockwise
+    /// by `rotation`. `index == 0` is the active block at the pointer when the
+    /// task begins; positive rotation advances it past the pointer while the
+    /// next block arrives from the right.
+    public static func carouselSpan(
+        index: Int,
+        visibility: WheelVisibility,
+        durations: [Int],
+        rotation: Double
+    ) -> (start: Double, end: Double) {
+        guard durations.indices.contains(index) else { return (bottomAngle, bottomAngle) }
+
+        if visibility == .all {
+            let base = overviewSpan(index: index, durations: durations)
+            return (base.start + rotation, base.end + rotation)
+        }
+
+        let sweep = carouselSweep(for: visibility, queueCount: durations.count)
+        let centre = bottomAngle - Double(index) * sweep + rotation
+        return (centre - sweep / 2, centre + sweep / 2)
+    }
+
+    /// The ruler span is the active block's own span, except when that block
+    /// is the whole ring. In that case a 300° inner arc preserves the clear
+    /// countdown direction while the outer track remains a complete circle.
+    public static func carouselRulerSpan(activeSpan: (start: Double, end: Double)) -> (start: Double, end: Double) {
+        let width = activeSpan.end - activeSpan.start
+        guard width > 320 else { return activeSpan }
+        let centre = (activeSpan.start + activeSpan.end) / 2
+        return (centre - 150, centre + 150)
+    }
+
+    /// Maps minutes remaining onto the active block's ruler. Full duration is
+    /// always the left-hand end (the larger screen-space angle); zero is the
+    /// right-hand end, so the numbers read as a countdown.
+    public static func carouselRulerAngle(
+        minutesRemaining: Int,
+        totalMinutes: Int,
+        span: (start: Double, end: Double)
+    ) -> Double {
+        guard totalMinutes > 0 else { return span.start }
+        let fraction = min(1, max(0, Double(minutesRemaining) / Double(totalMinutes)))
+        return span.start + (span.end - span.start) * fraction
+    }
+
     // MARK: - Bottom-arc dial
     //
     // The mock's dial is a shallow bowl cut from a much larger, mostly

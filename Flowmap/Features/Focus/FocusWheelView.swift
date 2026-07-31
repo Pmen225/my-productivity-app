@@ -103,17 +103,12 @@ private struct BowlWedgeShape: Shape {
     }
 }
 
-/// The focus dial: a time-based bowl for every zoom level except `All`.
-/// The All overview remains its own duration-proportional ring.
+/// The focus dial: one canonical circular carousel at every zoom level.
 ///
-/// Every segment is placed by clock time under a fixed pointer at the
-/// bottom — as real time advances the whole ring of segments sweeps under
-/// it, so a segment already under way renders left of the pointer and one
-/// still to come renders right (`focus-wheel-spec.md` §2). Switching view
-/// modes changes only the ring's radius (`FocusWheelGeometry.bowlTargetRadius`)
-/// — the degrees-per-minute rate is constant across every view, so zooming
-/// never changes a segment's size relative to another, only how much of the
-/// day is visible through the fixed-width window.
+/// The active block starts under the fixed pointer, the next block is on the
+/// right, and the annulus turns clockwise as the active block's elapsed
+/// fraction advances. Zoom changes how many blocks get slices; it never turns
+/// the dial into a bowl or a partial arc.
 struct FocusWheelView: View {
     @Environment(\.colorScheme) private var scheme
 
@@ -132,11 +127,180 @@ struct FocusWheelView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            bowl(in: proxy.size)
+            carousel(in: proxy.size)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Focus wheel")
         .accessibilityHint("Pinch to zoom the circular carousel")
+    }
+
+    // MARK: - Circular carousel
+
+    private func carousel(in size: CGSize) -> some View {
+        // Use the available dial height so the ring reads as the primary
+        // control even while the checklist card is open. The old 180pt floor
+        // made a perfectly circular wheel look like a small status badge.
+        let diameter = min(size.width - FlowSpacing.l, max(200, size.height - 44))
+        let outerRadius = diameter / 2
+        let thickness = FocusWheelGeometry.ringThickness(for: diameter)
+        let innerRadius = outerRadius - thickness
+        // Lift the dial slightly so its lower edge remains clear of the
+        // checklist card while the circular control keeps its full diameter.
+        let centre = CGPoint(x: size.width / 2, y: size.height / 2 - 16)
+        let count = FocusWheelGeometry.visibleCount(for: visibility, queueCount: items.count)
+        let shown = Array(items.prefix(count))
+        let durations = shown.map(\.minutes)
+        let elapsed = activeElapsedFraction
+        let activeSweep = FocusWheelGeometry.carouselSweep(for: visibility, queueCount: max(1, items.count))
+        let rotation = elapsed * activeSweep
+
+        return ZStack {
+            Circle()
+                .stroke(FlowTheme.surfaceSunken(scheme), lineWidth: thickness)
+                .frame(width: diameter, height: diameter)
+                .position(centre)
+                .overlay {
+                    Circle()
+                        .stroke(FlowTheme.separator(scheme), lineWidth: 1)
+                        .frame(width: diameter, height: diameter)
+                        .position(centre)
+                }
+
+            ForEach(Array(shown.enumerated()), id: \.element.id) { index, item in
+                let span = FocusWheelGeometry.carouselSpan(
+                    index: index,
+                    visibility: visibility,
+                    durations: durations,
+                    rotation: rotation
+                )
+                let gap = FocusWheelGeometry.wedgeGap(itemCount: shown.count)
+                let wedge = WheelWedgeShape(
+                    startAngle: span.start + gap,
+                    endAngle: span.end - gap,
+                    thickness: thickness,
+                    radius: outerRadius,
+                    centre: centre
+                )
+
+                wedge
+                    .fill(item.isActive ? item.colour.softStrong : item.colour.soft)
+                    .overlay(wedge.stroke(FlowTheme.separatorStrong(scheme), lineWidth: 1))
+
+                carouselLabel(
+                    item: item,
+                    span: span,
+                    centre: centre,
+                    radius: outerRadius - 10,
+                    thickness: thickness
+                )
+            }
+
+            carouselRuler(
+                centre: centre,
+                innerRadius: innerRadius,
+                activeSpan: FocusWheelGeometry.carouselRulerSpan(
+                    activeSpan: FocusWheelGeometry.carouselSpan(
+                        index: 0,
+                        visibility: visibility,
+                        durations: durations.isEmpty ? [30] : durations,
+                        rotation: rotation
+                    )
+                ),
+                totalMinutes: max(1, items.first?.minutes ?? 30)
+            )
+            wheelPointer(centre: centre, radius: outerRadius)
+        }
+        .frame(width: size.width, height: size.height)
+        .animation(.easeOut(duration: 0.35), value: visibility)
+        .animation(.linear(duration: 1), value: nowMinutes)
+    }
+
+    private var activeElapsedFraction: Double {
+        guard let item = items.first, item.minutes > 0 else { return 0 }
+        return min(1, max(0, (nowMinutes - item.startMinutes) / Double(item.minutes)))
+    }
+
+    private func carouselLabel(
+        item: WheelItem,
+        span: (start: Double, end: Double),
+        centre: CGPoint,
+        radius: CGFloat,
+        thickness: CGFloat
+    ) -> some View {
+        let midAngle = (span.start + span.end) / 2
+        let position = item.isActive
+            ? CGPoint(x: centre.x, y: centre.y - 30)
+            : FocusWheelGeometry.point(centre: centre, radius: radius, angle: midAngle)
+        let rotation = item.isActive ? 0 : FocusWheelGeometry.readableRotation(atAngle: midAngle)
+        let label = FocusWheelGeometry.neighbourLabel(
+            spanDegrees: span.end - span.start,
+            midRadius: radius,
+            thickness: thickness
+        )
+
+        return HStack(spacing: FlowSpacing.xs) {
+            if !item.isActive {
+                Image(systemName: item.iconName)
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            Text(item.title)
+                .font(item.isActive ? FlowFont.wheelSegment : (label.isTight ? FlowFont.wheelSegmentCompact : FlowFont.wheelSegment))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+            if item.isActive {
+                Text(DurationFormatter.compact(minutes: item.minutes))
+                    .font(FlowFont.durationChip)
+                    .opacity(0.85)
+            }
+        }
+        .foregroundStyle(item.colour.onSoft)
+        .frame(maxWidth: item.isActive ? 160 : label.width)
+        .rotationEffect(.degrees(rotation))
+        .position(position)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(item.isActive ? "Now: \(item.title), \(DurationFormatter.spoken(minutes: item.minutes))" : "Next: \(item.title), \(DurationFormatter.spoken(minutes: item.minutes))")
+    }
+
+    private func carouselRuler(
+        centre: CGPoint,
+        innerRadius: CGFloat,
+        activeSpan: (start: Double, end: Double),
+        totalMinutes: Int
+    ) -> some View {
+        let step = totalMinutes > 60 ? 5 : 1
+        // Keep the ruler just inside the track. Task labels live on the outer
+        // band, leaving the centre hole calm enough for the play control.
+        let labelRadius = max(20, innerRadius + 8)
+        return ZStack {
+            ForEach(Array(stride(from: totalMinutes, through: 0, by: -step)), id: \.self) { remaining in
+                let angle = FocusWheelGeometry.carouselRulerAngle(
+                    minutesRemaining: remaining,
+                    totalMinutes: totalMinutes,
+                    span: activeSpan
+                )
+                let isMajor = remaining == totalMinutes || remaining == 0 || remaining % (step * 5) == 0
+                let from = FocusWheelGeometry.point(centre: centre, radius: innerRadius + 5, angle: angle)
+                let to = FocusWheelGeometry.point(centre: centre, radius: innerRadius + (isMajor ? 19 : 13), angle: angle)
+
+                Path { path in
+                    path.move(to: from)
+                    path.addLine(to: to)
+                }
+                .stroke(
+                    isMajor ? FlowTheme.accent.opacity(0.82) : FlowTheme.separatorStrong(scheme),
+                    lineWidth: isMajor ? 1.5 : 0.8
+                )
+
+                if isMajor {
+                    Text("\(remaining)")
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                        .position(FocusWheelGeometry.point(centre: centre, radius: labelRadius, angle: angle))
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityHidden(true)
     }
 
     // MARK: - Time-window bowl

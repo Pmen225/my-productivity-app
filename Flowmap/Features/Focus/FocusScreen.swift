@@ -178,27 +178,14 @@ struct FocusScreen: View {
             #endif
 
             ZStack {
-                Group {
-                    if visibility == .all {
-                        FocusWheelOverviewView(
-                            items: wheelItems,
-                            isSessionActive: session != nil,
-                            centreCountdownText: countdownMinutesText,
-                            centreCountdownAccessibilityLabel: countdownAccessibilityLabel
-                        )
-                    } else {
-                        FocusWheelView(
-                            items: wheelItems,
-                            progress: progress,
-                            activeID: wheelItems.first?.id,
-                            nowMinutes: nowMinutes,
-                            visibility: visibility
-                        )
-                    }
-                }
-                if visibility != .all {
-                    focusDialCentre
-                }
+                FocusWheelView(
+                    items: wheelItems,
+                    progress: progress,
+                    activeID: wheelItems.first?.id,
+                    nowMinutes: nowMinutes,
+                    visibility: visibility
+                )
+                focusDialCentre
             }
             .frame(width: dialWidth, height: dialHeight)
 
@@ -352,8 +339,8 @@ struct FocusScreen: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(playPauseLabel)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding(.top, FlowControlSize.hero + FlowSpacing.m)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .offset(y: -16)
         .accessibilityElement(children: .contain)
     }
 
