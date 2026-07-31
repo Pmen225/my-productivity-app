@@ -541,6 +541,27 @@ struct FocusWheelGeometryTests {
         #expect(abs((ruler.start + ruler.end) / 2 - 90) < 0.0001)
     }
 
+    @Test("The countdown ruler stays on the fixed lower pointer track")
+    func carouselRulerDoesNotFollowRotatingWedge() {
+        let ruler = FocusWheelGeometry.carouselRulerSpan(activeSpan: (start: 210, end: 390))
+        #expect(abs(ruler.start - 0) < 0.0001)
+        #expect(abs(ruler.end - 180) < 0.0001)
+
+        let full = FocusWheelGeometry.carouselRulerAngle(
+            minutesRemaining: 30,
+            totalMinutes: 30,
+            span: ruler
+        )
+        let zero = FocusWheelGeometry.carouselRulerAngle(
+            minutesRemaining: 0,
+            totalMinutes: 30,
+            span: ruler
+        )
+        let centre = CGPoint(x: 100, y: 100)
+        #expect(FocusWheelGeometry.point(centre: centre, radius: 50, angle: full).x < centre.x)
+        #expect(FocusWheelGeometry.point(centre: centre, radius: 50, angle: zero).x > centre.x)
+    }
+
     @Test("Carousel ruler keeps one-minute ticks and bends labels tangentially")
     func carouselRulerCadenceAndCurve() {
         #expect(FocusWheelGeometry.carouselRulerTickStep(totalMinutes: 30) == 1)

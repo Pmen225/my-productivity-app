@@ -118,18 +118,14 @@ public enum FocusWheelGeometry {
         return (centre - sweep / 2, centre + sweep / 2)
     }
 
-    /// The ruler span is the active block's own span, except when that block
-    /// is too narrow to carry a readable scale. A wider inner arc preserves
-    /// the countdown direction while the outer overview ring remains intact.
+    /// Keep the detailed countdown on the fixed lower inner track. The ring
+    /// may rotate, but the pointer and its ruler stay put so the scale always
+    /// reads like the original dial: full duration on the left, zero on the
+    /// right. A full overview ring gets a little more breathing room.
     public static func carouselRulerSpan(activeSpan: (start: Double, end: Double)) -> (start: Double, end: Double) {
         let width = activeSpan.end - activeSpan.start
-        if width < 96 {
-            let centre = (activeSpan.start + activeSpan.end) / 2
-            return (centre - 90, centre + 90)
-        }
-        guard width > 320 else { return activeSpan }
-        let centre = (activeSpan.start + activeSpan.end) / 2
-        return (centre - 150, centre + 150)
+        let halfSpan = width > 320 ? 150.0 : 90.0
+        return (bottomAngle - halfSpan, bottomAngle + halfSpan)
     }
 
     /// Maps minutes remaining onto the active block's ruler. Full duration is

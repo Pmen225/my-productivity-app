@@ -150,7 +150,10 @@ struct FocusWheelView: View {
         let count = FocusWheelGeometry.visibleCount(for: visibility, queueCount: items.count)
         let shown = Array(items.prefix(count))
         let durations = shown.map(\.minutes)
-        let elapsed = activeElapsedFraction
+        // A scheduled task is not elapsed until the focus session starts.
+        // Using wall-clock time here rotated an idle demo ring by a full slice
+        // before the user had pressed play.
+        let elapsed = min(1, max(0, progress))
         let activeSweep = FocusWheelGeometry.carouselSweep(for: visibility, queueCount: max(1, items.count))
         let rotation = elapsed * activeSweep
 
@@ -190,7 +193,7 @@ struct FocusWheelView: View {
                     item: item,
                     span: span,
                     centre: centre,
-                    radius: outerRadius - 10,
+                    radius: outerRadius - thickness / 2,
                     thickness: thickness
                 )
             }
@@ -212,12 +215,8 @@ struct FocusWheelView: View {
         }
         .frame(width: size.width, height: size.height)
         .animation(.easeOut(duration: 0.35), value: visibility)
-        .animation(.linear(duration: 1), value: nowMinutes)
-    }
-
-    private var activeElapsedFraction: Double {
-        guard let item = items.first, item.minutes > 0 else { return 0 }
-        return min(1, max(0, (nowMinutes - item.startMinutes) / Double(item.minutes)))
+        .animation(.linear(duration: 1), value: progress)
+        .animation(.easeInOut(duration: 0.35), value: activeID)
     }
 
     private func carouselLabel(
@@ -254,9 +253,9 @@ struct FocusWheelView: View {
             }
         }
         .foregroundStyle(item.colour.onSoft)
-        // Keep the centre readout inside the hole. The ruler may pass above
-        // that hole on a rotated slice, so a wide one-line title would collide
-        // with its curved numerals.
+        // Keep the centre readout inside the hole. The ruler stays on its
+        // fixed lower track, so a compact one-line title cannot collide with
+        // its curved numerals.
         .frame(width: item.isActive ? 112 : label.width)
         .clipped()
         .rotationEffect(.degrees(rotation))
