@@ -85,6 +85,41 @@ final class ScreenshotTests: XCTestCase {
         return true
     }
 
+    /// The Plan task surface is native horizontal paging. Its compact title
+    /// strip Menu is the deterministic tap alternative to a swipe, so this
+    /// helper verifies the page title after every route rather than assuming
+    /// a gesture reached the requested content.
+    private func selectPlanTaskPage(_ app: XCUIApplication, _ title: String) -> Bool {
+        let pickerCandidates = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Task page:'")
+        ).allElementsBoundByIndex
+        guard let picker = pickerCandidates.first(where: { $0.isHittable }) else {
+            XCTFail("Plan task page picker not found")
+            return false
+        }
+
+        if picker.label == "Task page: \(title)" { return true }
+
+        picker.tap()
+        let choice = app.buttons.matching(
+            NSPredicate(format: "label == %@", title)
+        ).allElementsBoundByIndex.first(where: { $0.isHittable })
+        guard let choice else {
+            XCTFail("Plan task page choice \(title) not found")
+            return false
+        }
+        choice.tap()
+
+        let outcome = app.buttons.matching(
+            NSPredicate(format: "label == %@", "Task page: \(title)")
+        ).allElementsBoundByIndex.first(where: { $0.isHittable })
+        guard outcome != nil else {
+            XCTFail("Plan task page did not switch to \(title)")
+            return false
+        }
+        return true
+    }
+
     func testCaptureEveryRequiredScreen() {
         let app = launch()
 
@@ -316,63 +351,20 @@ final class ScreenshotTests: XCTestCase {
         if tapTab(app, "Plan") {
             capture(app, named: "iphone-library")
 
-            // T6: TASKS rows expand in place now rather than pushing a
-            // screen. Two captures plus one behavioural check that must
-            // differ between them — an assertion that could pass in both
-            // states proves nothing, the mistake the calendar day-tap check
-            // shipped last session.
-            //
-            // The check counts rows rather than naming a demo task. Naming
-            // one ("Reading") failed at 20:44 against working code: the
-            // header read "0M free before 21:00", so the demo's auto-plan
-            // had no room left and Today legitimately held a single task.
-            // How much of the demo lands in Today is a function of the clock,
-            // so no fixed title is safe — but "expanding adds rows" is true
-            // whenever Today is non-empty, and its count is on screen to say
-            // whether it is.
-            capture(app, named: "iphone-plan-accordion-closed")
-
-            let todayRow = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Today'")).firstMatch
-            if todayRow.waitForExistence(timeout: 5) {
-                // The row's own accessibility label is "Today, <count>".
-                let todayCount = Int(
-                    todayRow.label.split(separator: ",").last?.trimmingCharacters(in: .whitespaces) ?? ""
-                ) ?? 0
-                // Compare the SET of visible labels, not how many there are.
-                // A count cannot see this: the list is already full, so
-                // unfolding one row pushes another off the bottom and 21 goes
-                // to 21 while the screen plainly changed. That is what failed
-                // at 20:19 against an app whose accordion was working —
-                // `iphone-plan-accordion-open.png` from the same run shows
-                // "Reading" sitting under Today. "free before" is skipped
-                // because it counts minutes down and would turn over on its
-                // own, passing this check without anything having expanded.
-                let visibleLabels = {
-                    Set(
-                        app.staticTexts.allElementsBoundByIndex
-                            .map(\.label)
-                            .filter { !$0.contains("free before") }
-                    )
-                }
-                let before = visibleLabels()
-
-                todayRow.tap()
-                Thread.sleep(forTimeInterval: 1)
-                capture(app, named: "iphone-plan-accordion-open")
-
-                if todayCount > 0 {
-                    XCTAssertFalse(
-                        visibleLabels().subtracting(before).isEmpty,
-                        "Expanding Today (count \(todayCount)) revealed no row that was not already on screen"
-                    )
-                }
-                // Collapse again so the rest of this run finds the screen in
-                // the same state later captures already assume.
-                todayRow.tap()
-                Thread.sleep(forTimeInterval: 0.5)
-            } else {
-                XCTFail("Today accordion row not found")
+            // T25 replaces TASKS accordions with six ordered peers. Capture
+            // each through the title-strip Menu rather than a coordinate
+            // swipe: the helper proves the selected page before its capture.
+            let taskPages = ["Inbox", "Today", "Upcoming", "Anytime", "All tasks", "Completed"]
+            for page in taskPages {
+                guard selectPlanTaskPage(app, page) else { continue }
+                Thread.sleep(forTimeInterval: 0.8)
+                let filename = page.lowercased().replacingOccurrences(of: " ", with: "-")
+                capture(app, named: "iphone-plan-tasks-\(filename)")
             }
+
+            // Restore Inbox before the remaining Plan interactions. This is
+            // an outcome-checked page change, not an assumed menu tap.
+            _ = selectPlanTaskPage(app, "Inbox")
 
             // Scrolled to the end, to prove the last row clears the floating
             // FAB and orb rather than sitting under them.

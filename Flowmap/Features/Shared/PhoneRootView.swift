@@ -460,6 +460,7 @@ struct LibraryView: View {
                             Text(candidate.title)
                         }
                     }
+                    .accessibilityIdentifier("task-page-\(candidate.rawValue)")
                 }
             } label: {
                 HStack(spacing: FlowSpacing.xs) {
