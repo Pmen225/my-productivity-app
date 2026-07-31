@@ -36,6 +36,12 @@ struct LibraryAccordionTests {
         #expect(LibraryView.taskPages.map(\.title) == ["Inbox", "Today", "Upcoming", "Anytime", "All tasks", "Completed"])
     }
 
+    @Test("Smart-view menu keeps the five views together and leaves Inbox outside")
+    func smartViewMenuPages() {
+        #expect(LibraryView.smartTaskPages.map(\.title) == ["Today", "Upcoming", "Anytime", "All tasks", "Completed"])
+        #expect(!LibraryView.smartTaskPages.contains(.inbox))
+    }
+
     @Test("Choosing a page changes current page once and is idempotent thereafter")
     func currentPageSelection() {
         let today = LibraryView.taskPageSelection(from: LibraryView.initialTaskPage, choosing: .today)

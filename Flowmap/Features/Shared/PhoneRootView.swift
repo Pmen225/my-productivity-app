@@ -217,6 +217,10 @@ struct LibraryView: View {
     /// Which BUILD and REVIEW accordions are open, keyed by a stable id per row.
     @State private var expandedRows: Set<String> = []
     @State private var taskPage: TaskPage = Self.initialTaskPage
+    /// Inbox remains the capture-first Plan surface. User lists are opened as
+    /// a separate paged surface so smart views never become swipe pages.
+    @State private var showingListCarousel = false
+    @State private var selectedListID: UUID?
     /// The prioritise duel and plan-preview sheets `PlanInboxSection`'s
     /// buttons trigger, hosted HERE rather than inside `PlanInboxSection`
     /// itself: `PlanInboxSection` is only one `Section` among several inside
@@ -268,6 +272,9 @@ struct LibraryView: View {
     }
 
     static let taskPages = TaskPage.allCases
+    /// The five smart destinations intentionally share one menu. Inbox is
+    /// the separate default capture button and is not a peer in this menu.
+    static let smartTaskPages: [TaskPage] = [.today, .upcoming, .anytime, .allTasks, .completed]
     static let initialTaskPage: TaskPage = .inbox
 
     /// Kept pure so the selected-page rule is covered without needing a
@@ -285,7 +292,7 @@ struct LibraryView: View {
     }
 
     var body: some View {
-        taskPager
+        planSurface
             .background(FlowTheme.background(scheme).ignoresSafeArea())
             // Named for the tab that reaches it (decision 1b), not for the type —
             // a screen titled "Library" under a tab labelled "Plan" reads as two
@@ -365,18 +372,78 @@ struct LibraryView: View {
     }
 
     @ViewBuilder
-    private var taskPager: some View {
+    private var planSurface: some View {
+        if showingListCarousel {
+            listCarousel
+        } else {
+            smartViewSurface
+        }
+    }
+
+    @ViewBuilder
+    private var smartViewSurface: some View {
         #if os(macOS)
         planList(for: taskPage)
         #else
-        TabView(selection: $taskPage) {
-            ForEach(Self.taskPages) { page in
-                planList(for: page)
-                    .tag(page)
+        planList(for: taskPage)
+        #endif
+    }
+
+    /// The only horizontal paging in Plan. Each page owns the vertical list
+    /// supplied by `TaskListScreen`; smart views are selected from the Menu
+    /// above instead of competing for the swipe gesture.
+    @ViewBuilder
+    private var listCarousel: some View {
+        if lists.isEmpty {
+            List {
+                Section {
+                    listTitleStrip
+                    emptyRow("No lists yet. Create one to start a focused list.")
+                    Button { showCreateList = true } label: {
+                        Label("New list", systemImage: "plus")
+                    }
+                    .tint(FlowTheme.accent)
+                }
+                .listRowBackground(FlowTheme.surface(scheme))
+            }
+            .scrollContentBackground(.hidden)
+        } else {
+            VStack(spacing: 0) {
+                listTitleStrip
+                #if os(macOS)
+                if let list = selectedList {
+                    TaskListScreen(source: .userList(list))
+                }
+                #else
+                TabView(selection: selectedListBinding) {
+                    ForEach(lists) { list in
+                        TaskListScreen(source: .userList(list))
+                            .tag(list.id)
+                            .accessibilityIdentifier("user-list-page-\(list.id.uuidString)")
+                    }
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                #endif
             }
         }
-        .tabViewStyle(.page(indexDisplayMode: .never))
-        #endif
+    }
+
+    private var selectedList: TaskList? {
+        guard let selectedListID else { return lists.first }
+        return lists.first(where: { $0.id == selectedListID }) ?? lists.first
+    }
+
+    private var selectedListBinding: Binding<UUID> {
+        Binding(
+            get: { selectedList?.id ?? UUID() },
+            set: { id in
+                if reduceMotion {
+                    selectedListID = id
+                } else {
+                    withAnimation(.snappy(duration: 0.24)) { selectedListID = id }
+                }
+            }
+        )
     }
 
     private func planList(for page: TaskPage) -> some View {
@@ -386,38 +453,9 @@ struct LibraryView: View {
             }
             .listRowBackground(Color.clear)
 
-            taskPageSection(page)
+            directListRoute
 
-            Section(header: sectionHeader("LISTS")) {
-                ForEach(lists) { list in
-                    NavigationLink {
-                        TaskListScreen(source: .userList(list))
-                    } label: {
-                        libraryLabel(list.name, symbol: list.iconName, token: list.colour)
-                    }
-                    #if os(iOS)
-                    .swipeActions(edge: .trailing) {
-                        // No `role: .destructive`: that role rebuilds the row as
-                        // the swipe closes, which resets state and silently drops
-                        // the confirmation (see TaskRowView). The tint carries
-                        // the same meaning.
-                        Button {
-                            pendingListDelete = list
-                        } label: {
-                            Label("Delete", systemImage: "trash")
-                        }
-                        .tint(FlowTheme.destructive)
-                    }
-                    #endif
-                }
-                Button {
-                    showCreateList = true
-                } label: {
-                    Label("New list", systemImage: "plus")
-                }
-                .tint(FlowTheme.accent)
-            }
-            .listRowBackground(FlowTheme.surface(scheme))
+            taskPageSection(page)
 
             Section(header: sectionHeader("BUILD")) {
                 projectsAccordion
@@ -446,50 +484,178 @@ struct LibraryView: View {
 
     // MARK: - TASKS pages
 
-    /// The title strip is intentionally a single native Menu rather than six
-    /// narrow buttons. Paging owns the swipe; the Menu gives the same ordered
-    /// destinations to a tap, VoiceOver and Dynamic Type without cramming the
-    /// strip or making small dots pretend to be controls.
+    /// Smart views are one native Menu. Inbox is deliberately a separate
+    /// 44pt capture button; it remains the default surface without becoming a
+    /// sixth menu item. Lists has its own title strip and page-style pager.
     private var taskPageTitleStrip: some View {
         HStack(spacing: FlowSpacing.m) {
-            Menu {
-                ForEach(Self.taskPages) { candidate in
-                    Button {
-                        selectTaskPage(candidate)
-                    } label: {
-                        if candidate == taskPage {
-                            Label(candidate.title, systemImage: "checkmark")
-                        } else {
-                            Text(candidate.title)
-                        }
-                    }
-                    .accessibilityIdentifier("task-page-\(candidate.rawValue)")
-                }
+            Button {
+                showingListCarousel = false
+                selectTaskPage(.inbox)
             } label: {
-                HStack(spacing: FlowSpacing.xs) {
-                    Text(taskPage.title)
-                        .font(FlowFont.cardTitle)
-                        .foregroundStyle(FlowTheme.primaryText(scheme))
-                    Image(systemName: "chevron.down")
-                        .font(FlowFont.caption.weight(.semibold))
-                        .foregroundStyle(FlowTheme.tertiaryText(scheme))
-                }
-                .frame(minHeight: 44)
-                .contentShape(Rectangle())
+                Text("Inbox")
+                    .font(taskPage == .inbox ? FlowFont.cardTitle : FlowFont.body)
+                    .foregroundStyle(taskPage == .inbox ? FlowTheme.primaryText(scheme) : FlowTheme.tertiaryText(scheme))
+                    .frame(minHeight: 44)
             }
-            .accessibilityLabel("Task page: \(taskPage.title)")
-            .accessibilityHint("Shows Inbox, Today, Upcoming, Anytime, All tasks and Completed")
+            .accessibilityLabel("Task page: Inbox")
+            .accessibilityHint("Opens the capture and triage page")
+
+            smartTaskMenu
 
             Spacer(minLength: FlowSpacing.s)
 
-            HStack(spacing: FlowSpacing.xxs) {
-                ForEach(Self.taskPages) { candidate in
-                    Circle()
-                        .fill(candidate == taskPage ? FlowTheme.accent : FlowTheme.separator(scheme))
-                        .frame(width: 6, height: 6)
+            Button {
+                showingListCarousel = true
+                if selectedListID == nil { selectedListID = lists.first?.id }
+            } label: {
+                Label("Lists", systemImage: "list.bullet")
+                    .labelStyle(.titleAndIcon)
+                    .font(FlowFont.body.weight(.semibold))
+                    .foregroundStyle(FlowTheme.primaryText(scheme))
+                    .frame(minHeight: 44)
+            }
+            .accessibilityLabel("Lists")
+            .accessibilityHint("Opens your lists and lets you swipe between them")
+
+        }
+    }
+
+    /// Keep one direct list route for existing workflows while the complete
+    /// user-list set remains owned by the carousel. Hosting this as a native
+    /// List row (rather than a clipped title-strip link) preserves its 44pt
+    /// hit target and existing navigation/options flow.
+    @ViewBuilder
+    private var directListRoute: some View {
+        if let firstList = lists.first {
+            Section {
+                NavigationLink {
+                    TaskListScreen(source: .userList(firstList))
+                } label: {
+                    libraryLabel(firstList.name, symbol: firstList.iconName, token: firstList.colour)
+                }
+                .accessibilityLabel(firstList.name)
+                .accessibilityHint("Opens this list")
+            }
+            .listRowBackground(FlowTheme.surface(scheme))
+        }
+    }
+
+    /// Quiet adjacent-name strip for the user-list pager. The Menu is the
+    /// direct-selection and VoiceOver path; the title buttons are a discoverable
+    /// visual hint that the content below is horizontally paged.
+    private var listTitleStrip: some View {
+        HStack(spacing: FlowSpacing.s) {
+            Button {
+                showingListCarousel = false
+                selectTaskPage(.inbox)
+            } label: {
+                Text("Inbox")
+                    .font(FlowFont.body)
+                    .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                    .frame(minHeight: 44)
+            }
+            .accessibilityLabel("Task page: Inbox")
+            smartTaskMenu
+
+            Menu {
+                ForEach(lists) { list in
+                    Button {
+                        selectList(list)
+                    } label: {
+                        Label(list.name, systemImage: list.id == selectedList?.id ? "checkmark" : list.iconName)
+                    }
+                    .accessibilityIdentifier("user-list-choice-\(list.id.uuidString)")
+                }
+                Divider()
+                Button { showCreateList = true } label: {
+                    Label("New list", systemImage: "plus")
+                }
+                if let list = selectedList {
+                    Button(role: .destructive) {
+                        pendingListDelete = list
+                    } label: {
+                        Label("Delete \(list.name)", systemImage: "trash")
+                    }
+                }
+            } label: {
+                Image(systemName: "list.bullet")
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("Choose list")
+            .accessibilityHint("Shows every user-created list")
+
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: FlowSpacing.m) {
+                        ForEach(lists) { list in
+                            Button {
+                                selectList(list)
+                            } label: {
+                                Text(list.name)
+                                    .font(list.id == selectedList?.id ? FlowFont.screenTitleCompact : FlowFont.cardTitle)
+                                    .foregroundStyle(list.id == selectedList?.id ? FlowTheme.primaryText(scheme) : FlowTheme.tertiaryText(scheme))
+                                    .lineLimit(1)
+                                    .frame(minHeight: 52)
+                            }
+                            .id(list.id)
+                            .accessibilityLabel("List: \(list.name)")
+                            .accessibilityValue(list.id == selectedList?.id ? "Selected" : "")
+                        }
+                    }
+                    .padding(.horizontal, FlowSpacing.xs)
+                }
+                .onChange(of: selectedList?.id) { _, id in
+                    guard let id else { return }
+                    withAnimation(reduceMotion ? nil : .snappy(duration: 0.24)) {
+                        proxy.scrollTo(id, anchor: .center)
+                    }
                 }
             }
-            .accessibilityHidden(true)
+        }
+        .padding(.horizontal, FlowSpacing.m)
+        .background(FlowTheme.background(scheme))
+    }
+
+    /// Shared smart-view menu, intentionally present in both Inbox/smart mode
+    /// and Lists mode so direct selection never depends on the current pager.
+    private var smartTaskMenu: some View {
+        Menu {
+            ForEach(Self.smartTaskPages) { candidate in
+                Button {
+                    showingListCarousel = false
+                    selectTaskPage(candidate)
+                } label: {
+                    if candidate == taskPage {
+                        Label(candidate.title, systemImage: "checkmark")
+                    } else {
+                        Text(candidate.title)
+                    }
+                }
+                .accessibilityIdentifier("smart-task-page-\(candidate.rawValue)")
+            }
+        } label: {
+            HStack(spacing: FlowSpacing.xs) {
+                Text(taskPage == .inbox ? "Views" : taskPage.title)
+                    .font(FlowFont.cardTitle)
+                    .foregroundStyle(FlowTheme.primaryText(scheme))
+                Image(systemName: "chevron.down")
+                    .font(FlowFont.caption.weight(.semibold))
+                    .foregroundStyle(FlowTheme.tertiaryText(scheme))
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .accessibilityLabel("Smart task views")
+        .accessibilityHint("Shows Today, Upcoming, Anytime, All tasks and Completed")
+    }
+
+    private func selectList(_ list: TaskList) {
+        if reduceMotion {
+            selectedListID = list.id
+        } else {
+            withAnimation(.snappy(duration: 0.24)) { selectedListID = list.id }
         }
     }
 

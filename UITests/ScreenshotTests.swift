@@ -1020,14 +1020,45 @@ final class ScreenshotTests: XCTestCase {
         let app = launch()
         guard tapTab(app, "Plan") else { return }
 
-        let personalList = app.buttons.matching(
-            NSPredicate(format: "label == 'Personal'")
-        ).firstMatch
-        guard personalList.waitForExistence(timeout: 8) else {
-            XCTFail("Seeded Personal list was not visible on Plan")
+        let listsButton = app.buttons["Lists"].firstMatch
+        guard listsButton.waitForExistence(timeout: 8) else {
+            XCTFail("Lists carousel button was not visible on Plan")
+            return
+        }
+        listsButton.tap()
+
+        let chooseList = app.buttons["Choose list"].firstMatch
+        guard chooseList.waitForExistence(timeout: 8) else {
+            XCTFail("Lists carousel did not expose its list menu")
+            return
+        }
+        chooseList.tap()
+        // The menu must actually be open; otherwise a tap can fall through to
+        // the underlying direct Personal row and give a false-positive route.
+        XCTAssertTrue(app.buttons["Delete Personal"].waitForExistence(timeout: 5))
+        capture(app, named: "iphone-list-carousel-menu")
+        let personalList = app.buttons["Personal"].firstMatch
+        guard personalList.waitForExistence(timeout: 5) else {
+            XCTFail("Seeded Personal list was not present in the list menu")
             return
         }
         personalList.tap()
+
+        // Return to the smart-view surface, then use the native row for the
+        // existing list-options flow. This keeps the carousel assertion above
+        // independent from the pushed TaskListScreen assertion below.
+        let inboxButton = app.buttons["Task page: Inbox"].firstMatch
+        guard inboxButton.waitForExistence(timeout: 5) else {
+            XCTFail("Inbox route was not reachable from the list carousel")
+            return
+        }
+        inboxButton.tap()
+        let directPersonal = app.buttons["Personal"].firstMatch
+        guard directPersonal.waitForExistence(timeout: 5) else {
+            XCTFail("Seeded Personal list row was not visible on Plan")
+            return
+        }
+        directPersonal.tap()
 
         let listTitle = app.navigationBars["Personal"].firstMatch
         guard listTitle.waitForExistence(timeout: 8) else {
