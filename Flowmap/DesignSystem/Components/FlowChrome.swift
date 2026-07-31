@@ -545,6 +545,10 @@ public struct FlowCreateSheet: View {
     @Binding private var title: String
     @Binding private var minutes: Int
     @Binding private var projectID: UUID?
+    /// Whether a due date is set at all — the sheet starts with no due date,
+    /// same as duration and project start with a default rather than "none".
+    @Binding private var hasDue: Bool
+    @Binding private var dueDate: Date
     /// Subtask titles typed here before the task exists. Plain strings rather
     /// than `Subtask` models: nothing is inserted into the store until Create
     /// is pressed, so an abandoned sheet leaves nothing behind.
@@ -570,6 +574,8 @@ public struct FlowCreateSheet: View {
         title: Binding<String>,
         minutes: Binding<Int>,
         projectID: Binding<UUID?>,
+        hasDue: Binding<Bool>,
+        dueDate: Binding<Date>,
         subtaskTitles: Binding<[String]>,
         note: Binding<String>,
         initiativeID: Binding<UUID?>,
@@ -584,6 +590,8 @@ public struct FlowCreateSheet: View {
         self._title = title
         self._minutes = minutes
         self._projectID = projectID
+        self._hasDue = hasDue
+        self._dueDate = dueDate
         self._subtaskTitles = subtaskTitles
         self._note = note
         self._initiativeID = initiativeID
@@ -624,7 +632,9 @@ public struct FlowCreateSheet: View {
             }
             // Only a task breaks into subtasks and carries a note — a project
             // or an initiative is the thing those hang off, not a unit of work.
+            // A due date is the same: only a task is ever scheduled or dated.
             if kind == .task {
+                dueSection
                 subtasksSection
                 noteSection
             }
@@ -754,6 +764,46 @@ public struct FlowCreateSheet: View {
                 .foregroundStyle(FlowTheme.primaryText(scheme))
             FlowDurationWheel(minutes: $minutes, options: durations)
         }
+    }
+
+    /// Mirrors `QuickAddTaskView.dateControl`: a collapsed pill that expands
+    /// into a date+time picker. Self-labelled like `durationSection` rather
+    /// than wrapped in an eyebrow — the mock puts the label on the control,
+    /// not above it.
+    private var dueSection: some View {
+        Group {
+            if hasDue {
+                HStack(spacing: FlowSpacing.xs) {
+                    Image(systemName: "calendar").font(.system(size: 13, weight: .semibold))
+                    DatePicker("", selection: $dueDate, displayedComponents: [.date, .hourAndMinute])
+                        .labelsHidden()
+                    Button {
+                        hasDue = false
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear due date")
+                }
+                .foregroundStyle(FlowTheme.primaryText(scheme))
+            } else {
+                Button {
+                    hasDue = true
+                } label: {
+                    HStack(spacing: FlowSpacing.xs) {
+                        Image(systemName: "calendar").font(.system(size: 13, weight: .semibold))
+                        Text("Due").font(FlowFont.caption.weight(.semibold))
+                    }
+                    .foregroundStyle(FlowTheme.primaryText(scheme))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Add due date")
+            }
+        }
+        .padding(.horizontal, FlowSpacing.m)
+        .frame(minHeight: 44)
+        .background(Capsule().fill(FlowTheme.surface(scheme)))
+        .overlay(Capsule().strokeBorder(FlowTheme.separator(scheme), lineWidth: 1))
     }
 
     private var projectSection: some View {

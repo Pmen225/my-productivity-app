@@ -137,6 +137,11 @@ public struct TaskRowView: View {
                 Text(due, style: .date)
                     .font(FlowFont.caption)
                     .foregroundStyle(FlowTheme.secondaryText(scheme))
+                if due != Calendar.current.startOfDay(for: due) {
+                    Text(due, style: .time)
+                        .font(FlowFont.caption)
+                        .foregroundStyle(FlowTheme.secondaryText(scheme))
+                }
             }
             if let upcoming = task.nextSegment(after: now) {
                 Label(

@@ -499,7 +499,7 @@ final class ScreenshotTests: XCTestCase {
     /// `TaskListScreen`'s "Add task" control — it drives the shared
     /// `FlowCreateSheet` instead, whose title field shares the exact same
     /// placeholder/label pair.
-    private func addQuickTask(_ app: XCUIApplication, title: String) {
+    private func addQuickTask(_ app: XCUIApplication, title: String, dueToday: Bool = false) {
         // Reach the create sheet by the SHELL's floating button. Plan used to
         // carry a duplicate "+" in its own toolbar, and the sheet it presented
         // — from `LibraryView`, inside a NavigationStack inside the TabView —
@@ -551,6 +551,19 @@ final class ScreenshotTests: XCTestCase {
         guard typed else {
             XCTFail("Quick capture title field never accepted text (value: \(String(describing: field.value)))")
             return
+        }
+        // T10's Due pill: one tap sets a due date defaulting to now, which
+        // lands the task in today's set — what the today-scoped duel needs.
+        if dueToday {
+            let duePill = app.buttons["Add due date"].firstMatch
+            if duePill.waitForExistence(timeout: 3) {
+                if !duePill.isHittable { app.swipeUp(); Thread.sleep(forTimeInterval: 0.4) }
+                duePill.tap()
+                Thread.sleep(forTimeInterval: 0.5)
+            } else {
+                XCTFail("Due pill not found on the create sheet")
+                return
+            }
         }
         // FlowCreateSheet's title field has no `.onSubmit` — unlike the old
         // QuickAddTaskView field, return does nothing here. Tap Create.
@@ -635,15 +648,18 @@ final class ScreenshotTests: XCTestCase {
         let app = launch()
         guard tapTab(app, "Plan") else { return }
 
-        // The demo's auto-plan at launch can leave the Inbox with fewer than
-        // two tasks, which hides the duel entry entirely — top up with two
-        // fresh ones so the entry point is guaranteed regardless.
-        addQuickTask(app, title: "Duel candidate A")
-        addQuickTask(app, title: "Duel candidate B")
+        // T19 scoped the duel to TODAY's tasks, so the top-up tasks must be
+        // due today (the Due pill defaults to now) — plain inbox tasks no
+        // longer qualify, and near the 21:00 cliff the demo's own today set
+        // can be thin.
+        addQuickTask(app, title: "Duel candidate A", dueToday: true)
+        addQuickTask(app, title: "Duel candidate B", dueToday: true)
 
-        let playButton = app.buttons["Play the game"].firstMatch
+        let playButton = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Prioritise today'")
+        ).firstMatch
         guard playButton.waitForExistence(timeout: 8) else {
-            XCTFail("Prioritise duel entry not found — inbox may hold fewer than two tasks")
+            XCTFail("Prioritise duel entry not found — today may hold fewer than two tasks")
             return
         }
         playButton.tap()

@@ -148,15 +148,15 @@ public struct TaskListScreen: View {
                 }
 
                 // Hosted here rather than on a dedicated "Plan" screen, which
-                // this app does not have — the Inbox listing is the closest
-                // equivalent to the design's inbox-triage destination. See
+                // this app does not have — the Today listing is where the
+                // duel's own set (today's open tasks) already lives. See
                 // `PrioritiseDuelView`'s header comment.
                 if isDuelAvailable {
                     SecondaryActionButton("Play the prioritise game", systemImage: "trophy") {
                         showDuel = true
                     }
                     .accessibilityLabel("Play the prioritise game")
-                    .accessibilityHint("Pick which of two inbox tasks comes first, repeated for every pair, then reorder the inbox by the result")
+                    .accessibilityHint("Pick which of two of today's tasks comes first, repeated for every pair, then reorder today by the result")
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
                 }
@@ -309,11 +309,13 @@ public struct TaskListScreen: View {
         return nil
     }
 
-    /// The prioritise duel only makes sense over the Inbox itself — Today,
-    /// Upcoming and user lists already have an order the duel would fight —
-    /// and only once there are at least two tasks to compare.
+    /// The prioritise duel operates on today's set, not the inbox — planning
+    /// must not require the game (state/specs/cognitive-profile.md, "product
+    /// thesis"); it only orders what's already lined up for today. Upcoming,
+    /// Anytime and user lists already have an order the duel would fight, and
+    /// it only has something to say once there are at least two tasks.
     private var isDuelAvailable: Bool {
-        guard case .smartView(.inbox) = source else { return false }
+        guard case .smartView(.today) = source else { return false }
         return PrioritiseDuel.isAvailable(for: filteredTasks.map(\.id))
     }
 

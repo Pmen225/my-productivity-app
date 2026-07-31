@@ -165,6 +165,8 @@ struct QuickCaptureView: View {
     @State private var title = ""
     @State private var minutes = 30
     @State private var projectID: UUID?
+    @State private var hasDue = false
+    @State private var dueDate = Date()
     @State private var subtaskTitles: [String] = []
     @State private var note = ""
     @State private var initiativeID: UUID?
@@ -183,6 +185,8 @@ struct QuickCaptureView: View {
             title: $title,
             minutes: $minutes,
             projectID: $projectID,
+            hasDue: $hasDue,
+            dueDate: $dueDate,
             subtaskTitles: $subtaskTitles,
             note: $note,
             initiativeID: $initiativeID,
@@ -207,18 +211,23 @@ struct QuickCaptureView: View {
         switch kind {
         case .task:
             let project = projects.first { $0.id == projectID }
+            let due = hasDue ? dueDate : nil
             let task = FlowTask(
                 title: trimmed,
                 status: .inbox,
                 estimatedMinutes: minutes,
+                dueDate: due,
                 project: project
             )
             context.insert(task)
             attachSubtasks(to: task)
             attachNote(to: task)
             // The mock says "Task added — Inbox + map"; nothing here puts it on
-            // the map, so the pill claims only what actually happened.
-            flow?.moments.show(.hud("Task added — Inbox"))
+            // the map, so the pill claims only what actually happened. A future
+            // due date routes the task into Upcoming instead of the Inbox
+            // (SmartView.upcoming matches dueDate >= tomorrow), so the HUD
+            // says where it actually went.
+            flow?.moments.show(.hud("Task added — \(destination(for: due))"))
         case .project:
             let project = Project(title: trimmed, sortOrder: projects.count)
             project.initiative = initiatives.first { $0.id == initiativeID }
@@ -234,7 +243,21 @@ struct QuickCaptureView: View {
         subtaskTitles = []
         note = ""
         initiativeID = nil
+        hasDue = false
+        dueDate = Date()
         dismiss()
+    }
+
+    /// Where a task with `due` actually lands, mirroring `SmartView`'s own
+    /// day-boundary logic (dueDate >= tomorrow is Upcoming; anything before
+    /// that, including today, is Today) so the HUD never claims a screen the
+    /// task will not actually appear on.
+    private func destination(for due: Date?) -> String {
+        guard let due else { return "Inbox" }
+        let calendar = Calendar.current
+        let now = flow?.now ?? Date()
+        let dayEnd = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now)) ?? now
+        return due >= dayEnd ? "Upcoming" : "Today"
     }
 
     private func attachSubtasks(to task: FlowTask) {

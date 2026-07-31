@@ -35,6 +35,15 @@ struct PlanInboxSection: View {
         SmartView.inbox.matches(allTasks)
     }
 
+    /// The duel's own set — today's open tasks (flagged, due, or scheduled
+    /// today), never the inbox. Planning must not require the game, so the
+    /// game is offered as a way to order what's already lined up for today,
+    /// not a gate in front of triage (state/specs/cognitive-profile.md,
+    /// "product thesis").
+    private var today: [FlowTask] {
+        SmartView.today.matches(allTasks, now: flow?.now ?? Date())
+    }
+
     var body: some View {
         Section {
             if inbox.isEmpty {
@@ -113,11 +122,13 @@ struct PlanInboxSection: View {
     }
 
     private var actions: some View {
-        VStack(spacing: FlowSpacing.s) {
-            // The duel only has something to say once there are two tasks to
-            // compare — the same rule `TaskListScreen` used before Plan existed.
-            if PrioritiseDuel.isAvailable(for: inbox.map(\.id)) {
-                SecondaryActionButton("Play the game", systemImage: "play.fill") {
+        // The duel only has something to say once there are two of today's
+        // tasks to compare — the same rule `TaskListScreen` used before Plan
+        // existed, now over today's set rather than the inbox.
+        let duelAvailable = PrioritiseDuel.isAvailable(for: today.map(\.id))
+        return VStack(spacing: FlowSpacing.s) {
+            if duelAvailable {
+                SecondaryActionButton("Prioritise today — play the game", systemImage: "play.fill") {
                     showingDuel = true
                 }
             }
@@ -125,6 +136,11 @@ struct PlanInboxSection: View {
             PrimaryActionButton("Start planning") {
                 planProposal = flow?.planToday(replanExisting: false)
                 showingPlanPreview = true
+            }
+            if duelAvailable {
+                Text("Optional — quick head-to-heads that set today's running order.")
+                    .font(FlowFont.caption)
+                    .foregroundStyle(FlowTheme.tertiaryText(scheme))
             }
         }
         .listRowBackground(Color.clear)

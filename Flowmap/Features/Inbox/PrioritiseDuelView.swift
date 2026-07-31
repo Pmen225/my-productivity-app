@@ -1,14 +1,19 @@
 import SwiftData
 import SwiftUI
 
-/// The prioritise duel: pairwise "which comes first?" picks over the inbox,
-/// then a medal-ranked reveal with two exits. See `state/specs/
+/// The prioritise duel: pairwise "which comes first?" picks over today's
+/// tasks, then a medal-ranked reveal with two exits. See `state/specs/
 /// design-inventory.md` §"Prioritise duel mini-game" for the design source.
+/// Deliberately optional — feedback tasks 18/19 (state/specs/
+/// cognitive-profile.md, "product thesis"): planning must not require the
+/// game, so it is offered as a way to order today, never a gate in front
+/// of it.
 ///
-/// Hosted as a sheet off `TaskListScreen`'s Inbox listing rather than a
-/// dedicated "Plan" screen — this app has no Plan destination, and building
-/// one is not this task. See that file's header comment for the reasoning,
-/// so a future Plan screen can be built around this view without moving it.
+/// Hosted as a sheet off `TaskListScreen`'s Today listing and
+/// `PlanInboxSection`'s own actions, rather than a dedicated "Plan" screen —
+/// this app has no Plan destination, and building one is not this task. See
+/// those files' header comments for the reasoning, so a future Plan screen
+/// can be built around this view without moving it.
 ///
 /// All pairing, tallying and ranking comes from `PrioritiseDuel` — this view
 /// only presents it and writes the result back to the store.
@@ -176,15 +181,15 @@ struct PrioritiseDuelView: View {
             }
 
             VStack(spacing: FlowSpacing.s) {
-                PrimaryActionButton("Plan in this order", systemImage: "checkmark.circle") {
+                PrimaryActionButton("Plan today in this order", systemImage: "checkmark.circle") {
                     applyOrder(andPlan: true)
                 }
-                .accessibilityLabel("Plan in this order")
-                .accessibilityHint("Reorders the inbox to this ranking and auto-plans it onto today")
+                .accessibilityLabel("Plan today in this order")
+                .accessibilityHint("Reorders today's tasks to this ranking and re-plans today, moving anything already scheduled")
                 SecondaryActionButton("Keep order, plan later") {
                     applyOrder(andPlan: false)
                 }
-                .accessibilityHint("Reorders the inbox to this ranking without scheduling anything")
+                .accessibilityHint("Reorders today's tasks to this ranking without scheduling anything")
             }
             .padding(.horizontal, FlowSpacing.screen)
             .padding(.bottom, FlowSpacing.l)
@@ -251,17 +256,18 @@ struct PrioritiseDuelView: View {
 
     /// Writes the ranked order back to `sortOrder`, exactly the field
     /// `TaskListScreen.move(_:from:to:)` already uses for manual reordering —
-    /// no second notion of task order. "Plan in this order" then hands off to
-    /// `AppEnvironment.planToday`/`applyPlan`, the same propose/apply pair the
-    /// Today screen's own auto-plan button uses, so this never runs a second
-    /// planner.
+    /// no second notion of task order. "Plan today in this order" then hands
+    /// off to `AppEnvironment.planToday`/`applyPlan` with `replanExisting:
+    /// true`, so the new order takes effect even on tasks today's auto-plan
+    /// already scheduled — the same propose/apply pair the Today screen's own
+    /// auto-plan button uses, so this never runs a second planner.
     private func applyOrder(andPlan shouldPlan: Bool) {
         for (index, task) in ranked.enumerated() {
             task.sortOrder = index
         }
         try? context.save()
         if shouldPlan, let flow {
-            flow.applyPlan(flow.planToday())
+            flow.applyPlan(flow.planToday(replanExisting: true))
         }
         dismiss()
     }

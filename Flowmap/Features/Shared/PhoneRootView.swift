@@ -343,7 +343,7 @@ struct LibraryView: View {
         // failure. That is how the duel silently stopped opening when T6
         // moved its entry point off `TaskListScreen`.
         .sheet(isPresented: $showingDuel) {
-            PrioritiseDuelView(tasks: SmartView.inbox.matches(allTasks))
+            PrioritiseDuelView(tasks: SmartView.today.matches(allTasks, now: flow?.now ?? Date()))
         }
         .sheet(isPresented: $showingPlanPreview) {
             PlanPreviewView(
