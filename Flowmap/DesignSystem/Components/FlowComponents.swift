@@ -134,12 +134,13 @@ public struct PrimaryActionButton: View {
         Button(action: action) {
             HStack(spacing: FlowSpacing.s) {
                 if let systemImage {
-                    Image(systemName: systemImage).font(.system(size: 15, weight: .semibold))
+                    Image(systemName: systemImage).font(FlowFont.cardTitle)
                 }
                 Text(title).font(FlowFont.cardTitle)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
+            .padding(.vertical, FlowSpacing.m)
+            .frame(minHeight: 44)
             .background(
                 RoundedRectangle(cornerRadius: FlowRadius.small, style: .continuous)
                     .fill(tint.opacity(isEnabled ? 1 : 0.4))
@@ -167,12 +168,13 @@ public struct SecondaryActionButton: View {
         Button(action: action) {
             HStack(spacing: FlowSpacing.xs) {
                 if let systemImage {
-                    Image(systemName: systemImage).font(.system(size: 13, weight: .medium))
+                    Image(systemName: systemImage).font(FlowFont.secondary)
                 }
                 Text(title).font(FlowFont.secondary)
             }
             .padding(.horizontal, FlowSpacing.m)
             .padding(.vertical, FlowSpacing.s)
+            .frame(minHeight: 44)
             .background(
                 RoundedRectangle(cornerRadius: FlowRadius.small, style: .continuous)
                     .fill(FlowTheme.separator(scheme).opacity(0.6))

@@ -40,7 +40,7 @@ struct PlanGateDialog: View {
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
 
-            subtaskList
+            subtaskListForPresentation
 
             if showsBlockedMessage {
                 Text(blockedMessage)
@@ -60,6 +60,21 @@ struct PlanGateDialog: View {
         // (written before this checklist existed) gets that text seeded as
         // its first subtask, so nothing anyone wrote is lost.
         .onAppear { seedSubtaskFromDefinitionOfDoneIfNeeded() }
+    }
+
+    /// The normal four-item checklist stays content-sized. Once it grows
+    /// beyond the founder's comparison limit, the list gets its own native
+    /// scroll region while the primary CTA remains pinned below it.
+    @ViewBuilder
+    private var subtaskListForPresentation: some View {
+        if task.orderedSubtasks.count > 4 {
+            ScrollView(.vertical) {
+                subtaskList
+            }
+            .frame(maxHeight: 280)
+        } else {
+            subtaskList
+        }
     }
 
     private func seedSubtaskFromDefinitionOfDoneIfNeeded() {

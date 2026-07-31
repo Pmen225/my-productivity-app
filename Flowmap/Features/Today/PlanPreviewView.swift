@@ -46,7 +46,19 @@ struct PlanPreviewView: View {
                         if !deferredTasks.isEmpty {
                             Section {
                                 ForEach(deferredTasks) { task in
-                                    Text(task.title).font(FlowFont.secondary)
+                                    FlowCard(padding: FlowSpacing.m, radius: FlowRadius.medium) {
+                                        Label(task.title, systemImage: "calendar.badge.clock")
+                                            .font(FlowFont.body)
+                                            .foregroundStyle(FlowTheme.primaryText(scheme))
+                                            .lineLimit(2)
+                                    }
+                                    .listRowInsets(EdgeInsets(
+                                        top: FlowSpacing.xs,
+                                        leading: FlowSpacing.screen,
+                                        bottom: FlowSpacing.xs,
+                                        trailing: FlowSpacing.screen
+                                    ))
+                                    .listRowBackground(Color.clear)
                                 }
                             } header: {
                                 FlowEyebrow("Moved to a later day")
@@ -55,9 +67,19 @@ struct PlanPreviewView: View {
                         if !proposal.unplaceable.isEmpty {
                             Section {
                                 ForEach(Array(proposal.unplaceable.values), id: \.self) { reason in
-                                    Text(reason)
-                                        .font(FlowFont.secondary)
-                                        .foregroundStyle(FlowTheme.secondaryText(scheme))
+                                    FlowCard(padding: FlowSpacing.m, radius: FlowRadius.medium) {
+                                        Label(reason, systemImage: "exclamationmark.triangle")
+                                            .font(FlowFont.body)
+                                            .foregroundStyle(FlowTheme.secondaryText(scheme))
+                                            .lineLimit(2)
+                                    }
+                                    .listRowInsets(EdgeInsets(
+                                        top: FlowSpacing.xs,
+                                        leading: FlowSpacing.screen,
+                                        bottom: FlowSpacing.xs,
+                                        trailing: FlowSpacing.screen
+                                    ))
+                                    .listRowBackground(Color.clear)
                                 }
                             } header: {
                                 FlowEyebrow("Could not be placed")
@@ -94,19 +116,33 @@ struct PlanPreviewView: View {
     @ViewBuilder
     private func planRow(for block: PlannedBlock) -> some View {
         let task = tasksByID[block.taskID]
-        HStack(spacing: FlowSpacing.s) {
-            Image(systemName: task?.iconName ?? "circle")
-                .foregroundStyle(task?.colour.onSoft ?? FlowTheme.accent)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(task?.title ?? "Task")
-                    .font(FlowFont.cardTitle)
-                Text(DurationFormatter.timeRange(from: block.start, to: block.end))
-                    .font(FlowFont.caption)
-                    .foregroundStyle(FlowTheme.secondaryText(scheme))
+        FlowCard(padding: FlowSpacing.m, radius: FlowRadius.medium) {
+            HStack(spacing: FlowSpacing.s) {
+                Image(systemName: task?.iconName ?? "circle")
+                    .font(FlowFont.body)
+                    .foregroundStyle(task?.colour.onSoft ?? FlowTheme.accent)
+                    .frame(width: FlowSpacing.xl, height: FlowSpacing.xl)
+                    .background(Circle().fill(task?.colour.soft ?? FlowTheme.separator(scheme).opacity(0.6)))
+                VStack(alignment: .leading, spacing: FlowSpacing.xs) {
+                    Text(task?.title ?? "Task")
+                        .font(FlowFont.body)
+                        .foregroundStyle(FlowTheme.primaryText(scheme))
+                        .lineLimit(2)
+                    Text(DurationFormatter.timeRange(from: block.start, to: block.end))
+                        .font(FlowFont.caption)
+                        .foregroundStyle(FlowTheme.secondaryText(scheme))
+                        .lineLimit(1)
+                }
+                Spacer(minLength: FlowSpacing.s)
+                DurationChip(minutes: block.minutes, tint: task?.colour)
             }
-            Spacer()
-            DurationChip(minutes: block.minutes, tint: task?.colour)
         }
-        .listRowBackground(FlowTheme.accent.opacity(0.08))
+        .listRowInsets(EdgeInsets(
+            top: FlowSpacing.xs,
+            leading: FlowSpacing.screen,
+            bottom: FlowSpacing.xs,
+            trailing: FlowSpacing.screen
+        ))
+        .listRowBackground(Color.clear)
     }
 }

@@ -19,6 +19,13 @@ public struct TaskRowView: View {
     @State private var showMoveDialog = false
     @State private var scheduleDate = Date()
 
+    private struct MetadataItem: Identifiable {
+        let id: String
+        let text: String
+        let systemImage: String?
+        let accessibilityLabel: String?
+    }
+
     public init(task: FlowTask, onDeleted: (() -> Void)? = nil) {
         self.task = task
         self.onDeleted = onDeleted
@@ -62,7 +69,7 @@ public struct TaskRowView: View {
                     systemImage: task.status == .completed ? "arrow.uturn.backward" : "checkmark"
                 )
             }
-            .tint(task.status == .completed ? .gray : .green)
+            .tint(task.status == .completed ? FlowTheme.tertiaryText(scheme) : FlowTheme.accentDeep)
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             // No `role: .destructive`: that role rebuilds the row as the swipe
@@ -79,13 +86,13 @@ public struct TaskRowView: View {
             } label: {
                 Label("Move", systemImage: "folder")
             }
-            .tint(.blue)
+            .tint(FlowTheme.accentDeep)
             Button {
                 showScheduler = true
             } label: {
                 Label("Schedule", systemImage: "calendar.badge.clock")
             }
-            .tint(.orange)
+            .tint(FlowTheme.accent)
         }
         #endif
         .contextMenu { contextMenuItems }
@@ -115,54 +122,68 @@ public struct TaskRowView: View {
     private var completeToggle: some View {
         Button(action: toggleComplete) {
             Image(systemName: task.status == .completed ? "checkmark.circle.fill" : "circle")
-                .font(.system(size: 20))
+                .font(FlowFont.body)
                 .foregroundStyle(task.colour.base.opacity(task.status == .completed ? 1 : 0.5))
         }
         .buttonStyle(.plain)
+        .frame(minWidth: 44, minHeight: 44, alignment: .leading)
         .accessibilityLabel(task.status == .completed ? "Completed" : "Mark complete")
     }
 
     // MARK: - Metadata line
 
     private var metadataLine: some View {
-        let now = flow?.now ?? Date()
-        return HStack(spacing: FlowSpacing.s) {
-            if task.priority != .none {
-                Image(systemName: task.priority.symbolName)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(FlowTheme.secondaryText(scheme))
-                    .accessibilityLabel("Priority \(task.priority.displayName)")
-            }
-            if let due = task.dueDate {
-                Text(due, style: .date)
-                    .font(FlowFont.caption)
-                    .foregroundStyle(FlowTheme.secondaryText(scheme))
-                if due != Calendar.current.startOfDay(for: due) {
-                    Text(due, style: .time)
-                        .font(FlowFont.caption)
-                        .foregroundStyle(FlowTheme.secondaryText(scheme))
+        HStack(spacing: FlowSpacing.s) {
+            ForEach(Array(metadataItems.prefix(2))) { item in
+                if let systemImage = item.systemImage {
+                    Label(item.text, systemImage: systemImage)
+                        .accessibilityLabel(item.accessibilityLabel ?? item.text)
+                } else {
+                    Text(item.text)
+                        .accessibilityLabel(item.accessibilityLabel ?? item.text)
                 }
             }
-            if let upcoming = task.nextSegment(after: now) {
-                Label(
-                    ScheduleWording.startLabel(upcoming.startDate, now: now, calendar: .current),
-                    systemImage: "calendar.badge.clock"
-                )
-                .font(FlowFont.caption)
-                .foregroundStyle(FlowTheme.secondaryText(scheme))
-            }
-            if let label = task.subtaskProgressLabel {
-                Label(label, systemImage: "checklist")
-                    .font(FlowFont.caption)
-                    .foregroundStyle(FlowTheme.secondaryText(scheme))
-            }
-            if let badge = task.liveSegments.first?.badgeText {
-                Text(badge)
-                    .font(FlowFont.caption)
-                    .foregroundStyle(FlowTheme.secondaryText(scheme))
-            }
         }
+        .font(FlowFont.caption)
+        .foregroundStyle(FlowTheme.secondaryText(scheme))
         .labelStyle(.titleAndIcon)
+        .lineLimit(1)
+        .truncationMode(.tail)
+    }
+
+    /// Keep the row to one calm metadata line. The first two facts are the
+    /// only ones that survive on a compact surface; the detail view remains
+    /// the place for the rest, per the spatial-economy rule.
+    private var metadataItems: [MetadataItem] {
+        let now = flow?.now ?? Date()
+        var items: [MetadataItem] = []
+        if task.priority != .none {
+            items.append(MetadataItem(
+                id: "priority",
+                text: task.priority.displayName,
+                systemImage: task.priority.symbolName,
+                accessibilityLabel: "Priority \(task.priority.displayName)"
+            ))
+        }
+        if let due = task.dueDate {
+            let isStartOfDay = due == Calendar.current.startOfDay(for: due)
+            let text = due.formatted(
+                date: .abbreviated,
+                time: isStartOfDay ? .omitted : .shortened
+            )
+            items.append(MetadataItem(id: "due", text: text, systemImage: "calendar", accessibilityLabel: "Due \(text)"))
+        }
+        if let upcoming = task.nextSegment(after: now) {
+            let label = ScheduleWording.startLabel(upcoming.startDate, now: now, calendar: .current)
+            items.append(MetadataItem(id: "scheduled", text: label, systemImage: "calendar.badge.clock", accessibilityLabel: label))
+        }
+        if let label = task.subtaskProgressLabel {
+            items.append(MetadataItem(id: "subtasks", text: label, systemImage: "checklist", accessibilityLabel: label))
+        }
+        if let badge = task.liveSegments.first?.badgeText {
+            items.append(MetadataItem(id: "carryover", text: badge, systemImage: nil, accessibilityLabel: badge))
+        }
+        return items
     }
 
     // MARK: - Context menu (both platforms)

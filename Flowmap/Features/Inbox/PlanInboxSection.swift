@@ -97,7 +97,7 @@ struct PlanInboxSection: View {
         guard let flow else { return "" }
         let free = flow.scheduling().freeMinutesRemainingToday(now: flow.now)
         let until = flow.settings.workdayEndLabel
-        return "\(DurationFormatter.compact(minutes: free)) free before \(until) · plan places tasks in the earliest slots"
+        return "\(DurationFormatter.compact(minutes: free)) free before \(until)"
     }
 
     // MARK: - Rows
@@ -112,6 +112,8 @@ struct PlanInboxSection: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { toggleEditor(for: task) }
+        .accessibilityHint("Shows task editing controls")
+        .accessibilityAction(named: "Edit task") { toggleEditor(for: task) }
     }
 
     /// The mock's in-row editor: rename, re-time, and place — the three things
