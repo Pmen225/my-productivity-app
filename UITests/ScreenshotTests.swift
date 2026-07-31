@@ -93,7 +93,7 @@ final class ScreenshotTests: XCTestCase {
         // the Map page rather than a destination, and T3 builds it.
         capture(app, named: "iphone-launch")
 
-        if tapTab(app, "Map + Today") {
+        if tapTab(app, "Map") {
             capture(app, named: "iphone-map")
 
             // The same destination's other pane, reached by the toggle in the

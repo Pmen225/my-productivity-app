@@ -60,7 +60,7 @@ struct PhoneRootView: View {
                 }
                 .contentMargins(.bottom, FlowSpacing.floatingControlsInset, for: .scrollContent)
                 .tabItem {
-                    Label("Map + Today", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
+                    Label("Map", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
                 }
                 .tag(DeepLink.map)
 
