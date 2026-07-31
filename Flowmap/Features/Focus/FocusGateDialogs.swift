@@ -6,6 +6,7 @@ import SwiftUI
 /// itself is the definition of done (feedback task 21).
 struct PlanGateDialog: View {
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.modelContext) private var context
     @Environment(\.flow) private var flow
 
@@ -67,7 +68,7 @@ struct PlanGateDialog: View {
     /// scroll region while the primary CTA remains pinned below it.
     @ViewBuilder
     private var subtaskListForPresentation: some View {
-        if task.orderedSubtasks.count > 4 {
+        if task.orderedSubtasks.count > 4 || dynamicTypeSize >= .accessibility1 {
             ScrollView(.vertical) {
                 subtaskList
             }
