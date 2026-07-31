@@ -10,6 +10,8 @@ public struct FocusTransition: Identifiable, Sendable {
     public let nextTaskTitle: String?
     /// Whether adding more time to the finished task is still possible.
     public let canExtend: Bool
+    /// The completed task that can receive one parked polish follow-up.
+    public let improvableTaskID: UUID?
 
     /// `Reading requeued for 20 minutes at 16:10`
     public var bannerText: String {
@@ -297,9 +299,13 @@ public final class FocusEngine {
         session.finish(outcome: .completed, at: now)
         _ = session.claimTransition()
 
+        var improvableTaskID: UUID?
         if let task = session.task {
             task.actualMinutes += session.actualMinutes
             task.markCompleted(at: now)
+            if task.status == .completed {
+                improvableTaskID = task.id
+            }
             moments?.show(.done(taskTitle: task.title))
             sounds.play(.chime, settings: settings)
             gamificationService().award(.taskCompleted(estimatedMinutes: task.estimatedMinutes))
@@ -309,7 +315,12 @@ public final class FocusEngine {
 
         activeSession = nil
         voiceService?.sessionEnded(sessionID: session.id)
-        advanceToNextTask(now: now, finishedTitle: title, requeue: nil)
+        advanceToNextTask(
+            now: now,
+            finishedTitle: title,
+            requeue: nil,
+            improvableTaskID: improvableTaskID
+        )
     }
 
     /// Completes only the task that owns the live focus session. This is the
@@ -461,7 +472,12 @@ public final class FocusEngine {
     }
 
     /// Rotates to the next scheduled task without asking a blocking question.
-    private func advanceToNextTask(now: Date, finishedTitle: String, requeue: RequeueOutcome?) {
+    private func advanceToNextTask(
+        now: Date,
+        finishedTitle: String,
+        requeue: RequeueOutcome?,
+        improvableTaskID: UUID? = nil
+    ) {
         let next = currentSegment(at: now)
         var nextTitle: String?
 
@@ -476,7 +492,8 @@ public final class FocusEngine {
             finishedTaskTitle: finishedTitle,
             requeue: requeue,
             nextTaskTitle: nextTitle,
-            canExtend: requeue != nil
+            canExtend: requeue != nil,
+            improvableTaskID: improvableTaskID
         )
         awardDayClearedIfNeeded(now: now)
     }
@@ -534,5 +551,50 @@ public final class FocusEngine {
         try? context.save()
         pendingTransition = nil
         awardDayClearedIfNeeded(now: Date())
+    }
+
+    /// Parks one optional polish pass for tomorrow, keeping today's sealed plan
+    /// unchanged. The title is deliberately explicit so it is recognisable in
+    /// the queue without adding another mode or a new piece of chrome.
+    @discardableResult
+    public func parkImprovement(for taskID: UUID, now: Date = Date()) -> FlowTask? {
+        let tasks = (try? context.fetch(FetchDescriptor<FlowTask>())) ?? []
+        guard let source = tasks.first(where: { $0.id == taskID }) else { return nil }
+        guard source.status == .completed else { return nil }
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now))
+            ?? now.addingTimeInterval(86_400)
+        let title = "Improve later · \(source.title)"
+
+        if let existing = tasks.first(where: {
+            $0.status.isOpen
+                && $0.title == title
+                && $0.dueDate.map { calendar.isDate($0, inSameDayAs: tomorrow) } == true
+        }) {
+            pendingTransition = nil
+            return existing
+        }
+
+        let followUp = FlowTask(
+            title: title,
+            details: "Follow-up to \(source.title)",
+            status: .planned,
+            priority: source.priority,
+            estimatedMinutes: source.estimatedMinutes,
+            dueDate: tomorrow,
+            colourToken: source.colourToken,
+            iconName: source.iconName,
+            sortOrder: source.sortOrder,
+            list: source.list,
+            project: source.project,
+            workspace: source.workspace
+        )
+        followUp.preferredPeriod = source.preferredPeriod
+        followUp.isSplittable = source.isSplittable
+        followUp.minimumChunkMinutes = source.minimumChunkMinutes
+        followUp.hasBeenPlanned = false
+        context.insert(followUp)
+        try? context.save()
+        pendingTransition = nil
+        return followUp
     }
 }

@@ -589,7 +589,12 @@ struct FocusScreen: View {
     }
 
     private func bannerActions(_ transition: FocusTransition) -> [(title: String, handler: () -> Void)] {
-        guard let requeue = transition.requeue else { return [] }
+        guard let requeue = transition.requeue else {
+            guard let taskID = transition.improvableTaskID else { return [] }
+            return [("Improve later", {
+                _ = engine?.parkImprovement(for: taskID, now: now)
+            })]
+        }
         var actions: [(String, () -> Void)] = [
             ("Undo", { engine?.undoRequeue(requeue) }),
             ("Done", { engine?.completeFromBanner(requeue) }),

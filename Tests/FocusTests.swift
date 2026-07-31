@@ -166,6 +166,32 @@ struct FocusEngineTests {
         #expect(task.actualMinutes == 20)
     }
 
+    @Test("Improve later parks one follow-up on tomorrow, never today")
+    func improveLaterParksTomorrowFollowUp() throws {
+        let world = try TestWorld()
+        let task = world.makeTask("Reading", minutes: 30, priority: .high)
+        let segment = world.makeSegment(for: task, start: world.date(hour: 9), minutes: 30)
+
+        let focus = engine(world)
+        _ = focus.start(segment: segment, now: world.date(hour: 9))
+        let finishedAt = world.date(hour: 9, minute: 20)
+        focus.completeCurrentTask(now: finishedAt)
+
+        #expect(focus.pendingTransition?.improvableTaskID == task.id)
+        let followUp = focus.parkImprovement(for: task.id, now: finishedAt)
+        #expect(followUp?.title == "Improve later · Reading")
+        #expect(followUp?.details == "Follow-up to Reading")
+        #expect(followUp?.status == .planned)
+        #expect(followUp?.dueDate.map { world.calendar.isDate($0, inSameDayAs: world.date(hour: 9, dayOffset: 1)) } == true)
+        #expect(followUp?.liveSegments.isEmpty == true)
+        #expect(focus.pendingTransition == nil)
+
+        let secondTap = focus.parkImprovement(for: task.id, now: finishedAt)
+        #expect(secondTap?.id == followUp?.id)
+        let allTasks = (try? world.context.fetch(FetchDescriptor<FlowTask>())) ?? []
+        #expect(allTasks.count == 2)
+    }
+
     @Test("Completing the final active checklist item follows the normal focus completion path")
     func finalChecklistItemCompletesActiveFocusTask() throws {
         let world = try TestWorld()
