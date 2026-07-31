@@ -45,6 +45,7 @@
 		2BE0B7DA91D9C890DFAC0972 /* GoogleOAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 015E051EF8CD81D0B32913D9 /* GoogleOAuth.swift */; };
 		2E7ABCA5900842AC26F437CD /* SeedData.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0FAB11E09F545922FCFD24E /* SeedData.swift */; };
 		2E965BD09B3B3B69DBC00521 /* TodayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3AEB805F6CB4CB81E1D2B34 /* TodayView.swift */; };
+		2F64E662B7E50878F8C5969F /* RecurrenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125AE5FD529AE0809A53AA6E /* RecurrenceTests.swift */; };
 		2FB2FC2461C9A79647E3170B /* Initiative.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000AB24E52FD4C0D5866003B /* Initiative.swift */; };
 		3122B8E3A06EA501A6325781 /* GamificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85B4135C8F542311B9A1D8BD /* GamificationService.swift */; };
 		332A3B718715C56035C5A7B9 /* FocusWheelSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4564C4E8A79E9FED86048C7 /* FocusWheelSettingsSection.swift */; };
@@ -251,6 +252,7 @@
 		06EE1F6A498560488D7AEFCE /* GoogleCalendarTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleCalendarTests.swift; sourceTree = "<group>"; };
 		09F2FF5B662A9FE14AB21800 /* FlowmapWatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FlowmapWatch.entitlements; sourceTree = "<group>"; };
 		0E981EB10C62939C283ED05E /* CloudSyncStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncStatus.swift; sourceTree = "<group>"; };
+		125AE5FD529AE0809A53AA6E /* RecurrenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurrenceTests.swift; sourceTree = "<group>"; };
 		12FB6F47260BEE53320D9F3C /* FlowChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowChrome.swift; sourceTree = "<group>"; };
 		1304A4AE2E3B366C873179AD /* NotificationSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSettingsSection.swift; sourceTree = "<group>"; };
 		13DAD95BC2D214E0815A432A /* PrioritiseDuelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrioritiseDuelTests.swift; sourceTree = "<group>"; };
@@ -444,6 +446,7 @@
 				7353BEE22AA834C41FDFC012 /* NotesAttachTests.swift */,
 				DA70316A2391B485D87D81F2 /* PlanNowTests.swift */,
 				13DAD95BC2D214E0815A432A /* PrioritiseDuelTests.swift */,
+				125AE5FD529AE0809A53AA6E /* RecurrenceTests.swift */,
 				86304997C9D32819EBDD206F /* ReviewRegressionTests.swift */,
 				EF2B89BC96D60401EE682049 /* ScheduleWordingTests.swift */,
 				2E31B3506918265E9FD29EFE /* SchedulingTests.swift */,
@@ -1001,6 +1004,7 @@
 				C2343E98F1C11700361C18C4 /* NotesAttachTests.swift in Sources */,
 				A9192EA8651F74C1E12B9E3B /* PlanNowTests.swift in Sources */,
 				734B624565723171BB7CDE4B /* PrioritiseDuelTests.swift in Sources */,
+				2F64E662B7E50878F8C5969F /* RecurrenceTests.swift in Sources */,
 				86DE4BEBE5C4EAE1FD26C314 /* ReviewRegressionTests.swift in Sources */,
 				5025C02377C94EF22C395B6F /* ScheduleWordingTests.swift in Sources */,
 				DBCA770ED3DF5E69935F5826 /* SchedulingTests.swift in Sources */,

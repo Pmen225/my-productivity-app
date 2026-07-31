@@ -126,21 +126,19 @@ struct PlanInboxSection: View {
         // tasks to compare — the same rule `TaskListScreen` used before Plan
         // existed, now over today's set rather than the inbox.
         let duelAvailable = PrioritiseDuel.isAvailable(for: today.map(\.id))
+        // Primary act first, optional game second, no caption — the founder's
+        // rule zero (state/specs/space-notes.md): a control that needs a
+        // caption is the wrong control, and the primary action leads.
         return VStack(spacing: FlowSpacing.s) {
-            if duelAvailable {
-                SecondaryActionButton("Prioritise today — play the game", systemImage: "play.fill") {
-                    showingDuel = true
-                }
-            }
             // Decision 12: the whole day is previewed before it moves.
             PrimaryActionButton("Start planning") {
                 planProposal = flow?.planToday(replanExisting: false)
                 showingPlanPreview = true
             }
             if duelAvailable {
-                Text("Optional — quick head-to-heads that set today's running order.")
-                    .font(FlowFont.caption)
-                    .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                SecondaryActionButton("Prioritise today — play the game", systemImage: "play.fill") {
+                    showingDuel = true
+                }
             }
         }
         .listRowBackground(Color.clear)

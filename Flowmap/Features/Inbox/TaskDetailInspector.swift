@@ -85,6 +85,14 @@ public struct TaskDetailInspector: View {
                 FlowEyebrow("Project")
             }
 
+            Section {
+                Picker("Repeat", selection: $task.recurrence) {
+                    ForEach(RecurrenceFrequency.allCases, id: \.self) { Text($0.displayName).tag($0) }
+                }
+            } header: {
+                FlowEyebrow("Repeat")
+            }
+
             scheduleSection
             subtasksSection
             linkedMapNodeSection

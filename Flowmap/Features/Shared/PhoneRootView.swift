@@ -221,6 +221,12 @@ struct LibraryView: View {
     @State private var showingDuel = false
     @State private var showingPlanPreview = false
     @State private var planProposal: PlanProposal?
+    /// "New list" and swipe-to-delete for the LISTS section, hosted here for
+    /// the same reason as `showingDuel`/`showingPlanPreview` above: a
+    /// `.sheet`/`.confirmationDialog` attached to a `Section` nested in this
+    /// screen's own `List` never presents.
+    @State private var showCreateList = false
+    @State private var pendingListDelete: TaskList?
 
     /// The five `SmartView` cases the TASKS section shows as accordions.
     /// `.inbox` is left out on purpose: `PlanInboxSection` already renders
@@ -267,18 +273,36 @@ struct LibraryView: View {
             }
             .listRowBackground(FlowTheme.surface(scheme))
 
-            if !lists.isEmpty {
-                Section(header: sectionHeader("LISTS")) {
-                    ForEach(lists) { list in
-                        NavigationLink {
-                            TaskListScreen(source: .userList(list))
-                        } label: {
-                            libraryLabel(list.name, symbol: list.iconName, token: list.colour)
-                        }
+            Section(header: sectionHeader("LISTS")) {
+                ForEach(lists) { list in
+                    NavigationLink {
+                        TaskListScreen(source: .userList(list))
+                    } label: {
+                        libraryLabel(list.name, symbol: list.iconName, token: list.colour)
                     }
+                    #if os(iOS)
+                    .swipeActions(edge: .trailing) {
+                        // No `role: .destructive`: that role rebuilds the row as
+                        // the swipe closes, which resets state and silently drops
+                        // the confirmation (see TaskRowView). The tint carries
+                        // the same meaning.
+                        Button {
+                            pendingListDelete = list
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                        .tint(FlowTheme.destructive)
+                    }
+                    #endif
                 }
-                .listRowBackground(FlowTheme.surface(scheme))
+                Button {
+                    showCreateList = true
+                } label: {
+                    Label("New list", systemImage: "plus")
+                }
+                .tint(FlowTheme.accent)
             }
+            .listRowBackground(FlowTheme.surface(scheme))
 
             Section(header: sectionHeader("BUILD")) {
                 projectsAccordion
@@ -352,6 +376,27 @@ struct LibraryView: View {
                 onApply: applyPlan,
                 onReplanWholeDay: replanWholeDay
             )
+        }
+        // Same reason as `showingDuel` above: hosted on this top-level `List`,
+        // not on the LISTS `Section`, which never presents.
+        .sheet(isPresented: $showCreateList) {
+            CreateListSheet()
+        }
+        .confirmationDialog(
+            "Delete this list?",
+            isPresented: Binding(get: { pendingListDelete != nil }, set: { if !$0 { pendingListDelete = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete List", role: .destructive) {
+                if let list = pendingListDelete {
+                    context.delete(list)
+                    try? context.save()
+                }
+                pendingListDelete = nil
+            }
+            Button("Cancel", role: .cancel) { pendingListDelete = nil }
+        } message: {
+            Text("Tasks inside stay in Flowmap and move to Inbox.")
         }
     }
 

@@ -359,4 +359,27 @@ public enum RecurrenceFrequency: String, Codable, CaseIterable, Sendable {
         case .monthly: "Every month"
         }
     }
+
+    /// The next occurrence after `date`, or `nil` for `.none`. Pure `Calendar`
+    /// arithmetic — no manual day-counting — so month lengths (31 Jan → 28/29 Feb)
+    /// and weekday skipping stay correct without hand-rolled maths.
+    public func nextDate(after date: Date, calendar: Calendar = .current) -> Date? {
+        switch self {
+        case .none:
+            return nil
+        case .daily:
+            return calendar.date(byAdding: .day, value: 1, to: date)
+        case .weekdays:
+            guard var next = calendar.date(byAdding: .day, value: 1, to: date) else { return nil }
+            while [1, 7].contains(calendar.component(.weekday, from: next)) {
+                guard let following = calendar.date(byAdding: .day, value: 1, to: next) else { return next }
+                next = following
+            }
+            return next
+        case .weekly:
+            return calendar.date(byAdding: .day, value: 7, to: date)
+        case .monthly:
+            return calendar.date(byAdding: .month, value: 1, to: date)
+        }
+    }
 }

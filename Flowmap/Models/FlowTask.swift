@@ -195,6 +195,32 @@ public final class FlowTask {
             segment.state = .completed
         }
         touch(date)
+        if recurrence != .none {
+            reopenForNextOccurrence(after: date)
+            // `status = .planned` above re-triggers its own `touch()` with the
+            // real wall clock; re-pin to the passed `date` so this call stays
+            // deterministic, same as the non-recurring path.
+            touch(date)
+        }
+    }
+
+    /// A recurring task never leaves — completing it reopens the SAME task for its
+    /// next turn rather than spawning a copy (see the type header). `completedAt`
+    /// is left as the last completion, and `hasBeenPlanned` is left true so the
+    /// planning gate is not re-imposed every cycle.
+    private func reopenForNextOccurrence(after date: Date) {
+        let base = dueDate ?? date
+        guard var next = recurrence.nextDate(after: base) else { return }
+        // Catch up an overdue recurring task to its next FUTURE turn.
+        while next <= date {
+            guard let following = recurrence.nextDate(after: next) else { return }
+            next = following
+        }
+        dueDate = next
+        status = .planned
+        for subtask in subtasks ?? [] {
+            subtask.isCompleted = false
+        }
     }
 
     public func markCancelled(at date: Date = Date()) {

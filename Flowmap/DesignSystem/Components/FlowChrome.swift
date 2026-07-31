@@ -549,6 +549,7 @@ public struct FlowCreateSheet: View {
     /// same as duration and project start with a default rather than "none".
     @Binding private var hasDue: Bool
     @Binding private var dueDate: Date
+    @Binding private var recurrence: RecurrenceFrequency
     /// Subtask titles typed here before the task exists. Plain strings rather
     /// than `Subtask` models: nothing is inserted into the store until Create
     /// is pressed, so an abandoned sheet leaves nothing behind.
@@ -576,6 +577,7 @@ public struct FlowCreateSheet: View {
         projectID: Binding<UUID?>,
         hasDue: Binding<Bool>,
         dueDate: Binding<Date>,
+        recurrence: Binding<RecurrenceFrequency>,
         subtaskTitles: Binding<[String]>,
         note: Binding<String>,
         initiativeID: Binding<UUID?>,
@@ -592,6 +594,7 @@ public struct FlowCreateSheet: View {
         self._projectID = projectID
         self._hasDue = hasDue
         self._dueDate = dueDate
+        self._recurrence = recurrence
         self._subtaskTitles = subtaskTitles
         self._note = note
         self._initiativeID = initiativeID
@@ -635,6 +638,7 @@ public struct FlowCreateSheet: View {
             // A due date is the same: only a task is ever scheduled or dated.
             if kind == .task {
                 dueSection
+                repeatSection
                 subtasksSection
                 noteSection
             }
@@ -800,6 +804,23 @@ public struct FlowCreateSheet: View {
                 .accessibilityLabel("Add due date")
             }
         }
+        .padding(.horizontal, FlowSpacing.m)
+        .frame(minHeight: 44)
+        .background(Capsule().fill(FlowTheme.surface(scheme)))
+        .overlay(Capsule().strokeBorder(FlowTheme.separator(scheme), lineWidth: 1))
+    }
+
+    /// Same self-labelled capsule idiom as `dueSection` — one control, no eyebrow.
+    private var repeatSection: some View {
+        HStack(spacing: FlowSpacing.xs) {
+            Image(systemName: "repeat").font(.system(size: 13, weight: .semibold))
+            Picker("Repeat", selection: $recurrence) {
+                ForEach(RecurrenceFrequency.allCases, id: \.self) { Text($0.displayName).tag($0) }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+        }
+        .foregroundStyle(FlowTheme.primaryText(scheme))
         .padding(.horizontal, FlowSpacing.m)
         .frame(minHeight: 44)
         .background(Capsule().fill(FlowTheme.surface(scheme)))
