@@ -714,6 +714,10 @@ final class ScreenshotTests: XCTestCase {
             XCTFail("Prioritise duel did not present after tapping \"Play the game\"")
             return
         }
+        XCTAssertTrue(
+            app.buttons["Duel scope: Today"].waitForExistence(timeout: 5),
+            "The duel did not expose its default Today scope control"
+        )
         capture(app, named: "iphone-prioritise-duel")
 
         // The pair count is n*(n-1)/2, so the two top-up tasks can still leave

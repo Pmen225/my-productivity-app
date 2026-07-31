@@ -99,3 +99,24 @@ struct PrioritiseDuelRankingTests {
         #expect(second == third)
     }
 }
+
+@MainActor
+@Suite("Prioritise duel scope")
+struct PrioritiseDuelScopeTests {
+    @Test("A chosen day includes due or scheduled work but not today's flag")
+    func chosenDayFiltersByDate() throws {
+        let world = try TestWorld()
+        let flagged = world.makeTask("Flagged today", flaggedForToday: true)
+        let due = world.makeTask("Due tomorrow", due: world.date(hour: 10, dayOffset: 1))
+        let scheduled = world.makeTask("Scheduled tomorrow")
+        world.makeSegment(for: scheduled, start: world.date(hour: 11, dayOffset: 1), minutes: 30)
+
+        let chosen = PrioritiseDuelView.tasks(
+            for: [flagged, due, scheduled],
+            on: world.date(hour: 9, dayOffset: 1),
+            calendar: world.calendar
+        )
+
+        #expect(chosen.map(\.title) == ["Due tomorrow", "Scheduled tomorrow"])
+    }
+}

@@ -32,13 +32,17 @@ struct PrioritiseDuelView: View {
     }
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Query(sort: [SortDescriptor(\FlowTask.sortOrder), SortDescriptor(\FlowTask.createdAt)])
+    private var allTasks: [FlowTask]
 
-    private let tasks: [FlowTask]
-    private let identities: [UUID]
-    private let pairs: [DuelPair]
+    private let initialTodayTasks: [FlowTask]
 
     @State private var currentPairIndex = 0
     @State private var picks: [UUID] = []
+    @State private var scope: DuelScope = .today
+    @State private var selectedDate = Date()
+    @State private var draftDate = Date()
+    @State private var showingDatePicker = false
     /// The current pair gets a new identity after every pick, so SwiftUI can
     /// give the decision a brief, directional hand-off without adding a
     /// second interaction or delaying the next choice.
@@ -47,13 +51,55 @@ struct PrioritiseDuelView: View {
     @State private var revealedIDs: Set<UUID> = []
 
     init(tasks: [FlowTask]) {
-        self.tasks = tasks
-        self.identities = tasks.map(\.id)
-        self.pairs = PrioritiseDuel.pairs(for: identities)
+        self.initialTodayTasks = tasks
     }
 
+    private enum DuelScope: String, CaseIterable, Identifiable {
+        case today
+        case allTasks
+        case chosenDay
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .today: "Today"
+            case .allTasks: "All tasks"
+            case .chosenDay: "Chosen day"
+            }
+        }
+    }
+
+    private var scopedTasks: [FlowTask] {
+        switch scope {
+        case .today:
+            return initialTodayTasks
+        case .allTasks:
+            return allTasks.filter { $0.status != .cancelled }
+        case .chosenDay:
+            return Self.tasks(for: allTasks, on: selectedDate)
+        }
+    }
+
+    /// A chosen day matches open work due or scheduled on that day. The
+    /// today-only flag is intentionally not carried to another date.
+    static func tasks(for tasks: [FlowTask], on day: Date, calendar: Calendar = .current) -> [FlowTask] {
+        let start = calendar.startOfDay(for: day)
+        let end = calendar.date(byAdding: .day, value: 1, to: start) ?? start
+        let isToday = calendar.isDateInToday(day)
+        return tasks.filter { task in
+            guard task.status.isOpen else { return false }
+            if isToday, task.isFlaggedForToday { return true }
+            if let due = task.dueDate, due < end { return true }
+            return task.liveSegments.contains { $0.startDate < end && $0.endDate > start }
+        }
+    }
+
+    private var identities: [UUID] { scopedTasks.map(\.id) }
+    private var pairs: [DuelPair] { PrioritiseDuel.pairs(for: identities) }
+
     private var tasksByID: [UUID: FlowTask] {
-        Dictionary(uniqueKeysWithValues: tasks.map { ($0.id, $0) })
+        Dictionary(uniqueKeysWithValues: scopedTasks.map { ($0.id, $0) })
     }
 
     /// The ranked result, re-derived from `identities` and `picks` on every
@@ -78,6 +124,32 @@ struct PrioritiseDuelView: View {
                 .background(FlowTheme.background(scheme).ignoresSafeArea())
         }
         .presentationCornerRadius(FlowRadius.large)
+        .sheet(isPresented: $showingDatePicker) {
+            NavigationStack {
+                DatePicker("Choose duel day", selection: $draftDate, displayedComponents: .date)
+                    .datePickerStyle(.graphical)
+                    .padding(FlowSpacing.screen)
+                    .navigationTitle("Duel day")
+                    #if os(iOS)
+                    .navigationBarTitleDisplayMode(.inline)
+                    #endif
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Cancel") { showingDatePicker = false }
+                        }
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") {
+                                selectedDate = draftDate
+                                scope = .chosenDay
+                                resetDuel()
+                                showingDatePicker = false
+                            }
+                        }
+                    }
+            }
+            .presentationDetents([.medium])
+        }
+        .onChange(of: scope) { _, _ in resetDuel() }
     }
 
     @ViewBuilder
@@ -117,6 +189,7 @@ struct PrioritiseDuelView: View {
                     .font(FlowFont.caption)
                     .foregroundStyle(FlowTheme.tertiaryText(scheme))
                     .accessibilityLabel("Duel \(currentPairIndex + 1) of \(pairs.count)")
+                scopeMenu
             }
 
             if let first = tasksByID[pair.first], let second = tasksByID[pair.second] {
@@ -219,6 +292,7 @@ struct PrioritiseDuelView: View {
                 Text("Decision made.")
                     .font(FlowFont.sectionTitle)
                     .foregroundStyle(FlowTheme.primaryText(scheme))
+                scopeMenu
             }
             .padding(.top, FlowSpacing.m)
 
@@ -234,11 +308,13 @@ struct PrioritiseDuelView: View {
             }
 
             VStack(spacing: FlowSpacing.s) {
-                PrimaryActionButton("Plan today in this order", systemImage: "checkmark.circle") {
-                    applyOrder(andPlan: true)
+                if scope == .today {
+                    PrimaryActionButton("Plan today in this order", systemImage: "checkmark.circle") {
+                        applyOrder(andPlan: true)
+                    }
+                    .accessibilityLabel("Plan today in this order")
+                    .accessibilityHint("Reorders today's tasks to this ranking and re-plans today, moving anything already scheduled")
                 }
-                .accessibilityLabel("Plan today in this order")
-                .accessibilityHint("Reorders today's tasks to this ranking and re-plans today, moving anything already scheduled")
                 SecondaryActionButton("Keep order, plan later") {
                     applyOrder(andPlan: false)
                 }
@@ -303,6 +379,43 @@ struct PrioritiseDuelView: View {
                 }
             }
         }
+    }
+
+    private var scopeMenu: some View {
+        Menu {
+            Button {
+                scope = .today
+            } label: {
+                Label("Today", systemImage: scope == .today ? "checkmark" : "circle")
+            }
+            Button {
+                scope = .allTasks
+            } label: {
+                Label("All tasks", systemImage: scope == .allTasks ? "checkmark" : "circle")
+            }
+            Button {
+                draftDate = selectedDate
+                showingDatePicker = true
+            } label: {
+                Label(
+                    scope == .chosenDay
+                        ? selectedDate.formatted(date: .abbreviated, time: .omitted)
+                        : "Choose a day…",
+                    systemImage: scope == .chosenDay ? "checkmark" : "calendar"
+                )
+            }
+        } label: {
+            Label("Scope: \(scope.title)", systemImage: "slider.horizontal.3")
+                .font(FlowFont.caption)
+        }
+        .menuStyle(.borderlessButton)
+        .accessibilityLabel("Duel scope: \(scope.title)")
+    }
+
+    private func resetDuel() {
+        currentPairIndex = 0
+        picks = []
+        revealedIDs = []
     }
 
     // MARK: - Exits
