@@ -802,12 +802,11 @@ public struct FlowCreateSheet: View {
         draftSubtask = ""
     }
 
-    /// The mock puts the label beside the wheel, not above it as an eyebrow.
+    /// The wheel is still the same adjustable control; the prompt names the
+    /// time being priced without adding a second explanatory caption.
     private var durationSection: some View {
-        HStack(spacing: FlowSpacing.m) {
-            Text("Duration")
-                .font(FlowFont.body)
-                .foregroundStyle(FlowTheme.primaryText(scheme))
+        VStack(alignment: .leading, spacing: FlowSpacing.s) {
+            FlowEyebrow("Worth · how much of your time?")
             FlowDurationWheel(minutes: $minutes, options: durations)
         }
     }

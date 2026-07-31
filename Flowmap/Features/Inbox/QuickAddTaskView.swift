@@ -124,7 +124,7 @@ public struct QuickAddTaskView: View {
 
     private var durationSection: some View {
         VStack(alignment: .leading, spacing: FlowSpacing.s) {
-            FlowEyebrow("DURATION")
+            FlowEyebrow("Worth · how much of your time?")
             ChipFlowLayout(spacing: FlowSpacing.s) {
                 ForEach(durationOptions, id: \.self) { value in
                     durationChip(value)
