@@ -733,7 +733,7 @@ public struct SchedulingService {
                 source: .carryover,
                 startingSequenceIndex: task.liveSegments.count
             )
-            guard let first = result.blocks.first else {
+            guard !result.blocks.isEmpty else {
                 task.status = .inbox
                 task.dueDate = tomorrow
                 task.isFlaggedForToday = false
@@ -758,7 +758,6 @@ public struct SchedulingService {
             task.isFlaggedForToday = false
             task.carryoverCount += 1
             task.lastCarriedAt = now
-            _ = first
         } else {
             task.dueDate = tomorrow
             task.isFlaggedForToday = false

@@ -500,7 +500,10 @@ final class ScreenshotTests: XCTestCase {
         let app = launchRolloverReview()
         let heading = app.staticTexts["Remaining tasks"].firstMatch
         XCTAssertTrue(heading.waitForExistence(timeout: 10), "Rollover review did not open")
-        XCTAssertTrue(app.buttons["Tomorrow"].firstMatch.waitForExistence(timeout: 5))
+        let tomorrowButton = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Move ' AND label ENDSWITH ' to tomorrow'")
+        ).firstMatch
+        XCTAssertTrue(tomorrowButton.waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["More choices for Review the unfinished brief"].firstMatch.waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["I'm done reviewing"].firstMatch.waitForExistence(timeout: 5))
         capture(app, named: "iphone-rollover-review")

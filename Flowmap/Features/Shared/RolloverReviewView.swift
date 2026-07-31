@@ -96,7 +96,9 @@ struct RolloverReviewView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(FlowTheme.accent)
-                        .frame(minHeight: FlowControlSize.secondary)
+                        // Keep the visible clay control compact while giving
+                        // the native button the full HIG hit target.
+                        .frame(minHeight: 44)
                         .accessibilityLabel("Move " + item.taskTitle + " to tomorrow")
 
                         Menu {
@@ -111,6 +113,8 @@ struct RolloverReviewView: View {
                                 .frame(width: FlowControlSize.secondary, height: FlowControlSize.secondary)
                         }
                         .accessibilityLabel("More choices for " + item.taskTitle)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                     }
                 }
             }
