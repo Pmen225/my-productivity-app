@@ -107,17 +107,32 @@ public enum SeedData {
         let root = MapNode(title: "Weekly Plan", colourToken: ColourToken.violet.rawValue, sortOrder: 0, map: map)
         context.insert(root)
 
+        // Each branch is also a project, so the Stats page has real rows to
+        // show rather than its "No projects yet" empty state. "Life & Fun"
+        // deliberately gets no tasks below — it is what photographs the
+        // per-project empty state.
         var branchNodes: [String: MapNode] = [:]
+        var branchProjects: [String: Project] = [:]
         for (index, name) in branches.enumerated() {
+            let token = ColourToken.taskTokens[(index + 1) % ColourToken.taskTokens.count]
             let node = MapNode(
                 title: name,
-                colourToken: ColourToken.taskTokens[(index + 1) % ColourToken.taskTokens.count].rawValue,
+                colourToken: token.rawValue,
                 sortOrder: index,
                 map: map,
                 parent: root
             )
             context.insert(node)
             branchNodes[name] = node
+
+            let project = Project(
+                title: name,
+                colourToken: token.rawValue,
+                sortOrder: index,
+                workspace: workspace
+            )
+            context.insert(project)
+            branchProjects[name] = project
         }
 
         for (index, demo) in demoTasks.enumerated() {
@@ -134,6 +149,9 @@ public enum SeedData {
             )
             task.isSplittable = demo.minutes >= 45
             task.minimumChunkMinutes = 15
+            // Same branch, same project — so the Stats row's D/T fraction and
+            // the map's branch tell the same story about the same work.
+            task.project = branchProjects[demo.branch]
             context.insert(task)
 
             for (subIndex, title) in demo.subtasks.enumerated() {

@@ -699,6 +699,114 @@ final class ScreenshotTests: XCTestCase {
         }
     }
 
+    /// T7's Stats page, in its own test so it can run at any hour: nothing on
+    /// this screen depends on the auto-plan, so it survives the 21:00 workday
+    /// cliff that stops `testCaptureEveryRequiredScreen` dead.
+    ///
+    /// Every assertion here is one that failed for a real reason during T7:
+    /// the track/untrack circle is a `Button` sitting deliberately *outside*
+    /// the disclosure's label, because a `Button` nested inside another
+    /// `Button`'s label receives no taps on iOS — silently, with no error and
+    /// no test failure. The "still collapsed after tapping the circle" check
+    /// is what proves the two controls stayed independent.
+    func testCaptureStats() {
+        let app = launch()
+        guard tapTab(app, "Plan") else { return }
+        guard tapStats(app) else { return }
+
+        // The row's toggle carries its state in its label, so this both finds
+        // the control and asserts the demo seeded a project to put it on.
+        let toggle = app.buttons["Tracked in stats"].firstMatch
+        guard toggle.waitForExistence(timeout: 8) else {
+            XCTFail("No tracked-project toggle on Stats — the demo seed may have created no projects")
+            return
+        }
+        capture(app, named: "iphone-stats")
+
+        // The project row itself: labelled "<title>, N of M tasks complete",
+        // valued Expanded/Collapsed by the disclosure.
+        let row = app.buttons
+            .matching(NSPredicate(format: "label CONTAINS ' tasks complete'"))
+            .firstMatch
+        guard row.waitForExistence(timeout: 5) else {
+            XCTFail("No project row found on Stats")
+            return
+        }
+        XCTAssertEqual(row.value as? String, "Collapsed", "A project row should start collapsed")
+
+        // 1. Untracking must NOT expand the row. This is the nested-Button check.
+        toggle.tap()
+        Thread.sleep(forTimeInterval: 1)
+        XCTAssertTrue(
+            app.buttons["Not tracked in stats"].firstMatch.waitForExistence(timeout: 5),
+            "Tapping the circle did not untrack the project — the toggle may be swallowed by the disclosure's own button"
+        )
+        XCTAssertEqual(
+            row.value as? String,
+            "Collapsed",
+            "Tapping the track circle also expanded the row — the two controls are not independent"
+        )
+        capture(app, named: "iphone-stats-untracked")
+
+        // Put it back so the expansion shot photographs a tracked row.
+        app.buttons["Not tracked in stats"].firstMatch.tap()
+        Thread.sleep(forTimeInterval: 1)
+
+        // 2. The row expands, and brings its task list with it. Compare the
+        //    SET of visible labels, never the count — a full screen makes a
+        //    count blind (CLAUDE.md, 2026-07-30).
+        let before = Set(app.staticTexts.allElementsBoundByIndex.compactMap { $0.label })
+        row.tap()
+        Thread.sleep(forTimeInterval: 1.2)
+        XCTAssertEqual(row.value as? String, "Expanded", "The project row did not expand when tapped")
+
+        let after = Set(app.staticTexts.allElementsBoundByIndex.compactMap { $0.label })
+        XCTAssertFalse(
+            after.subtracting(before).isEmpty,
+            "Expanding the project row revealed no new labels"
+        )
+        capture(app, named: "iphone-stats-expanded")
+
+        // 3. The XP explainer's five award lines, which were one run-on
+        //    paragraph before T7.
+        app.swipeUp()
+        Thread.sleep(forTimeInterval: 0.6)
+        let howXP = app.buttons["How XP works"].firstMatch
+        if howXP.waitForExistence(timeout: 5) {
+            howXP.tap()
+            Thread.sleep(forTimeInterval: 1)
+            XCTAssertTrue(
+                app.staticTexts["Whole day cleared — +50"].firstMatch.waitForExistence(timeout: 5),
+                "The XP explainer's itemised award lines are missing"
+            )
+            capture(app, named: "iphone-stats-xp-explainer")
+        } else {
+            XCTFail("\"How XP works\" disclosure not found on Stats")
+        }
+
+        // 4. The bottom of the page, photographed rather than asserted on.
+        //
+        //    A mid-scroll shot in this test's first run showed the floating +
+        //    sitting on the Focus stat tile, which looked like a missing bottom
+        //    inset. It was not: at the page's true bottom the tiles clear the +
+        //    on their own, and adding `.contentMargins(.bottom, …)` to
+        //    ProgressScreen changed the resulting frame not at all — the two
+        //    bottom captures, with the inset and with it deliberately removed,
+        //    are the same picture.
+        //
+        //    Two assertions were tried and BOTH passed with the inset removed:
+        //    `isHittable` (blind, because it tests an element's midpoint and the
+        //    tile's midpoint sits left of the +) and a frame-intersection check
+        //    (blind, because there is no intersection at the resting bottom).
+        //    Rather than ship a third check that can only ever be green, this
+        //    step just captures the frame. The picture is the evidence.
+        app.swipeUp()
+        Thread.sleep(forTimeInterval: 0.5)
+        app.swipeUp()
+        Thread.sleep(forTimeInterval: 1)
+        capture(app, named: "iphone-stats-bottom")
+    }
+
     /// Dark-scheme passes of the two signature screens, via the legacy
     /// interface-style launch override (the in-app Appearance control is a
     /// scroll-wheel the test cannot reliably drive).

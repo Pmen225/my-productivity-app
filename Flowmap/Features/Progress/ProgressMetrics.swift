@@ -113,4 +113,13 @@ public enum ProgressMetrics {
             completionRate: completionRate
         )
     }
+
+    /// The initiative card counts only tracked work: a task under a project
+    /// with `isTrackedInStats == false` is excluded from both `completed` and
+    /// `total`. A task with no project at all is never untracked, so it is
+    /// always counted.
+    public static func initiativeTaskCounts(tasks: [FlowTask]) -> (completed: Int, total: Int) {
+        let tracked = tasks.filter { $0.project?.isTrackedInStats ?? true }
+        return (tracked.count { $0.status == .completed }, tracked.count)
+    }
 }

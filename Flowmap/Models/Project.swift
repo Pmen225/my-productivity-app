@@ -14,6 +14,9 @@ public final class Project {
     public var colourToken: String = ColourToken.teal.rawValue
     public var iconName: String = "folder"
     public var sortOrder: Int = 0
+    /// Whether this project's tasks count toward the initiative card's totals.
+    /// Untracked work still renders — it simply stops being scored.
+    public var isTrackedInStats: Bool = true
     public var createdAt: Date = Date()
     public var updatedAt: Date = Date()
 

@@ -126,8 +126,7 @@ struct ProgressScreen: View {
     // MARK: - Initiative card
 
     private func taskCounts(in map: MapDocument) -> (completed: Int, total: Int) {
-        let tasks = map.orderedNodes.compactMap(\.linkedTask)
-        return (tasks.count { $0.status == .completed }, tasks.count)
+        ProgressMetrics.initiativeTaskCounts(tasks: map.orderedNodes.compactMap(\.linkedTask))
     }
 
     private func initiativeCard(_ map: MapDocument) -> some View {
@@ -178,7 +177,7 @@ struct ProgressScreen: View {
                         .foregroundStyle(FlowTheme.secondaryText(scheme))
                 }
 
-                Text("Finishing tasks, planning them and clearing your day all earn XP.")
+                Text("Complete every task to finish the initiative.")
                     .font(FlowFont.caption)
                     .foregroundStyle(FlowTheme.tertiaryText(scheme))
             }
@@ -191,12 +190,25 @@ struct ProgressScreen: View {
     private var xpDisclosure: some View {
         FlowCard {
             DisclosureGroup("How XP works", isExpanded: $showsXPExplainer) {
-                // The design's own copy (design-inventory.md §"XP / levelling"):
+                // The design's own copy, copied verbatim from the mockup
+                // (design-inventory.md §"XP / levelling", Flowmap iPhone.dc.html:1247-1252):
                 // finishing beats starting, and each level costs more than the last.
-                Text("+1 XP per minute of a finished task, +5 per subtask, +10 for planning, +25 per task when a project closes, +50 for clearing your day. Each level costs 100 × level^1.5 — level 2 takes one good day, level 5 a strong week.")
-                    .font(FlowFont.caption)
-                    .foregroundStyle(FlowTheme.secondaryText(scheme))
-                    .padding(.top, FlowSpacing.xs)
+                VStack(alignment: .leading, spacing: FlowSpacing.xxs) {
+                    Text("Subtask ticked — +5")
+                    Text("Planning a task — +10")
+                    Text("Task finished — +1 per minute (30M = 30)")
+                    Text("Project closed — +25 × its task count")
+                    Text("Whole day cleared — +50")
+                    Text("Each level costs 100 × L¹·⁵ — LV 2 takes one good day, LV 5 a strong week. The last task of a project is always worth the most, so finishing beats starting.")
+                        .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                        .padding(.top, FlowSpacing.xxs)
+                        // HIG forbids abbreviations in spoken values (apple_hig_ios.md:3432):
+                        // VoiceOver gets the sentence spelled out, never "L¹·⁵" or "LV".
+                        .accessibilityLabel("Each level costs 100 times level to the power of 1.5. Level 2 takes one good day, level 5 a strong week. The last task of a project is always worth the most, so finishing beats starting.")
+                }
+                .font(FlowFont.caption)
+                .foregroundStyle(FlowTheme.secondaryText(scheme))
+                .padding(.top, FlowSpacing.xs)
             }
             .font(FlowFont.secondary)
             .foregroundStyle(FlowTheme.primaryText(scheme))
