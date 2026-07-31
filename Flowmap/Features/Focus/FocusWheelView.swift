@@ -145,30 +145,31 @@ struct FocusWheelView: View {
     /// The time-window bowl remains below as the geometry/spec fallback, but
     /// this renderer is intentionally task-shaped rather than a thin horizon.
     private func referenceRing(in size: CGSize) -> some View {
-        let radius = min(size.width * 0.72, size.height * 0.78)
+        let baseRadius = min(size.width * 0.72, size.height * 0.78)
+        // The numbered states are zoom levels, not task-count labels. A
+        // larger radius makes a smaller slice of the clock visible (view 1),
+        // while a smaller radius reveals more of the ring (view 3).
+        let radius = baseRadius * zoomScale
         let thickness = min(142, max(112, size.width * 0.38))
         let pointerY = min(size.height * 0.88, radius + size.height * 0.34)
         let centre = CGPoint(x: size.width / 2, y: pointerY - radius)
-        let windowStart = -34.0
-        let windowEnd = 214.0
-        let activeStart = 18.0
-        let activeEnd = 162.0
+        let windowStart = 90 - visibleWindowHalfAngle
+        let windowEnd = 90 + visibleWindowHalfAngle
+        let activeStart = visibility == .one ? 36.0 : visibility == .fiveMinute ? 36.0 : 18.0
+        let activeEnd = visibility == .one ? 144.0 : visibility == .fiveMinute ? 144.0 : 162.0
         let active = items.first
         // Keep the familiar half-hour ruler for ordinary focus blocks even
         // after a live session has counted a few minutes down.
         let activeMinutes = max(1, active?.minutes ?? 30) <= 30 ? 30 : max(1, active?.minutes ?? 30)
+        // The ring itself advances clockwise under the fixed pointer. Using
+        // the active block's start as the zero point preserves the reference
+        // composition at task start while still making the live dial move.
+        let elapsed = max(0, nowMinutes - (active?.startMinutes ?? nowMinutes))
+        let rotation = elapsed * FocusWheelGeometry.degreesPerMinute
+        let ringAnchor = UnitPoint(x: 0.5, y: max(0, min(1, centre.y / size.height)))
 
         return ZStack {
-            BowlWedgeShape(
-                startAngle: windowStart,
-                endAngle: windowEnd,
-                radius: radius,
-                thickness: thickness,
-                centreX: centre.x,
-                pointerY: pointerY
-            )
-            .fill(FlowTheme.surfaceSunken(scheme))
-            .overlay {
+            ZStack {
                 BowlWedgeShape(
                     startAngle: windowStart,
                     endAngle: windowEnd,
@@ -177,53 +178,67 @@ struct FocusWheelView: View {
                     centreX: centre.x,
                     pointerY: pointerY
                 )
-                .stroke(FlowTheme.separator(scheme), lineWidth: 1)
-            }
+                .fill(FlowTheme.surfaceSunken(scheme))
+                .overlay {
+                    BowlWedgeShape(
+                        startAngle: windowStart,
+                        endAngle: windowEnd,
+                        radius: radius,
+                        thickness: thickness,
+                        centreX: centre.x,
+                        pointerY: pointerY
+                    )
+                    .stroke(FlowTheme.separator(scheme), lineWidth: 1)
+                }
 
-            // The active block is deliberately broad enough to read as a
-            // block at a glance, even when its duration is only 15–30M.
-            if let active {
-                referenceWedge(
-                    start: activeStart,
-                    end: activeEnd,
-                    item: active,
-                    centreX: centre.x,
-                    radius: radius,
-                    thickness: thickness,
-                    pointerY: pointerY
-                )
-                referenceActiveLabel(
-                    item: active,
-                    centre: centre,
-                    radius: radius,
-                    thickness: thickness
-                )
-                referenceRuler(
-                    centre: centre,
-                    radius: radius,
-                    thickness: thickness,
-                    totalMinutes: activeMinutes,
-                    start: activeStart,
-                    end: activeEnd
-                )
-            }
+                // The active block is deliberately broad enough to read as a
+                // block at a glance, even when its duration is only 15–30M.
+                if let active {
+                    referenceWedge(
+                        start: activeStart,
+                        end: activeEnd,
+                        item: active,
+                        centreX: centre.x,
+                        radius: radius,
+                        thickness: thickness,
+                        pointerY: pointerY
+                    )
+                    referenceActiveLabel(
+                        item: active,
+                        centre: centre,
+                        radius: radius,
+                        thickness: thickness
+                    )
+                    referenceRuler(
+                        centre: centre,
+                        radius: radius,
+                        thickness: thickness,
+                        totalMinutes: activeMinutes,
+                        start: activeStart,
+                        end: activeEnd
+                    )
+                }
 
-            // A real task list will fill these side blocks. When the current
-            // plan has fewer neighbours, the quiet FREE wedges preserve the
-            // dial's segmentation without inventing work for the user.
-            let neighbours = Array(items.dropFirst().prefix(2))
-            if let right = neighbours.first {
-                referenceWedge(start: windowStart, end: activeStart, item: right, centreX: centre.x, radius: radius, thickness: thickness, pointerY: pointerY)
-                referenceNeighbourLabel(item: right, angle: (windowStart + activeStart) / 2, centre: centre, radius: radius, thickness: thickness)
-            } else {
-                referenceFreeLabel(angle: (windowStart + activeStart) / 2, centre: centre, radius: radius, thickness: thickness)
+                // A real task list will fill these side blocks. When the current
+                // plan has fewer neighbours, the quiet FREE wedges preserve the
+                // dial's segmentation without inventing work for the user.
+                let neighbours = visibility == .one || visibility == .fiveMinute
+                    ? []
+                    : Array(items.dropFirst().prefix(2))
+                if let right = neighbours.first {
+                    referenceWedge(start: windowStart, end: activeStart, item: right, centreX: centre.x, radius: radius, thickness: thickness, pointerY: pointerY)
+                    referenceNeighbourLabel(item: right, angle: (windowStart + activeStart) / 2, centre: centre, radius: radius, thickness: thickness)
+                } else {
+                    referenceFreeLabel(angle: (windowStart + activeStart) / 2, centre: centre, radius: radius, thickness: thickness)
+                }
+                if let left = neighbours.dropFirst().first {
+                    referenceWedge(start: activeEnd, end: windowEnd, item: left, centreX: centre.x, radius: radius, thickness: thickness, pointerY: pointerY)
+                    referenceNeighbourLabel(item: left, angle: (activeEnd + windowEnd) / 2, centre: centre, radius: radius, thickness: thickness)
+                } else {
+                    referenceFreeLabel(angle: (activeEnd + windowEnd) / 2, centre: centre, radius: radius, thickness: thickness)
+                }
             }
-            if let left = neighbours.dropFirst().first {
-                referenceWedge(start: activeEnd, end: windowEnd, item: left, centreX: centre.x, radius: radius, thickness: thickness, pointerY: pointerY)
-                referenceNeighbourLabel(item: left, angle: (activeEnd + windowEnd) / 2, centre: centre, radius: radius, thickness: thickness)
-            } else {
-                referenceFreeLabel(angle: (activeEnd + windowEnd) / 2, centre: centre, radius: radius, thickness: thickness)
-            }
+            .rotationEffect(.degrees(rotation), anchor: ringAnchor)
 
             // Keep the marker just above the card's edge so its triangular
             // silhouette remains visible when the checklist is expanded.
@@ -231,6 +246,26 @@ struct FocusWheelView: View {
         }
         .frame(width: size.width, height: size.height)
         .clipped()
+    }
+
+    private var zoomScale: CGFloat {
+        switch visibility {
+        case .fiveMinute: 3.2
+        case .one: 1.65
+        case .two: 1.0
+        case .three: 0.74
+        case .all: 1.0
+        }
+    }
+
+    private var visibleWindowHalfAngle: Double {
+        switch visibility {
+        case .fiveMinute: 18
+        case .one: 70
+        case .two: 82
+        case .three: 108
+        case .all: 82
+        }
     }
 
     private func referenceWedge(start: Double, end: Double, item: WheelItem, centreX: CGFloat, radius: CGFloat, thickness: CGFloat, pointerY: CGFloat) -> some View {
