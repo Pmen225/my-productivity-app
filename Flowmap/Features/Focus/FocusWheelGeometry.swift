@@ -167,6 +167,32 @@ public enum FocusWheelGeometry {
         return tangent
     }
 
+    /// Whether the readable tangent was flipped by 180°. Reversing the
+    /// character order at the same time keeps multi-digit labels reading
+    /// left-to-right on the lower half of the ring.
+    public static func carouselRulerLabelReversesCharacters(angle: Double) -> Bool {
+        var tangent = (angle + 90).truncatingRemainder(dividingBy: 360)
+        if tangent > 180 { tangent -= 360 }
+        if tangent < -180 { tangent += 360 }
+        return tangent > 90 || tangent < -90
+    }
+
+    /// Places each character of a ruler numeral on a tiny arc, rather than
+    /// leaving the whole word on one straight baseline.
+    public static func curvedRulerCharacterAngles(
+        textLength: Int,
+        centreAngle: Double,
+        radius: CGFloat,
+        characterSpacing: CGFloat = 8
+    ) -> [Double] {
+        guard textLength > 0, radius > 0 else { return [] }
+        let degreesPerCharacter = Double(characterSpacing / radius) * 180 / .pi
+        let midpoint = Double(textLength - 1) / 2
+        return (0..<textLength).map { index in
+            centreAngle + (Double(index) - midpoint) * degreesPerCharacter
+        }
+    }
+
     // MARK: - Bottom-arc dial
     //
     // The mock's dial is a shallow bowl cut from a much larger, mostly
@@ -468,10 +494,11 @@ public enum FocusWheelGeometry {
         return 360 - fraction * 180
     }
 
-    /// Number of overview ruler ticks. A short task gets one tick per minute;
-    /// longer queues stay sparse enough that labels never turn into noise.
+    /// Number of overview ruler ticks. Short tasks get one tick per minute;
+    /// long tasks cap at one tick for every few minutes so the inner track stays
+    /// detailed without turning into an indistinguishable solid line.
     public static func overviewRulerTickCount(totalMinutes: Int) -> Int {
-        min(30, max(6, totalMinutes))
+        min(60, max(6, totalMinutes))
     }
 
     // MARK: - Bowl neighbour labels

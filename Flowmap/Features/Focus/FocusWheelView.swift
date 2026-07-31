@@ -40,6 +40,48 @@ private struct PointerTriangle: Shape {
     }
 }
 
+/// Draws a ruler numeral as characters on the local arc. A whole Text view can
+/// only rotate as a rigid rectangle; individual characters give the number the
+/// same curved baseline as the dial itself.
+private struct CurvedRulerLabel: View {
+    @Environment(\.colorScheme) private var scheme
+
+    let text: String
+    let centre: CGPoint
+    let radius: CGFloat
+    let angle: Double
+    let fontSize: CGFloat
+
+    var body: some View {
+        let characters = Array(text)
+        let readableCharacters = FocusWheelGeometry.carouselRulerLabelReversesCharacters(angle: angle)
+            ? Array(characters.reversed())
+            : characters
+        let angles = FocusWheelGeometry.curvedRulerCharacterAngles(
+            textLength: characters.count,
+            centreAngle: angle,
+            radius: radius
+        )
+        // Keep one readable baseline for the whole numeral. The characters
+        // still follow separate arc positions, but flipping each one
+        // independently would reverse the second digit at the side endpoints.
+        let baselineRotation = FocusWheelGeometry.carouselRulerLabelRotation(angle: angle)
+
+        ZStack {
+            ForEach(Array(zip(readableCharacters, angles).enumerated()), id: \.offset) { _, pair in
+                let character = pair.0
+                let characterAngle = pair.1
+                Text(String(character))
+                    .font(.system(size: fontSize, weight: .medium, design: .rounded))
+                    .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                    .position(FocusWheelGeometry.point(centre: centre, radius: radius, angle: characterAngle))
+                    .rotationEffect(.degrees(baselineRotation))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
 /// The fixed pointer beneath the wheel, shared by the bowl and the overview
 /// ring — kept in one place so a future tweak to its shape or offset can't
 /// drift between the two the way a duplicated angle once did.
@@ -201,6 +243,7 @@ struct FocusWheelView: View {
             carouselRuler(
                 centre: centre,
                 innerRadius: innerRadius,
+                thickness: thickness,
                 activeSpan: FocusWheelGeometry.carouselRulerSpan(
                     activeSpan: FocusWheelGeometry.carouselSpan(
                         index: 0,
@@ -267,14 +310,17 @@ struct FocusWheelView: View {
     private func carouselRuler(
         centre: CGPoint,
         innerRadius: CGFloat,
+        thickness: CGFloat,
         activeSpan: (start: Double, end: Double),
         totalMinutes: Int
     ) -> some View {
         let step = FocusWheelGeometry.carouselRulerTickStep(totalMinutes: totalMinutes)
         let majorStep = FocusWheelGeometry.carouselRulerMajorStep(totalMinutes: totalMinutes)
-        // Keep the ruler just inside the track. Task labels live on the outer
-        // band, leaving the centre hole calm enough for the play control.
-        let labelRadius = max(20, innerRadius + 8)
+        // The ruler belongs in the middle of the annulus, not in the hole.
+        // Keeping ticks and numerals on this radius makes the countdown read as
+        // one continuous circular measuring instrument.
+        let rulerRadius = innerRadius + thickness * 0.52
+        let tickStartRadius = rulerRadius - min(14, thickness * 0.24)
         return ZStack {
             ForEach(Array(stride(from: totalMinutes, through: 0, by: -step)), id: \.self) { remaining in
                 let angle = FocusWheelGeometry.carouselRulerAngle(
@@ -283,8 +329,8 @@ struct FocusWheelView: View {
                     span: activeSpan
                 )
                 let isMajor = remaining == totalMinutes || remaining == 0 || remaining % majorStep == 0
-                let from = FocusWheelGeometry.point(centre: centre, radius: innerRadius + 5, angle: angle)
-                let to = FocusWheelGeometry.point(centre: centre, radius: innerRadius + (isMajor ? 19 : 13), angle: angle)
+                let from = FocusWheelGeometry.point(centre: centre, radius: tickStartRadius, angle: angle)
+                let to = FocusWheelGeometry.point(centre: centre, radius: rulerRadius + (isMajor ? 10 : 6), angle: angle)
 
                 Path { path in
                     path.move(to: from)
@@ -296,11 +342,13 @@ struct FocusWheelView: View {
                 )
 
                 if isMajor {
-                    Text("\(remaining)")
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
-                        .foregroundStyle(FlowTheme.tertiaryText(scheme))
-                        .position(FocusWheelGeometry.point(centre: centre, radius: labelRadius, angle: angle))
-                        .rotationEffect(.degrees(FocusWheelGeometry.carouselRulerLabelRotation(angle: angle)))
+                    CurvedRulerLabel(
+                        text: "\(remaining)",
+                        centre: centre,
+                        radius: rulerRadius + 1,
+                        angle: angle,
+                        fontSize: 10
+                    )
                 }
             }
         }
@@ -783,8 +831,10 @@ struct FocusWheelOverviewView: View {
     private func overviewRuler(centre: CGPoint, outerRadius: CGFloat, innerRadius: CGFloat) -> some View {
         let totalMinutes = min(180, max(1, items.first?.minutes ?? 30))
         let tickCount = FocusWheelGeometry.overviewRulerTickCount(totalMinutes: totalMinutes)
-        let tickRadius = innerRadius + 3
-        let labelRadius = innerRadius + 12
+        let thickness = outerRadius - innerRadius
+        let rulerRadius = innerRadius + thickness * 0.52
+        let tickStartRadius = rulerRadius - min(10, thickness * 0.22)
+        let majorStep = FocusWheelGeometry.carouselRulerMajorStep(totalMinutes: totalMinutes)
 
         return ZStack {
             ForEach(0...tickCount, id: \.self) { index in
@@ -793,11 +843,11 @@ struct FocusWheelOverviewView: View {
                     minutesRemaining: remaining,
                     totalMinutes: totalMinutes
                 )
-                let isMajor = index == 0 || index == tickCount / 2 || index == tickCount
-                let from = FocusWheelGeometry.point(centre: centre, radius: tickRadius, angle: angle)
+                let isMajor = remaining == totalMinutes || remaining == 0 || remaining % majorStep == 0
+                let from = FocusWheelGeometry.point(centre: centre, radius: tickStartRadius, angle: angle)
                 let to = FocusWheelGeometry.point(
                     centre: centre,
-                    radius: tickRadius + (isMajor ? 9 : 5),
+                    radius: rulerRadius + (isMajor ? 8 : 5),
                     angle: angle
                 )
 
@@ -811,11 +861,13 @@ struct FocusWheelOverviewView: View {
                 )
 
                 if isMajor {
-                    Text("\(remaining)")
-                        .font(.system(size: 9, weight: .medium, design: .rounded))
-                        .foregroundStyle(FlowTheme.tertiaryText(scheme))
-                        .position(FocusWheelGeometry.point(centre: centre, radius: labelRadius, angle: angle))
-                        .rotationEffect(.degrees(FocusWheelGeometry.carouselRulerLabelRotation(angle: angle)))
+                    CurvedRulerLabel(
+                        text: "\(remaining)",
+                        centre: centre,
+                        radius: rulerRadius + 1,
+                        angle: angle,
+                        fontSize: 9
+                    )
                 }
             }
         }

@@ -569,12 +569,23 @@ struct FocusWheelGeometryTests {
         #expect(FocusWheelGeometry.carouselRulerMajorStep(totalMinutes: 30) == 5)
         #expect(FocusWheelGeometry.carouselRulerMajorStep(totalMinutes: 120) == 10)
 
+        let angles = FocusWheelGeometry.curvedRulerCharacterAngles(
+            textLength: 2,
+            centreAngle: 90,
+            radius: 80
+        )
+        #expect(angles.count == 2)
+        #expect(angles[0] < 90)
+        #expect(angles[1] > 90)
+
         // Tangents at the cardinal points: horizontal at top/bottom and
         // vertical at either side. This is the curved-text invariant.
         #expect(abs(FocusWheelGeometry.carouselRulerLabelRotation(angle: 0) - 90) < 0.0001)
         #expect(abs(FocusWheelGeometry.carouselRulerLabelRotation(angle: 90)) < 0.0001)
         #expect(abs(FocusWheelGeometry.carouselRulerLabelRotation(angle: 180) + 90) < 0.0001)
         #expect(abs(FocusWheelGeometry.carouselRulerLabelRotation(angle: 270)) < 0.0001)
+        #expect(FocusWheelGeometry.carouselRulerLabelReversesCharacters(angle: 90))
+        #expect(!FocusWheelGeometry.carouselRulerLabelReversesCharacters(angle: 270))
     }
 
     @Test("Overview spans divide the full circle proportionally to duration")
@@ -733,7 +744,7 @@ struct FocusWheelGeometryTests {
         #expect(FocusWheelGeometry.overviewRulerAngle(minutesRemaining: 30, totalMinutes: 30) == 180)
         #expect(FocusWheelGeometry.overviewRulerAngle(minutesRemaining: 0, totalMinutes: 30) == 360)
         #expect(FocusWheelGeometry.overviewRulerTickCount(totalMinutes: 4) == 6)
-        #expect(FocusWheelGeometry.overviewRulerTickCount(totalMinutes: 45) == 30)
+        #expect(FocusWheelGeometry.overviewRulerTickCount(totalMinutes: 45) == 45)
 
         // The overview shares the close dial's fixed lower track, so its
         // endpoint numerals must follow the circular tangent too.
