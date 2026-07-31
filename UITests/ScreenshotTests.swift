@@ -85,35 +85,39 @@ final class ScreenshotTests: XCTestCase {
         return true
     }
 
-    /// The Plan task surface is native horizontal paging. Its compact title
-    /// strip Menu is the deterministic tap alternative to a swipe, so this
-    /// helper verifies the page title after every route rather than assuming
-    /// a gesture reached the requested content.
+    /// The Plan task surface is native horizontal paging. Drive the actual
+    /// page gesture here, then verify the visible title strip so a swallowed
+    /// swipe cannot produce a screenshot with the wrong filename.
     private func selectPlanTaskPage(_ app: XCUIApplication, _ title: String) -> Bool {
-        let pickerCandidates = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH 'Task page:'")
-        ).allElementsBoundByIndex
-        guard let picker = pickerCandidates.first(where: { $0.isHittable }) else {
+        let outcomeLabel = "Task page: \(title)"
+        let current = {
+            app.buttons.matching(NSPredicate(format: "label == %@", outcomeLabel))
+                .allElementsBoundByIndex
+                .first(where: { $0.isHittable })
+        }
+        if current() != nil { return true }
+
+        let titles = ["Inbox", "Today", "Upcoming", "Anytime", "All tasks", "Completed"]
+        guard let target = titles.firstIndex(of: title) else {
+            XCTFail("Unknown Plan task page \(title)")
+            return false
+        }
+        guard let currentIndex = titles.firstIndex(where: { label in
+            app.buttons.matching(NSPredicate(format: "label == %@", "Task page: \(label)"))
+                .allElementsBoundByIndex
+                .contains(where: { $0.isHittable })
+        }) else {
             XCTFail("Plan task page picker not found")
             return false
         }
 
-        if picker.label == "Task page: \(title)" { return true }
-
-        picker.tap()
-        let choice = app.buttons.matching(
-            NSPredicate(format: "label == %@", title)
-        ).allElementsBoundByIndex.first(where: { $0.isHittable })
-        guard let choice else {
-            XCTFail("Plan task page choice \(title) not found")
-            return false
+        let step = target >= currentIndex ? 1 : -1
+        for _ in stride(from: currentIndex, to: target, by: step) {
+            if step > 0 { app.swipeLeft() } else { app.swipeRight() }
+            Thread.sleep(forTimeInterval: 0.8)
         }
-        choice.tap()
 
-        let outcome = app.buttons.matching(
-            NSPredicate(format: "label == %@", "Task page: \(title)")
-        ).allElementsBoundByIndex.first(where: { $0.isHittable })
-        guard outcome != nil else {
+        guard current() != nil else {
             XCTFail("Plan task page did not switch to \(title)")
             return false
         }
