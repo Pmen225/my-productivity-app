@@ -121,10 +121,15 @@ public enum FocusWheelGeometry {
     /// Keep the detailed countdown on the fixed lower inner track. The ring
     /// may rotate, but the pointer and its ruler stay put so the scale always
     /// reads like the original dial: full duration on the left, zero on the
-    /// right. A full overview ring gets a little more breathing room.
+    /// right. A single full-ring task gets a little more breathing room; a
+    /// multi-task overview stays inside the active task's proportional wedge.
     public static func carouselRulerSpan(activeSpan: (start: Double, end: Double)) -> (start: Double, end: Double) {
         let width = activeSpan.end - activeSpan.start
-        let halfSpan = width > 320 ? 150.0 : 90.0
+        // A full single-task ring still needs a quiet gap so its endpoints are
+        // visible. Every narrower task keeps its own wedge: widening it would
+        // draw the countdown through neighbouring tasks in All mode.
+        guard width > 320 else { return activeSpan }
+        let halfSpan = 150.0
         return (bottomAngle - halfSpan, bottomAngle + halfSpan)
     }
 
@@ -153,6 +158,13 @@ public enum FocusWheelGeometry {
     /// this cadence.
     public static func carouselRulerMajorStep(totalMinutes: Int) -> Int {
         totalMinutes > 60 ? 10 : 5
+    }
+
+    /// Labels need a little more breathing room than their tick marks when a
+    /// task occupies a narrow overview wedge. The ruler stays minute-detailed;
+    /// only the printed numerals step back from 5M to 10M.
+    public static func carouselRulerLabelStep(totalMinutes: Int, spanDegrees: Double) -> Int {
+        max(carouselRulerMajorStep(totalMinutes: totalMinutes), spanDegrees < 80 ? 10 : 1)
     }
 
     /// Rotates a numeral onto the tangent of the circular ruler while keeping

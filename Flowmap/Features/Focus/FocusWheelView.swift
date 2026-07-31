@@ -316,6 +316,10 @@ struct FocusWheelView: View {
     ) -> some View {
         let step = FocusWheelGeometry.carouselRulerTickStep(totalMinutes: totalMinutes)
         let majorStep = FocusWheelGeometry.carouselRulerMajorStep(totalMinutes: totalMinutes)
+        let labelStep = FocusWheelGeometry.carouselRulerLabelStep(
+            totalMinutes: totalMinutes,
+            spanDegrees: activeSpan.end - activeSpan.start
+        )
         // The ruler belongs in the middle of the annulus, not in the hole.
         // Keeping ticks and numerals on this radius makes the countdown read as
         // one continuous circular measuring instrument.
@@ -341,7 +345,8 @@ struct FocusWheelView: View {
                     lineWidth: isMajor ? 1.5 : 0.95
                 )
 
-                if isMajor {
+                let showsLabel = remaining == totalMinutes || remaining == 0 || remaining % labelStep == 0
+                if showsLabel {
                     CurvedRulerLabel(
                         text: "\(remaining)",
                         centre: centre,
@@ -825,23 +830,34 @@ struct FocusWheelOverviewView: View {
     // MARK: - Inward countdown ruler
 
     /// The zoomed-out ring keeps the same countdown language as the close
-    /// dial: full duration on the left, zero on the right. It lives on the
-    /// inner half of the annulus so the complete circular carousel remains
-    /// visible without adding another control or a second task icon.
+    /// dial: full duration on the left, zero on the right. It stays in the
+    /// active task's own inner band, so the complete carousel remains visible
+    /// without letting one task's scale cross into another task's wedge.
     private func overviewRuler(centre: CGPoint, outerRadius: CGFloat, innerRadius: CGFloat) -> some View {
         let totalMinutes = min(180, max(1, items.first?.minutes ?? 30))
         let tickCount = FocusWheelGeometry.overviewRulerTickCount(totalMinutes: totalMinutes)
         let thickness = outerRadius - innerRadius
         let rulerRadius = innerRadius + thickness * 0.52
         let tickStartRadius = rulerRadius - min(10, thickness * 0.22)
+        let activeSpan = FocusWheelGeometry.carouselRulerSpan(
+            activeSpan: FocusWheelGeometry.overviewSpan(
+                index: 0,
+                durations: items.map(\.minutes)
+            )
+        )
         let majorStep = FocusWheelGeometry.carouselRulerMajorStep(totalMinutes: totalMinutes)
+        let labelStep = FocusWheelGeometry.carouselRulerLabelStep(
+            totalMinutes: totalMinutes,
+            spanDegrees: activeSpan.end - activeSpan.start
+        )
 
         return ZStack {
             ForEach(0...tickCount, id: \.self) { index in
                 let remaining = totalMinutes - Int((Double(index) / Double(tickCount) * Double(totalMinutes)).rounded())
-                let angle = FocusWheelGeometry.overviewRulerAngle(
+                let angle = FocusWheelGeometry.carouselRulerAngle(
                     minutesRemaining: remaining,
-                    totalMinutes: totalMinutes
+                    totalMinutes: totalMinutes,
+                    span: activeSpan
                 )
                 let isMajor = remaining == totalMinutes || remaining == 0 || remaining % majorStep == 0
                 let from = FocusWheelGeometry.point(centre: centre, radius: tickStartRadius, angle: angle)
@@ -860,7 +876,8 @@ struct FocusWheelOverviewView: View {
                     lineWidth: isMajor ? 1.4 : 0.8
                 )
 
-                if isMajor {
+                let showsLabel = remaining == totalMinutes || remaining == 0 || remaining % labelStep == 0
+                if showsLabel {
                     CurvedRulerLabel(
                         text: "\(remaining)",
                         centre: centre,

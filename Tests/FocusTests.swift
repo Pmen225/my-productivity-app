@@ -534,18 +534,20 @@ struct FocusWheelGeometryTests {
         ) == ruler.start)
     }
 
-    @Test("A narrow overview slice widens its inner ruler instead of crowding labels")
+    @Test("A narrow overview slice keeps its ruler inside the active wedge")
     func narrowCarouselRulerGetsReadableArc() {
         let ruler = FocusWheelGeometry.carouselRulerSpan(activeSpan: (start: 70, end: 110))
-        #expect(abs((ruler.end - ruler.start) - 180) < 0.0001)
-        #expect(abs((ruler.start + ruler.end) / 2 - 90) < 0.0001)
+        #expect(abs(ruler.start - 70) < 0.0001)
+        #expect(abs(ruler.end - 110) < 0.0001)
+        #expect(FocusWheelGeometry.carouselRulerLabelStep(totalMinutes: 30, spanDegrees: 40) == 10)
     }
 
-    @Test("The countdown ruler stays on the fixed lower pointer track")
-    func carouselRulerDoesNotFollowRotatingWedge() {
-        let ruler = FocusWheelGeometry.carouselRulerSpan(activeSpan: (start: 210, end: 390))
-        #expect(abs(ruler.start - 0) < 0.0001)
-        #expect(abs(ruler.end - 180) < 0.0001)
+    @Test("The countdown ruler stays inside a rotated active wedge")
+    func carouselRulerStaysInsideActiveWedge() {
+        let active = (start: 30.0, end: 150.0)
+        let ruler = FocusWheelGeometry.carouselRulerSpan(activeSpan: active)
+        #expect(abs(ruler.start - active.start) < 0.0001)
+        #expect(abs(ruler.end - active.end) < 0.0001)
 
         let full = FocusWheelGeometry.carouselRulerAngle(
             minutesRemaining: 30,
@@ -568,6 +570,8 @@ struct FocusWheelGeometryTests {
         #expect(FocusWheelGeometry.carouselRulerTickStep(totalMinutes: 120) == 1)
         #expect(FocusWheelGeometry.carouselRulerMajorStep(totalMinutes: 30) == 5)
         #expect(FocusWheelGeometry.carouselRulerMajorStep(totalMinutes: 120) == 10)
+        #expect(FocusWheelGeometry.carouselRulerLabelStep(totalMinutes: 30, spanDegrees: 180) == 5)
+        #expect(FocusWheelGeometry.carouselRulerLabelStep(totalMinutes: 30, spanDegrees: 40) == 10)
 
         let angles = FocusWheelGeometry.curvedRulerCharacterAngles(
             textLength: 2,
@@ -745,6 +749,11 @@ struct FocusWheelGeometryTests {
         #expect(FocusWheelGeometry.overviewRulerAngle(minutesRemaining: 0, totalMinutes: 30) == 360)
         #expect(FocusWheelGeometry.overviewRulerTickCount(totalMinutes: 4) == 6)
         #expect(FocusWheelGeometry.overviewRulerTickCount(totalMinutes: 45) == 45)
+
+        let active = FocusWheelGeometry.overviewSpan(index: 0, durations: [30, 30, 15, 20, 45, 25, 60])
+        let ruler = FocusWheelGeometry.carouselRulerSpan(activeSpan: active)
+        #expect(abs(ruler.start - active.start) < 0.0001)
+        #expect(abs(ruler.end - active.end) < 0.0001)
 
         // The overview shares the close dial's fixed lower track, so its
         // endpoint numerals must follow the circular tangent too.
