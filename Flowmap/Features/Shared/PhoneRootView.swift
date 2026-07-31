@@ -76,6 +76,10 @@ struct PhoneRootView: View {
                 NavigationStack {
                     SettingsScreen()
                 }
+                // Settings has its own long scroll. Reserve space for the
+                // native tab bar and the shell's floating capture/assistant
+                // orb so the last controls remain readable and tappable.
+                .contentMargins(.bottom, FlowSpacing.floatingControlsInset, for: .scrollContent)
                 .tabItem { Label("Settings", systemImage: "gearshape") }
                 .tag(DeepLink.settings)
             }
