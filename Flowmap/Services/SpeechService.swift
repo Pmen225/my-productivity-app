@@ -184,9 +184,11 @@ public struct DictationButton: View {
     @State private var speech = SpeechService()
 
     private let onTranscript: (String) -> Void
+    private let onRecordingChange: ((Bool) -> Void)?
 
-    public init(onTranscript: @escaping (String) -> Void) {
+    public init(onTranscript: @escaping (String) -> Void, onRecordingChange: ((Bool) -> Void)? = nil) {
         self.onTranscript = onTranscript
+        self.onRecordingChange = onRecordingChange
     }
 
     public var body: some View {
@@ -203,6 +205,9 @@ public struct DictationButton: View {
             .buttonStyle(.plain)
             .accessibilityLabel(speech.isRecording ? "Stop dictation" : "Dictate")
             .help(speech.isRecording ? "Stop dictation" : "Dictate")
+            .onChange(of: speech.isRecording) { _, newValue in
+                onRecordingChange?(newValue)
+            }
         }
     }
 }

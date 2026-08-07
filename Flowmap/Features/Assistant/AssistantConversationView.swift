@@ -6,11 +6,15 @@ import SwiftUI
 /// message goes out.
 public struct AssistantConversationView: View {
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.dismiss) private var dismiss
     @State private var viewModel: AssistantViewModel
     @FocusState private var isComposerFocused: Bool
+    @State private var isDictating = false
+    private let flow: AppEnvironment
 
     public init(thread: AssistantThread, flow: AppEnvironment) {
         _viewModel = State(initialValue: AssistantViewModel(thread: thread, flow: flow))
+        self.flow = flow
     }
 
     public var body: some View {
@@ -40,12 +44,56 @@ public struct AssistantConversationView: View {
 
     /// A small status pill under the navigation title: whether a provider key
     /// is on file, so the quick-command-only ceiling is never a surprise.
+    /// Tappable — disconnected routes to Settings → Assistant, connected
+    /// opens a model-switching menu (row 28/29).
     private var statusPill: some View {
+        Group {
+            if viewModel.hasAPIKey {
+                Menu {
+                    ForEach(flow.settings.assistantProvider.availableModels, id: \.self) { model in
+                        let isSelected = model == flow.settings.assistantModel
+                        Button {
+                            flow.settings.assistantModel = model
+                            try? flow.context.save()
+                        } label: {
+                            if isSelected {
+                                Label(model, systemImage: "checkmark")
+                            } else {
+                                Text(model)
+                            }
+                        }
+                        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+                    }
+                } label: {
+                    statusPillLabel(text: flow.settings.assistantModel, connected: true)
+                }
+                .accessibilityLabel("Connected. Model: \(flow.settings.assistantModel). Tap to change model.")
+            } else {
+                Button {
+                    // Batch 2: route to inline setup pane
+                    dismiss()
+                    NotificationCenter.default.post(
+                        name: .flowmapOpenDeepLink,
+                        object: DeepLinkRequest(destination: .settings)
+                    )
+                } label: {
+                    statusPillLabel(text: "Local commands only — tap to connect", connected: false)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Local commands only. Tap to connect a provider.")
+            }
+        }
+        .flowHitTarget()
+        .padding(.top, FlowSpacing.s)
+        .frame(maxWidth: .infinity, alignment: .center)
+    }
+
+    private func statusPillLabel(text: String, connected: Bool) -> some View {
         HStack(spacing: FlowSpacing.xs) {
             Circle()
-                .fill(viewModel.hasAPIKey ? FlowTheme.accent : FlowTheme.tertiaryText(scheme))
+                .fill(connected ? FlowTheme.accent : FlowTheme.tertiaryText(scheme))
                 .frame(width: 6, height: 6)
-            Text(viewModel.hasAPIKey ? "Connected" : "Local commands only")
+            Text(text)
                 .font(FlowFont.caption.weight(.semibold))
                 .foregroundStyle(FlowTheme.secondaryText(scheme))
         }
@@ -53,9 +101,6 @@ public struct AssistantConversationView: View {
         .padding(.vertical, FlowSpacing.xs)
         .background(Capsule().fill(FlowTheme.surfaceSunken(scheme)))
         .overlay(Capsule().strokeBorder(FlowTheme.separator(scheme), lineWidth: 1))
-        .padding(.top, FlowSpacing.s)
-        .frame(maxWidth: .infinity, alignment: .center)
-        .accessibilityElement(children: .combine)
     }
 
     private var messagesList: some View {
@@ -70,7 +115,7 @@ public struct AssistantConversationView: View {
                         .padding(.top, FlowSpacing.xxl)
                     } else {
                         ForEach(viewModel.thread.visibleMessages) { message in
-                            AssistantMessageRow(message: message, onUndo: viewModel.undo)
+                            AssistantMessageRow(message: message, onUndo: viewModel.undo, onTapUserBubble: reedit)
                                 .id(message.id)
                         }
                     }
@@ -86,6 +131,13 @@ public struct AssistantConversationView: View {
         }
     }
 
+    /// Tap a user bubble to re-edit: its text is loaded into the composer,
+    /// ready to be changed and re-sent — the original message stays put.
+    private func reedit(_ text: String) {
+        viewModel.inputText = text
+        isComposerFocused = true
+    }
+
     private func scrollToEnd(_ proxy: ScrollViewProxy) {
         withAnimation {
             if viewModel.isSending {
@@ -99,16 +151,23 @@ public struct AssistantConversationView: View {
     private var composer: some View {
         HStack(alignment: .center, spacing: FlowSpacing.s) {
             HStack(spacing: FlowSpacing.s) {
-                TextField("Ask Flowmap, or type a quick command…", text: $viewModel.inputText, axis: .vertical)
+                TextField(
+                    isDictating ? "Listening…" : "Message, or tap the mic…",
+                    text: $viewModel.inputText,
+                    axis: .vertical
+                )
                     .textFieldStyle(.plain)
                     .font(FlowFont.body)
                     .lineLimit(1...4)
                     .focused($isComposerFocused)
                     .onSubmit(viewModel.send)
 
-                DictationButton { transcript in
-                    viewModel.inputText = transcript.isEmpty ? viewModel.inputText : transcript
-                }
+                DictationButton(
+                    onTranscript: { transcript in
+                        viewModel.inputText = transcript.isEmpty ? viewModel.inputText : transcript
+                    },
+                    onRecordingChange: { isDictating = $0 }
+                )
             }
             .padding(.horizontal, FlowSpacing.m)
             .padding(.vertical, FlowSpacing.s)

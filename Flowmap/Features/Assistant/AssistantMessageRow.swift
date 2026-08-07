@@ -6,11 +6,15 @@ struct AssistantMessageRow: View {
     @Environment(\.colorScheme) private var scheme
     let message: AssistantMessage
     let onUndo: (AssistantToolResult.UndoAction) -> Void
+    /// Tap-to-re-edit (row 30): fires with the bubble's own text, so the
+    /// caller can load it back into the composer without resending it.
+    var onTapUserBubble: ((String) -> Void)? = nil
 
     var body: some View {
         switch message.role {
         case .user:
             bubble(trailing: true, background: FlowTheme.accent, foreground: .white)
+                .onTapGesture { onTapUserBubble?(message.text) }
         case .assistant:
             bubble(trailing: false, background: FlowTheme.surface(scheme), foreground: FlowTheme.primaryText(scheme), showsBorder: true)
         case .tool:
@@ -160,7 +164,7 @@ struct AssistantEmptyStateView: View {
 
     private var examples: [String] {
         hasAPIKey
-            ? ["Plan my day", "Add gym tomorrow at 9 for 1 hour", "What's on my plate today?", "Start focus"]
+            ? ["Plan my day", "Summarise today", "Add reading for 30 min"]
             : ["Add gym tomorrow at 9 for 1 hour", "Complete <task title>", "Start focus", "Search <text>"]
     }
 

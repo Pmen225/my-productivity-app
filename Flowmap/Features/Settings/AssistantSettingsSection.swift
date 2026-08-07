@@ -43,22 +43,56 @@ struct AssistantSettingsSection: View {
 
     private func providerRow(_ flow: AppEnvironment) -> some View {
         VStack(alignment: .leading, spacing: FlowSpacing.xs) {
-            Text("Provider").font(FlowFont.secondary).foregroundStyle(FlowTheme.secondaryText(scheme))
-            Picker("Provider", selection: Binding(
-                get: { flow.settings.assistantProvider },
-                set: { newValue in
-                    flow.settings.assistantProvider = newValue
-                    apiKeyInput = ""
-                    try? context.save()
-                }
-            )) {
+            FlowEyebrow("Provider")
+            VStack(spacing: FlowSpacing.s) {
                 ForEach(AssistantProvider.allCases, id: \.self) { provider in
-                    Text(provider.displayName).tag(provider)
+                    providerOptionRow(provider, flow: flow)
                 }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
         }
+    }
+
+    private func providerOptionRow(_ provider: AssistantProvider, flow: AppEnvironment) -> some View {
+        let isSelected = flow.settings.assistantProvider == provider
+        return Button {
+            flow.settings.assistantProvider = provider
+            apiKeyInput = ""
+            try? context.save()
+        } label: {
+            HStack(spacing: FlowSpacing.s) {
+                VStack(alignment: .leading, spacing: FlowSpacing.xxs) {
+                    Text(provider.displayName)
+                        .font(FlowFont.cardTitle)
+                        .foregroundStyle(FlowTheme.primaryText(scheme))
+                    if let firstModel = provider.availableModels.first {
+                        Text(firstModel)
+                            .font(FlowFont.caption)
+                            .foregroundStyle(FlowTheme.secondaryText(scheme))
+                    }
+                }
+                Spacer(minLength: FlowSpacing.s)
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(FlowTheme.accent)
+                        .accessibilityHidden(true)
+                }
+            }
+            .padding(.horizontal, FlowSpacing.m)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+            .background(
+                RoundedRectangle(cornerRadius: FlowRadius.medium, style: .continuous)
+                    .fill(isSelected ? FlowTheme.surfaceSunken(scheme) : .clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: FlowRadius.medium, style: .continuous)
+                    .strokeBorder(isSelected ? FlowTheme.accent : FlowTheme.separator(scheme), lineWidth: isSelected ? 1.5 : 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 
     private func modelRow(_ flow: AppEnvironment) -> some View {
@@ -81,13 +115,14 @@ struct AssistantSettingsSection: View {
 
     private func apiKeyRow(_ flow: AppEnvironment) -> some View {
         let account = flow.settings.assistantProvider.keychainAccount
+        let placeholder = flow.settings.assistantProvider == .anthropic ? "sk-ant-…" : "sk-…"
         return VStack(alignment: .leading, spacing: FlowSpacing.xs) {
             Text("API key").font(FlowFont.secondary).foregroundStyle(FlowTheme.secondaryText(scheme))
             Text(KeychainService.maskedDescription(account: account))
                 .font(FlowFont.caption)
                 .foregroundStyle(FlowTheme.secondaryText(scheme))
             HStack(spacing: FlowSpacing.s) {
-                SecureField("Enter new key", text: $apiKeyInput)
+                SecureField(placeholder, text: $apiKeyInput)
                     .textFieldStyle(.plain)
                     .padding(.horizontal, FlowSpacing.m)
                     .padding(.vertical, FlowSpacing.s)
@@ -111,6 +146,9 @@ struct AssistantSettingsSection: View {
                     }
                 }
             }
+            Text("Stored in the iOS Keychain — never in iCloud, never in logs. Only messages you send reach the provider.")
+                .font(FlowFont.caption)
+                .foregroundStyle(FlowTheme.tertiaryText(scheme))
         }
     }
 

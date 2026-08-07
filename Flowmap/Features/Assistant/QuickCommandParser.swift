@@ -40,7 +40,7 @@ public enum QuickCommandParser {
                 argumentsJSON: encode(FocusPayload(taskQuery: rest.isEmpty ? nil : rest))
             )
         }
-        if lowered.contains("replan") || lowered.contains("reschedule") {
+        if lowered.contains("replan") || lowered.contains("reschedule") || lowered == "plan" || lowered.hasPrefix("plan ") {
             let replanExisting = lowered.contains("whole day") || lowered.contains("everything")
             return Command(
                 toolName: AssistantToolName.rescheduleDay.rawValue,
@@ -52,7 +52,8 @@ public enum QuickCommandParser {
             guard !query.isEmpty else { return nil }
             return Command(toolName: AssistantToolName.searchAppContent.rawValue, argumentsJSON: encode(SearchPayload(query: query)))
         }
-        if lowered.contains("summarise today") || lowered.contains("summarize today") {
+        if lowered.contains("summarise today") || lowered.contains("summarize today")
+            || lowered == "status" || lowered.contains("how's today going") || lowered.contains("how is today") {
             return Command(toolName: AssistantToolName.summariseToday.rawValue, argumentsJSON: "{}")
         }
         return nil
