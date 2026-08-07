@@ -167,26 +167,106 @@ public enum FocusWheelGeometry {
         max(carouselRulerMajorStep(totalMinutes: totalMinutes), spanDegrees < 80 ? 10 : 1)
     }
 
+    /// The three tick weights of the ruler. A measuring instrument is read by
+    /// tick length as much as by its numbers, so the tier is decided here
+    /// rather than by a pair of booleans in the renderer.
+    public enum RulerTickTier: Sendable {
+        case minor
+        case medium
+        case major
+    }
+
+    /// Which weight the tick for `minutesRemaining` gets. Both ends of the
+    /// scale are always major: they carry the two values the countdown exists
+    /// to show. On a block longer than an hour the five-minute marks drop to
+    /// the middle weight so the ten-minute numerals still stand out.
+    public static func carouselRulerTickTier(minutesRemaining: Int, totalMinutes: Int) -> RulerTickTier {
+        if minutesRemaining <= 0 || minutesRemaining >= totalMinutes { return .major }
+        if minutesRemaining % carouselRulerMajorStep(totalMinutes: totalMinutes) == 0 { return .major }
+        if minutesRemaining % 5 == 0 { return .medium }
+        return .minor
+    }
+
+    /// Every radius the countdown ruler draws on, as one set derived from the
+    /// band it lives in. `radius` on its own is the band's OUTER edge, which
+    /// on this dial sits under the pointer — anchoring any part of the ruler
+    /// to it has already put the whole scale off the band once.
+    public struct RulerRadii: Sendable {
+        /// Numerals sit inboard of their ticks, as on a tape measure.
+        public let numeral: CGFloat
+        public let tickBase: CGFloat
+        public let minorTip: CGFloat
+        public let mediumTip: CGFloat
+        public let majorTip: CGFloat
+
+        public func tip(for tier: RulerTickTier) -> CGFloat {
+            switch tier {
+            case .minor: minorTip
+            case .medium: mediumTip
+            case .major: majorTip
+            }
+        }
+    }
+
+    /// The ruler's own track inside the annulus `innerRadius ..< innerRadius +
+    /// thickness`. Everything is a fraction of the band so the scale keeps its
+    /// proportions at any dial size, and the outermost tick still clears the
+    /// rim by enough that it never reads as touching the wedge's edge.
+    public static func carouselRulerRadii(innerRadius: CGFloat, thickness: CGFloat) -> RulerRadii {
+        RulerRadii(
+            numeral: innerRadius + thickness * 0.22,
+            tickBase: innerRadius + thickness * 0.40,
+            minorTip: innerRadius + thickness * 0.52,
+            mediumTip: innerRadius + thickness * 0.60,
+            majorTip: innerRadius + thickness * 0.72
+        )
+    }
+
+    /// The label's tangent, before it is made readable — 90° from the radial
+    /// angle, normalised to `(-180, 180]`.
+    private static func rulerTangent(atAngle angle: Double) -> Double {
+        var tangent = (angle + 90).truncatingRemainder(dividingBy: 360)
+        if tangent > 180 { tangent -= 360 }
+        if tangent < -180 { tangent += 360 }
+        return tangent
+    }
+
     /// Rotates a numeral onto the tangent of the circular ruler while keeping
     /// it upright. At the top and bottom the text is horizontal; at the sides
     /// it turns with the ring rather than remaining a straight screen label.
     public static func carouselRulerLabelRotation(angle: Double) -> Double {
-        var tangent = (angle + 90).truncatingRemainder(dividingBy: 360)
-        if tangent > 180 { tangent -= 360 }
-        if tangent < -180 { tangent += 360 }
-        if tangent > 90 { tangent -= 180 }
-        if tangent < -90 { tangent += 180 }
-        return tangent
+        curvedRulerCharacterRotation(characterAngle: angle, labelCentreAngle: angle)
     }
 
     /// Whether the readable tangent was flipped by 180°. Reversing the
     /// character order at the same time keeps multi-digit labels reading
     /// left-to-right on the lower half of the ring.
     public static func carouselRulerLabelReversesCharacters(angle: Double) -> Bool {
-        var tangent = (angle + 90).truncatingRemainder(dividingBy: 360)
-        if tangent > 180 { tangent -= 360 }
-        if tangent < -180 { tangent += 360 }
+        let tangent = rulerTangent(atAngle: angle)
         return tangent > 90 || tangent < -90
+    }
+
+    /// Rotation for ONE character of a curved numeral: its own tangent, turned
+    /// by whatever the label as a whole was turned by.
+    ///
+    /// Giving every character the label's single centre tangent leaves a
+    /// two-digit number sitting flat across the arc, which is the thing the
+    /// design explicitly rejects; deciding the flip per character instead
+    /// would stand one digit on its head the moment a label straddles a
+    /// cardinal point. The flip is therefore the label's, the tangent is the
+    /// character's.
+    public static func curvedRulerCharacterRotation(characterAngle: Double, labelCentreAngle: Double) -> Double {
+        let tangent = rulerTangent(atAngle: characterAngle)
+        guard carouselRulerLabelReversesCharacters(angle: labelCentreAngle) else { return tangent }
+        return tangent > 0 ? tangent - 180 : tangent + 180
+    }
+
+    /// Arc distance between the centres of two adjacent ruler digits. The
+    /// numerals are drawn in a rounded system font, whose digits are tabular
+    /// and so share one advance — measuring each glyph would buy nothing and
+    /// would drag a UI framework into this type.
+    public static func curvedRulerCharacterSpacing(fontSize: CGFloat) -> CGFloat {
+        fontSize * 0.62
     }
 
     /// Places each character of a ruler numeral on a tiny arc, rather than
@@ -203,6 +283,56 @@ public enum FocusWheelGeometry {
         return (0..<textLength).map { index in
             centreAngle + (Double(index) - midpoint) * degreesPerCharacter
         }
+    }
+
+    /// Half the angular width a numeral occupies once it is bent onto `radius`.
+    public static func curvedRulerLabelHalfWidth(
+        characterCount: Int,
+        fontSize: CGFloat,
+        radius: CGFloat
+    ) -> Double {
+        guard characterCount > 0, radius > 0 else { return 0 }
+        let arc = curvedRulerCharacterSpacing(fontSize: fontSize) * CGFloat(characterCount)
+        return Double(arc / radius) * 180 / .pi / 2
+    }
+
+    /// Where a numeral is actually centred, given the tick it belongs to.
+    ///
+    /// A number printed dead on the scale's own end spills half of itself into
+    /// the neighbouring task. Nudging just the end numerals inward keeps the
+    /// two values the countdown exists to show — full duration and zero —
+    /// printed inside the active block, which a narrow overview wedge would
+    /// otherwise lose entirely.
+    public static func carouselRulerLabelCentreAngle(
+        tickAngle: Double,
+        span: (start: Double, end: Double),
+        characterCount: Int,
+        fontSize: CGFloat,
+        radius: CGFloat
+    ) -> Double {
+        let half = curvedRulerLabelHalfWidth(
+            characterCount: characterCount,
+            fontSize: fontSize,
+            radius: radius
+        )
+        let low = min(span.start, span.end) + half
+        let high = max(span.start, span.end) - half
+        guard low < high else { return (span.start + span.end) / 2 }
+        return min(high, max(low, tickAngle))
+    }
+
+    /// The zoom step a pinch produces. The chips and the gesture have to offer
+    /// exactly the same four states, so the step lives beside them rather than
+    /// inside the gesture handler, where it could quietly drift onto the legacy
+    /// `5M` mode the circular dial can no longer draw.
+    public static func nextCarouselVisibility(
+        from current: WheelVisibility,
+        magnification: Double
+    ) -> WheelVisibility {
+        let modes = WheelVisibility.carouselModes
+        guard let index = modes.firstIndex(of: current) else { return modes[0] }
+        let step = magnification > 1 ? 1 : -1
+        return modes[min(modes.count - 1, max(0, index + step))]
     }
 
     // MARK: - Bottom-arc dial

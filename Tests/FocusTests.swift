@@ -812,6 +812,150 @@ struct FocusWheelGeometryTests {
         let fiveMinute = FocusWheelGeometry.bowlTargetRadius(forWidth: width, visibility: .fiveMinute)
         #expect(fiveMinute > viewOne * 5)
     }
+
+    @Test("Both ends of the countdown are major ticks; five- and one-minute marks step down")
+    func rulerTickTiersReadAsAScale() {
+        // 45 minutes: the major cadence is every 5.
+        #expect(FocusWheelGeometry.carouselRulerTickTier(minutesRemaining: 45, totalMinutes: 45) == .major)
+        #expect(FocusWheelGeometry.carouselRulerTickTier(minutesRemaining: 0, totalMinutes: 45) == .major)
+        #expect(FocusWheelGeometry.carouselRulerTickTier(minutesRemaining: 30, totalMinutes: 45) == .major)
+        #expect(FocusWheelGeometry.carouselRulerTickTier(minutesRemaining: 7, totalMinutes: 45) == .minor)
+
+        // Over an hour the cadence relaxes to 10, which is what creates the
+        // middle weight: 25 is still a five-minute mark but no longer a major.
+        #expect(FocusWheelGeometry.carouselRulerTickTier(minutesRemaining: 30, totalMinutes: 90) == .major)
+        #expect(FocusWheelGeometry.carouselRulerTickTier(minutesRemaining: 25, totalMinutes: 90) == .medium)
+        #expect(FocusWheelGeometry.carouselRulerTickTier(minutesRemaining: 23, totalMinutes: 90) == .minor)
+    }
+
+    @Test("Every part of the ruler is drawn inside its own band, numerals inboard of the ticks")
+    func rulerRadiiStayInsideTheBand() {
+        let inner: CGFloat = 100
+        let thickness: CGFloat = 50
+        let radii = FocusWheelGeometry.carouselRulerRadii(innerRadius: inner, thickness: thickness)
+
+        // Hand-computed from the contract's fractions of thickness.
+        #expect(abs(radii.numeral - 111) < 0.0001)
+        #expect(abs(radii.tickBase - 120) < 0.0001)
+        #expect(abs(radii.minorTip - 126) < 0.0001)
+        #expect(abs(radii.mediumTip - 130) < 0.0001)
+        #expect(abs(radii.majorTip - 136) < 0.0001)
+
+        // Numerals sit inboard of their ticks, and tick length rises with tier.
+        #expect(radii.numeral < radii.tickBase)
+        #expect(radii.tip(for: .minor) < radii.tip(for: .medium))
+        #expect(radii.tip(for: .medium) < radii.tip(for: .major))
+
+        // Nothing leaves the annulus: `radius` alone is the OUTER edge, which on
+        // this dial sits under the pointer.
+        #expect(radii.numeral > inner)
+        #expect(radii.majorTip < inner + thickness)
+    }
+
+    @Test("Each digit bends onto its own tangent, and no digit ends up upside down")
+    func curvedNumeralsBendAndStayUpright() {
+        // A character offset from its label's centre takes its own tangent,
+        // not the centre's — that is what bends a two-digit number onto the arc.
+        let left = FocusWheelGeometry.curvedRulerCharacterRotation(characterAngle: 95, labelCentreAngle: 90)
+        let right = FocusWheelGeometry.curvedRulerCharacterRotation(characterAngle: 85, labelCentreAngle: 90)
+        #expect(abs(left - 5) < 0.0001)
+        #expect(abs(right + 5) < 0.0001)
+        #expect(left != right)
+
+        // A single-character label is exactly the whole-label rotation.
+        for angle in [0.0, 90, 180, 270, 45, 135] {
+            #expect(
+                FocusWheelGeometry.curvedRulerCharacterRotation(characterAngle: angle, labelCentreAngle: angle)
+                    == FocusWheelGeometry.carouselRulerLabelRotation(angle: angle)
+            )
+        }
+
+        // A label is never turned past the quarter turn: beyond that the flip
+        // rule is what brings it back, which is the whole reason it exists.
+        for angle in stride(from: 0.0, to: 360, by: 1) {
+            #expect(abs(FocusWheelGeometry.carouselRulerLabelRotation(angle: angle)) <= 90.0001)
+        }
+
+        // The flip belongs to the label, so a numeral straddling a cardinal
+        // point cannot stand one of its digits on its head: two characters of
+        // one label differ by no more than the arc between them. Deciding the
+        // flip per character instead would show up here as a ~180° jump.
+        for centre in stride(from: 0.0, to: 360, by: 1) {
+            let first = FocusWheelGeometry.curvedRulerCharacterRotation(
+                characterAngle: centre - 4,
+                labelCentreAngle: centre
+            )
+            let last = FocusWheelGeometry.curvedRulerCharacterRotation(
+                characterAngle: centre + 4,
+                labelCentreAngle: centre
+            )
+            #expect(abs(last - first) <= 8.0001)
+        }
+    }
+
+    @Test("A numeral is clamped inside its wedge instead of spilling over the boundary")
+    func rulerNumeralsStayInsideTheActiveWedge() {
+        let fontSize: CGFloat = 10
+        let radius: CGFloat = 100
+        // Hand-computed: spacing 10 × 0.62 = 6.2pt per digit, so a two-digit
+        // numeral spans 12.4pt of arc = 12.4/100 rad = 7.1047°, half = 3.5523°.
+        let half = FocusWheelGeometry.curvedRulerLabelHalfWidth(
+            characterCount: 2,
+            fontSize: fontSize,
+            radius: radius
+        )
+        #expect(abs(FocusWheelGeometry.curvedRulerCharacterSpacing(fontSize: fontSize) - 6.2) < 0.0001)
+        #expect(abs(half - 3.5523) < 0.001)
+
+        // The demo's narrow overview wedge. Both endpoint numerals move inward
+        // by their own half-width; a numeral in the middle is left alone.
+        let span = (start: 70.0, end: 110.0)
+        let atStart = FocusWheelGeometry.carouselRulerLabelCentreAngle(
+            tickAngle: span.start, span: span, characterCount: 2, fontSize: fontSize, radius: radius
+        )
+        let atEnd = FocusWheelGeometry.carouselRulerLabelCentreAngle(
+            tickAngle: span.end, span: span, characterCount: 2, fontSize: fontSize, radius: radius
+        )
+        let middle = FocusWheelGeometry.carouselRulerLabelCentreAngle(
+            tickAngle: 90, span: span, characterCount: 2, fontSize: fontSize, radius: radius
+        )
+        #expect(abs(atStart - (span.start + half)) < 0.0001)
+        #expect(abs(atEnd - (span.end - half)) < 0.0001)
+        #expect(abs(middle - 90) < 0.0001)
+        #expect(atStart > span.start)
+        #expect(atEnd < span.end)
+
+        // A wedge too narrow to hold the numeral at all centres it rather than
+        // clamping past itself and inverting the two bounds.
+        let sliver = (start: 89.0, end: 91.0)
+        let inSliver = FocusWheelGeometry.carouselRulerLabelCentreAngle(
+            tickAngle: sliver.start, span: sliver, characterCount: 2, fontSize: fontSize, radius: radius
+        )
+        #expect(abs(inSliver - 90) < 0.0001)
+    }
+
+    @Test("Pinching steps through the same four modes as the chips, and stops at both ends")
+    func pinchStepsThroughTheChipModes() {
+        #expect(FocusWheelGeometry.nextCarouselVisibility(from: .one, magnification: 1.2) == .two)
+        #expect(FocusWheelGeometry.nextCarouselVisibility(from: .two, magnification: 1.2) == .three)
+        #expect(FocusWheelGeometry.nextCarouselVisibility(from: .three, magnification: 1.2) == .all)
+        #expect(FocusWheelGeometry.nextCarouselVisibility(from: .all, magnification: 0.8) == .three)
+        #expect(FocusWheelGeometry.nextCarouselVisibility(from: .two, magnification: 0.8) == .one)
+
+        // Clamped, never wrapped: a run of pinches cannot jump from All to 1.
+        #expect(FocusWheelGeometry.nextCarouselVisibility(from: .all, magnification: 1.2) == .all)
+        #expect(FocusWheelGeometry.nextCarouselVisibility(from: .one, magnification: 0.8) == .one)
+
+        // The legacy 5M state is not on the chip row, so a pinch can neither
+        // reach it nor get stuck in it.
+        #expect(FocusWheelGeometry.nextCarouselVisibility(from: .fiveMinute, magnification: 1.2) == .one)
+        for start in WheelVisibility.carouselModes {
+            for magnification in [0.5, 1.5] {
+                let next = FocusWheelGeometry.nextCarouselVisibility(from: start, magnification: magnification)
+                #expect(next != .fiveMinute)
+            }
+        }
+    }
 }
 
 @Suite("Focus card heights")

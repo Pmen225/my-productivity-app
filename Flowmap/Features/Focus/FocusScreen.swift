@@ -654,12 +654,15 @@ struct FocusScreen: View {
     private var pinchGesture: some Gesture {
         MagnifyGesture(minimumScaleDelta: 0.08)
             .onChanged { value in
-                let modes = WheelVisibility.carouselModes
-                guard let baseIndex = modes.firstIndex(of: pinchBaseline) else { return }
                 // Spreading reveals more of the day; pinching narrows the focus.
-                let step = value.magnification > 1 ? 1 : -1
-                let target = modes[min(modes.count - 1, max(0, baseIndex + step))]
-                setVisibility(target)
+                // The step lives in `FocusWheelGeometry` so the pinch and the
+                // visible chips can never drift onto different mode lists.
+                setVisibility(
+                    FocusWheelGeometry.nextCarouselVisibility(
+                        from: pinchBaseline,
+                        magnification: value.magnification
+                    )
+                )
             }
             .onEnded { _ in pinchBaseline = visibility }
     }

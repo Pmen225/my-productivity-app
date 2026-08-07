@@ -44,13 +44,12 @@ private struct PointerTriangle: Shape {
 /// only rotate as a rigid rectangle; individual characters give the number the
 /// same curved baseline as the dial itself.
 private struct CurvedRulerLabel: View {
-    @Environment(\.colorScheme) private var scheme
-
     let text: String
     let centre: CGPoint
     let radius: CGFloat
     let angle: Double
     let fontSize: CGFloat
+    let colour: Color
 
     var body: some View {
         let characters = Array(text)
@@ -60,22 +59,28 @@ private struct CurvedRulerLabel: View {
         let angles = FocusWheelGeometry.curvedRulerCharacterAngles(
             textLength: characters.count,
             centreAngle: angle,
-            radius: radius
+            radius: radius,
+            characterSpacing: FocusWheelGeometry.curvedRulerCharacterSpacing(fontSize: fontSize)
         )
-        // Keep one readable baseline for the whole numeral. The characters
-        // still follow separate arc positions, but flipping each one
-        // independently would reverse the second digit at the side endpoints.
-        let baselineRotation = FocusWheelGeometry.carouselRulerLabelRotation(angle: angle)
 
         ZStack {
             ForEach(Array(zip(readableCharacters, angles).enumerated()), id: \.offset) { _, pair in
                 let character = pair.0
                 let characterAngle = pair.1
                 Text(String(character))
-                    .font(.system(size: fontSize, weight: .medium, design: .rounded))
-                    .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                    .font(.system(size: fontSize, weight: .semibold, design: .rounded))
+                    .foregroundStyle(colour)
+                    // Rotate BEFORE positioning. `.position` grows the view to
+                    // fill its parent, so a rotation applied after it turns
+                    // that whole dial-sized frame about the dial's centre and
+                    // carries the character to a completely different angle —
+                    // which is how every endpoint numeral ended up piled at the
+                    // bottom of the ring instead of at its own tick.
+                    .rotationEffect(.degrees(FocusWheelGeometry.curvedRulerCharacterRotation(
+                        characterAngle: characterAngle,
+                        labelCentreAngle: angle
+                    )))
                     .position(FocusWheelGeometry.point(centre: centre, radius: radius, angle: characterAngle))
-                    .rotationEffect(.degrees(baselineRotation))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -153,6 +158,9 @@ private struct BowlWedgeShape: Shape {
 /// the dial into a bowl or a partial arc.
 struct FocusWheelView: View {
     @Environment(\.colorScheme) private var scheme
+    /// The ruler's numerals follow the reader's text size like the rest of the
+    /// app, from the same footnote-scale base the design draws them at.
+    @ScaledMetric(relativeTo: .caption2) private var rulerNumeralSize: CGFloat = 10
 
     let items: [WheelItem]
     /// 0...1 through the active task. Reserved for a future progress mark;
@@ -252,7 +260,11 @@ struct FocusWheelView: View {
                         rotation: rotation
                     )
                 ),
-                totalMinutes: max(1, items.first?.minutes ?? 30)
+                totalMinutes: max(1, items.first?.minutes ?? 30),
+                // The scale belongs to the active task, so it is drawn in that
+                // task's own colour — which is also the one tone guaranteed
+                // legible on the wedge it sits on, in either scheme.
+                colour: items.first?.colour ?? .clay
             )
             wheelPointer(centre: centre, radius: outerRadius)
         }
@@ -319,19 +331,20 @@ struct FocusWheelView: View {
         innerRadius: CGFloat,
         thickness: CGFloat,
         activeSpan: (start: Double, end: Double),
-        totalMinutes: Int
+        totalMinutes: Int,
+        colour: ColourToken
     ) -> some View {
         let step = FocusWheelGeometry.carouselRulerTickStep(totalMinutes: totalMinutes)
-        let majorStep = FocusWheelGeometry.carouselRulerMajorStep(totalMinutes: totalMinutes)
         let labelStep = FocusWheelGeometry.carouselRulerLabelStep(
             totalMinutes: totalMinutes,
             spanDegrees: activeSpan.end - activeSpan.start
         )
-        // The ruler belongs in the middle of the annulus, not in the hole.
-        // Keeping ticks and numerals on this radius makes the countdown read as
-        // one continuous circular measuring instrument.
-        let rulerRadius = innerRadius + thickness * 0.52
-        let tickStartRadius = rulerRadius - min(14, thickness * 0.24)
+        let radii = FocusWheelGeometry.carouselRulerRadii(innerRadius: innerRadius, thickness: thickness)
+        // The scale grows with the reader's text size, but only so far: past
+        // this the numerals stop fitting the band they are measuring, and an
+        // unreadable ruler drawn over its own ticks helps nobody.
+        let fontSize = min(13, rulerNumeralSize)
+
         return ZStack {
             ForEach(Array(stride(from: totalMinutes, through: 0, by: -step)), id: \.self) { remaining in
                 let angle = FocusWheelGeometry.carouselRulerAngle(
@@ -339,33 +352,65 @@ struct FocusWheelView: View {
                     totalMinutes: totalMinutes,
                     span: activeSpan
                 )
-                let isMajor = remaining == totalMinutes || remaining == 0 || remaining % majorStep == 0
-                let from = FocusWheelGeometry.point(centre: centre, radius: tickStartRadius, angle: angle)
-                let to = FocusWheelGeometry.point(centre: centre, radius: rulerRadius + (isMajor ? 10 : 6), angle: angle)
-
-                Path { path in
-                    path.move(to: from)
-                    path.addLine(to: to)
-                }
-                .stroke(
-                    isMajor ? FlowTheme.accent.opacity(0.82) : FlowTheme.separatorStrong(scheme),
-                    lineWidth: isMajor ? 1.5 : 0.95
+                rulerTick(
+                    centre: centre,
+                    angle: angle,
+                    tier: FocusWheelGeometry.carouselRulerTickTier(
+                        minutesRemaining: remaining,
+                        totalMinutes: totalMinutes
+                    ),
+                    radii: radii,
+                    colour: colour
                 )
 
                 let showsLabel = remaining == totalMinutes || remaining == 0 || remaining % labelStep == 0
                 if showsLabel {
+                    let text = "\(remaining)"
                     CurvedRulerLabel(
-                        text: "\(remaining)",
+                        text: text,
                         centre: centre,
-                        radius: rulerRadius + 1,
-                        angle: angle,
-                        fontSize: 10
+                        radius: radii.numeral,
+                        angle: FocusWheelGeometry.carouselRulerLabelCentreAngle(
+                            tickAngle: angle,
+                            span: activeSpan,
+                            characterCount: text.count,
+                            fontSize: fontSize,
+                            radius: radii.numeral
+                        ),
+                        fontSize: fontSize,
+                        colour: colour.onSoft
                     )
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityHidden(true)
+    }
+
+    /// One graduation. Its length carries the tier as well as its weight does,
+    /// so the scale stays readable without relying on colour alone.
+    private func rulerTick(
+        centre: CGPoint,
+        angle: Double,
+        tier: FocusWheelGeometry.RulerTickTier,
+        radii: FocusWheelGeometry.RulerRadii,
+        colour: ColourToken
+    ) -> some View {
+        let from = FocusWheelGeometry.point(centre: centre, radius: radii.tickBase, angle: angle)
+        let to = FocusWheelGeometry.point(centre: centre, radius: radii.tip(for: tier), angle: angle)
+        let width: CGFloat
+        let opacity: Double
+        switch tier {
+        case .minor: (width, opacity) = (0.8, 0.42)
+        case .medium: (width, opacity) = (1.2, 0.7)
+        case .major: (width, opacity) = (1.8, 1)
+        }
+
+        return Path { path in
+            path.move(to: from)
+            path.addLine(to: to)
+        }
+        .stroke(colour.onSoft.opacity(opacity), lineWidth: width)
     }
 
     // MARK: - Time-window bowl
@@ -844,19 +889,19 @@ struct FocusWheelOverviewView: View {
         let totalMinutes = min(180, max(1, items.first?.minutes ?? 30))
         let tickCount = FocusWheelGeometry.overviewRulerTickCount(totalMinutes: totalMinutes)
         let thickness = outerRadius - innerRadius
-        let rulerRadius = innerRadius + thickness * 0.52
-        let tickStartRadius = rulerRadius - min(10, thickness * 0.22)
+        let radii = FocusWheelGeometry.carouselRulerRadii(innerRadius: innerRadius, thickness: thickness)
         let activeSpan = FocusWheelGeometry.carouselRulerSpan(
             activeSpan: FocusWheelGeometry.overviewSpan(
                 index: 0,
                 durations: items.map(\.minutes)
             )
         )
-        let majorStep = FocusWheelGeometry.carouselRulerMajorStep(totalMinutes: totalMinutes)
         let labelStep = FocusWheelGeometry.carouselRulerLabelStep(
             totalMinutes: totalMinutes,
             spanDegrees: activeSpan.end - activeSpan.start
         )
+        let colour = items.first?.colour ?? .clay
+        let fontSize: CGFloat = 9
 
         return ZStack {
             ForEach(0...tickCount, id: \.self) { index in
@@ -866,31 +911,38 @@ struct FocusWheelOverviewView: View {
                     totalMinutes: totalMinutes,
                     span: activeSpan
                 )
-                let isMajor = remaining == totalMinutes || remaining == 0 || remaining % majorStep == 0
-                let from = FocusWheelGeometry.point(centre: centre, radius: tickStartRadius, angle: angle)
-                let to = FocusWheelGeometry.point(
-                    centre: centre,
-                    radius: rulerRadius + (isMajor ? 8 : 5),
-                    angle: angle
+                let tier = FocusWheelGeometry.carouselRulerTickTier(
+                    minutesRemaining: remaining,
+                    totalMinutes: totalMinutes
                 )
+                let from = FocusWheelGeometry.point(centre: centre, radius: radii.tickBase, angle: angle)
+                let to = FocusWheelGeometry.point(centre: centre, radius: radii.tip(for: tier), angle: angle)
 
                 Path { path in
                     path.move(to: from)
                     path.addLine(to: to)
                 }
                 .stroke(
-                    isMajor ? FlowTheme.accent.opacity(0.78) : FlowTheme.separatorStrong(scheme),
-                    lineWidth: isMajor ? 1.4 : 0.8
+                    colour.onSoft.opacity(tier == .major ? 1 : tier == .medium ? 0.7 : 0.42),
+                    lineWidth: tier == .major ? 1.4 : 0.8
                 )
 
                 let showsLabel = remaining == totalMinutes || remaining == 0 || remaining % labelStep == 0
                 if showsLabel {
+                    let text = "\(remaining)"
                     CurvedRulerLabel(
-                        text: "\(remaining)",
+                        text: text,
                         centre: centre,
-                        radius: rulerRadius + 1,
-                        angle: angle,
-                        fontSize: 9
+                        radius: radii.numeral,
+                        angle: FocusWheelGeometry.carouselRulerLabelCentreAngle(
+                            tickAngle: angle,
+                            span: activeSpan,
+                            characterCount: text.count,
+                            fontSize: fontSize,
+                            radius: radii.numeral
+                        ),
+                        fontSize: fontSize,
+                        colour: colour.onSoft
                     )
                 }
             }
