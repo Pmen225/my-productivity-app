@@ -524,7 +524,7 @@ struct FocusScreen: View {
 
     private var countdownDisplayText: String {
         if let session { return session.countdownLabel(at: now) }
-        return "(countdownMinutesText) min"
+        return "\(countdownMinutesText) min"
     }
 
     private var sessionEndLabel: String {
