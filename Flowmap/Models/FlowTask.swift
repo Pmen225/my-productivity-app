@@ -151,6 +151,16 @@ public final class FlowTask {
         return "\(all.count { $0.isCompleted }) of \(all.count)"
     }
 
+    /// Completed fraction of sub-tasks, computed at read (never stored —
+    /// CloudKit rule) so the row's progress bar always matches live state.
+    /// `0` when there are no sub-tasks, so a caller can gate on `> 0` items
+    /// existing rather than dividing by zero.
+    public var subtaskCompletionFraction: Double {
+        let all = subtasks ?? []
+        guard !all.isEmpty else { return 0 }
+        return Double(all.count { $0.isCompleted }) / Double(all.count)
+    }
+
     /// Segments that still hold time on the timeline, earliest first.
     public var liveSegments: [TaskSegment] {
         (segments ?? [])
