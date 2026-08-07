@@ -158,6 +158,7 @@ private struct BowlWedgeShape: Shape {
 /// the dial into a bowl or a partial arc.
 struct FocusWheelView: View {
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The ruler's numerals follow the reader's text size like the rest of the
     /// app, from the same footnote-scale base the design draws them at.
     @ScaledMetric(relativeTo: .caption2) private var rulerNumeralSize: CGFloat = 10
@@ -171,9 +172,22 @@ struct FocusWheelView: View {
     /// Minutes since midnight right now — the same clock every segment is
     /// placed against. `FocusScreen` ticks this forward once a second.
     let nowMinutes: Double
-    /// Which zoom level to draw. `.all` never reaches this view — `FocusScreen`
-    /// renders `FocusWheelOverviewView` for it instead.
-    let visibility: WheelVisibility
+    /// Where the dial sits on `FocusWheelGeometry`'s continuous zoom axis: an
+    /// integer while settled on one of the four views, fractional while a pinch
+    /// is still in progress.
+    let zoom: Double
+    /// True while the fingers are still down. The dial has to track them with
+    /// no animation at all — only a settle or a chip tap earns one.
+    let isZooming: Bool
+
+    /// No animation while the fingers are down: the dial is being dragged, not
+    /// transitioned, and easing it would put it behind the hand. A settle (or a
+    /// chip tap) gets a gentle spring, or a short easeOut with no overshoot
+    /// when Reduce Motion is on.
+    private var zoomAnimation: Animation? {
+        if isZooming { return nil }
+        return reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.4, dampingFraction: 0.86)
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -197,15 +211,19 @@ struct FocusWheelView: View {
         // Lift the dial slightly so its lower edge remains clear of the
         // checklist card while the circular control keeps its full diameter.
         let centre = CGPoint(x: size.width / 2, y: size.height / 2 - 16)
-        let count = FocusWheelGeometry.visibleCount(for: visibility, queueCount: items.count)
-        let shown = Array(items.prefix(count))
-        let durations = shown.map(\.minutes)
+        let durations = items.map(\.minutes)
         // A scheduled task is not elapsed until the focus session starts.
         // Using wall-clock time here rotated an idle demo ring by a full slice
         // before the user had pressed play.
         let elapsed = min(1, max(0, progress))
-        let activeSweep = FocusWheelGeometry.carouselSweep(for: visibility, queueCount: max(1, items.count))
+        let activeSweep = FocusWheelGeometry.carouselSweep(zoom: zoom, queueCount: max(1, items.count))
         let rotation = elapsed * activeSweep
+        // Every zoom level is one vector of slices from the geometry, settled
+        // or mid-pinch. A block whose slice has not yet grown past its own
+        // separator gap is not drawn at all — the gap would invert its arc and
+        // paint most of the ring.
+        let spans = FocusWheelGeometry.carouselSpans(zoom: zoom, durations: durations, rotation: rotation)
+        let gap = FocusWheelGeometry.carouselGap(zoom: zoom, durations: durations)
 
         return ZStack {
             Circle()
@@ -219,33 +237,30 @@ struct FocusWheelView: View {
                         .position(centre)
                 }
 
-            ForEach(Array(shown.enumerated()), id: \.element.id) { index, item in
-                let span = FocusWheelGeometry.carouselSpan(
-                    index: index,
-                    visibility: visibility,
-                    durations: durations,
-                    rotation: rotation
-                )
-                let gap = FocusWheelGeometry.wedgeGap(itemCount: shown.count)
-                let wedge = WheelWedgeShape(
-                    startAngle: span.start + gap,
-                    endAngle: span.end - gap,
-                    thickness: thickness,
-                    radius: outerRadius,
-                    centre: centre
-                )
+            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                let span = index < spans.count ? spans[index] : (start: 0.0, end: 0.0)
 
-                wedge
-                    .fill(item.isActive ? item.colour.softStrong : item.colour.soft)
-                    .overlay(wedge.stroke(FlowTheme.separatorStrong(scheme), lineWidth: 1))
+                if FocusWheelGeometry.carouselWedgeIsDrawn(width: span.end - span.start, gap: gap) {
+                    let wedge = WheelWedgeShape(
+                        startAngle: span.start + gap,
+                        endAngle: span.end - gap,
+                        thickness: thickness,
+                        radius: outerRadius,
+                        centre: centre
+                    )
 
-                carouselLabel(
-                    item: item,
-                    span: span,
-                    centre: centre,
-                    radius: outerRadius - thickness / 2,
-                    thickness: thickness
-                )
+                    wedge
+                        .fill(item.isActive ? item.colour.softStrong : item.colour.soft)
+                        .overlay(wedge.stroke(FlowTheme.separatorStrong(scheme), lineWidth: 1))
+
+                    carouselLabel(
+                        item: item,
+                        span: span,
+                        centre: centre,
+                        radius: outerRadius - thickness / 2,
+                        thickness: thickness
+                    )
+                }
             }
 
             carouselRuler(
@@ -253,12 +268,11 @@ struct FocusWheelView: View {
                 innerRadius: innerRadius,
                 thickness: thickness,
                 activeSpan: FocusWheelGeometry.carouselRulerSpan(
-                    activeSpan: FocusWheelGeometry.carouselSpan(
-                        index: 0,
-                        visibility: visibility,
+                    activeSpan: FocusWheelGeometry.carouselSpans(
+                        zoom: zoom,
                         durations: durations.isEmpty ? [30] : durations,
                         rotation: rotation
-                    )
+                    ).first ?? (start: FocusWheelGeometry.bottomAngle, end: FocusWheelGeometry.bottomAngle)
                 ),
                 totalMinutes: max(1, items.first?.minutes ?? 30),
                 // The scale belongs to the active task, so it is drawn in that
@@ -269,7 +283,7 @@ struct FocusWheelView: View {
             wheelPointer(centre: centre, radius: outerRadius)
         }
         .frame(width: size.width, height: size.height)
-        .animation(.easeOut(duration: 0.35), value: visibility)
+        .animation(zoomAnimation, value: zoom)
         .animation(.linear(duration: 1), value: progress)
         .animation(.easeInOut(duration: 0.35), value: activeID)
     }
@@ -416,7 +430,10 @@ struct FocusWheelView: View {
     // MARK: - Time-window bowl
     private func bowl(in size: CGSize) -> some View {
         let width = size.width
-        let radius = FocusWheelGeometry.bowlTargetRadius(forWidth: width, visibility: visibility)
+        let radius = FocusWheelGeometry.bowlTargetRadius(
+            forWidth: width,
+            visibility: FocusWheelGeometry.settledCarouselMode(forZoom: zoom)
+        )
         let thickness = FocusWheelGeometry.bowlThickness(forWidth: width)
         let centreX = width / 2
         let pointerY = size.height - FocusWheelGeometry.pointerInset

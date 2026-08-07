@@ -11,7 +11,12 @@ struct FocusScreen: View {
     @State private var cardDetent: FocusCardDetent = .rest
     @State private var visibilityHUD: String?
     @State private var showingDurationPicker = false
-    @State private var pinchBaseline: WheelVisibility = .two
+    /// Set only while a pinch is in progress: the live, fractional position on
+    /// `FocusWheelGeometry`'s zoom axis. `nil` means the dial is settled on the
+    /// persisted mode, so nothing extra is ever stored.
+    @State private var liveZoom: Double?
+    /// Where the pinch in progress started from.
+    @State private var pinchBaseZoom: Double = 0
     /// Decision 13: the countdown is tappable to hide, with a `◷` button in
     /// its place to bring it back. Deliberately not persisted — a hidden
     /// timer is a "let me look at the dial" moment, not a setting.
@@ -54,7 +59,6 @@ struct FocusScreen: View {
         .onAppear {
             page = activeTask == nil ? .today : .subtasks
             cardDetent = activeTask == nil ? .rest : .open
-            pinchBaseline = visibility
         }
         .onChange(of: activeTask?.id) { _, newID in
             page = newID == nil ? .today : .subtasks
@@ -100,6 +104,19 @@ struct FocusScreen: View {
         // A previous bowl build could persist `5M`; the current circular dial
         // has no visible 5M state, so fall back to the nearest exposed zoom.
         return WheelVisibility.carouselModes.contains(stored) ? stored : .one
+    }
+
+    /// The dial's place on the continuous zoom axis: the live pinch value while
+    /// the fingers are down, otherwise the settled mode's own index.
+    private var zoom: Double {
+        liveZoom ?? FocusWheelGeometry.carouselZoom(for: visibility)
+    }
+
+    /// Which chip reads as selected. Mid-pinch that is the mode the dial would
+    /// settle on if the fingers lifted now, so the row keeps stating the
+    /// current state instead of a stale one.
+    private var highlightedMode: WheelVisibility {
+        liveZoom.map { FocusWheelGeometry.settledCarouselMode(forZoom: $0) } ?? visibility
     }
 
     /// The active task first, then the queue behind it, each carrying the
@@ -197,7 +214,8 @@ struct FocusScreen: View {
                     progress: progress,
                     activeID: wheelItems.first?.id,
                     nowMinutes: nowMinutes,
-                    visibility: visibility
+                    zoom: zoom,
+                    isZooming: liveZoom != nil
                 )
                 focusDialCentre
             }
@@ -262,12 +280,12 @@ struct FocusScreen: View {
                     setVisibility(mode)
                 } label: {
                     Text(mode.displayName)
-                        .font(.system(size: 16, weight: mode == visibility ? .semibold : .regular, design: .rounded))
-                        .foregroundStyle(mode == visibility ? .white : FlowTheme.primaryText(scheme))
+                        .font(.system(size: 16, weight: mode == highlightedMode ? .semibold : .regular, design: .rounded))
+                        .foregroundStyle(mode == highlightedMode ? .white : FlowTheme.primaryText(scheme))
                         .frame(width: mode == .fiveMinute ? 38 : 34, height: 34)
                         .fixedSize()
                         .background {
-                            if mode == visibility { Circle().fill(FlowTheme.accent) }
+                            if mode == highlightedMode { Circle().fill(FlowTheme.accent) }
                         }
                 }
                 .buttonStyle(.plain)
@@ -650,21 +668,37 @@ struct FocusScreen: View {
     }
 
     #if !os(macOS)
-    /// Pinching changes how much of the day the ring reveals.
+    /// Pinching zooms the ring live: it grows and shrinks under the fingers,
+    /// through the layouts between the four views, and settles on the nearest
+    /// one when they lift. Spreading reveals more of the day; pinching narrows
+    /// the focus. The mapping and the settle both live in `FocusWheelGeometry`,
+    /// so the gesture and the visible chips can never drift onto different mode
+    /// lists — and the chips remain the tap alternative the HIG asks for, since
+    /// a custom gesture must never be the only way to reach a state.
+    ///
+    /// Nothing is persisted and no HUD fires until release: a per-frame write
+    /// would announce three modes on the way to the one that was wanted.
     private var pinchGesture: some Gesture {
-        MagnifyGesture(minimumScaleDelta: 0.08)
+        MagnifyGesture(minimumScaleDelta: 0.02)
             .onChanged { value in
-                // Spreading reveals more of the day; pinching narrows the focus.
-                // The step lives in `FocusWheelGeometry` so the pinch and the
-                // visible chips can never drift onto different mode lists.
-                setVisibility(
-                    FocusWheelGeometry.nextCarouselVisibility(
-                        from: pinchBaseline,
+                if liveZoom == nil {
+                    pinchBaseZoom = FocusWheelGeometry.carouselZoom(for: visibility)
+                }
+                liveZoom = FocusWheelGeometry.carouselZoom(
+                    base: pinchBaseZoom,
+                    magnification: value.magnification
+                )
+            }
+            .onEnded { value in
+                let settled = FocusWheelGeometry.settledCarouselMode(
+                    forZoom: FocusWheelGeometry.carouselZoom(
+                        base: pinchBaseZoom,
                         magnification: value.magnification
                     )
                 )
+                liveZoom = nil
+                setVisibility(settled)
             }
-            .onEnded { _ in pinchBaseline = visibility }
     }
     #endif
 

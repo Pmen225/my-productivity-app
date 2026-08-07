@@ -934,27 +934,200 @@ struct FocusWheelGeometryTests {
         #expect(abs(inSliver - 90) < 0.0001)
     }
 
-    @Test("Pinching steps through the same four modes as the chips, and stops at both ends")
-    func pinchStepsThroughTheChipModes() {
-        #expect(FocusWheelGeometry.nextCarouselVisibility(from: .one, magnification: 1.2) == .two)
-        #expect(FocusWheelGeometry.nextCarouselVisibility(from: .two, magnification: 1.2) == .three)
-        #expect(FocusWheelGeometry.nextCarouselVisibility(from: .three, magnification: 1.2) == .all)
-        #expect(FocusWheelGeometry.nextCarouselVisibility(from: .all, magnification: 0.8) == .three)
-        #expect(FocusWheelGeometry.nextCarouselVisibility(from: .two, magnification: 0.8) == .one)
+    @Test("The zoom axis and the chip row are the same four states in the same order")
+    func zoomAxisMatchesTheChipRow() {
+        #expect(FocusWheelGeometry.carouselZoom(for: .one) == 0)
+        #expect(FocusWheelGeometry.carouselZoom(for: .two) == 1)
+        #expect(FocusWheelGeometry.carouselZoom(for: .three) == 2)
+        #expect(FocusWheelGeometry.carouselZoom(for: .all) == 3)
 
-        // Clamped, never wrapped: a run of pinches cannot jump from All to 1.
-        #expect(FocusWheelGeometry.nextCarouselVisibility(from: .all, magnification: 1.2) == .all)
-        #expect(FocusWheelGeometry.nextCarouselVisibility(from: .one, magnification: 0.8) == .one)
+        // Round-trips, so a settled dial always sits exactly on its own chip.
+        for mode in WheelVisibility.carouselModes {
+            let zoom = FocusWheelGeometry.carouselZoom(for: mode)
+            #expect(FocusWheelGeometry.settledCarouselMode(forZoom: zoom) == mode)
+        }
 
-        // The legacy 5M state is not on the chip row, so a pinch can neither
-        // reach it nor get stuck in it.
-        #expect(FocusWheelGeometry.nextCarouselVisibility(from: .fiveMinute, magnification: 1.2) == .one)
-        for start in WheelVisibility.carouselModes {
-            for magnification in [0.5, 1.5] {
-                let next = FocusWheelGeometry.nextCarouselVisibility(from: start, magnification: magnification)
-                #expect(next != .fiveMinute)
+        // The legacy 5M state is not on the axis, so a pinch can neither reach
+        // it nor get stuck in it.
+        #expect(FocusWheelGeometry.carouselZoom(for: .fiveMinute) == 0)
+        for zoom in [-4.0, -0.5, 0.4, 1.2, 2.7, 3.0, 9.0] {
+            #expect(FocusWheelGeometry.settledCarouselMode(forZoom: zoom) != .fiveMinute)
+        }
+    }
+
+    @Test("One doubling of the fingers' spread is one mode step, clamped at both ends")
+    func pinchMapsOneDoublingToOneModeStep() {
+        // Identity: no spread yet, no movement.
+        #expect(FocusWheelGeometry.carouselZoom(base: 1, magnification: 1) == 1)
+        // 2.0 is +1 mode, 0.5 is −1, by hand: log2(2) = 1, log2(0.5) = −1.
+        #expect(FocusWheelGeometry.carouselZoom(base: 1, magnification: 2) == 2)
+        #expect(FocusWheelGeometry.carouselZoom(base: 1, magnification: 0.5) == 0)
+        // √2 is half a step: log2(2^0.5) = 0.5.
+        #expect(abs(FocusWheelGeometry.carouselZoom(base: 0, magnification: 2.0.squareRoot()) - 0.5) < 0.0001)
+
+        // Clamped, never wrapped: a hard spread from All cannot land back on 1.
+        #expect(FocusWheelGeometry.carouselZoom(base: 3, magnification: 4) == 3)
+        #expect(FocusWheelGeometry.carouselZoom(base: 0, magnification: 0.25) == 0)
+        #expect(FocusWheelGeometry.carouselZoom(base: 2, magnification: 4) == 3)
+
+        // A degenerate magnification leaves the dial where it was rather than
+        // sending log2 to negative infinity.
+        #expect(FocusWheelGeometry.carouselZoom(base: 2, magnification: 0) == 2)
+    }
+
+    @Test("Releasing settles on the nearest view, and a dead-even tie goes to All")
+    func settleRoundsToTheNearestMode() {
+        #expect(FocusWheelGeometry.settledCarouselMode(forZoom: 1.4) == .two)
+        #expect(FocusWheelGeometry.settledCarouselMode(forZoom: 1.6) == .three)
+        #expect(FocusWheelGeometry.settledCarouselMode(forZoom: 0.49) == .one)
+        // The documented tie rule: exactly halfway rounds outward, toward All.
+        #expect(FocusWheelGeometry.settledCarouselMode(forZoom: 0.5) == .two)
+        #expect(FocusWheelGeometry.settledCarouselMode(forZoom: 1.5) == .three)
+        #expect(FocusWheelGeometry.settledCarouselMode(forZoom: 2.5) == .all)
+        // Out of range still lands on a real mode.
+        #expect(FocusWheelGeometry.settledCarouselMode(forZoom: -3) == .one)
+        #expect(FocusWheelGeometry.settledCarouselMode(forZoom: 12) == .all)
+    }
+
+    @Test("An integer zoom draws exactly the settled layout it names")
+    func integerZoomReproducesEachDiscreteLayout() {
+        let durations = [30, 20, 10, 40]
+
+        // Hand-computed. `1` gives its single block the 300° window; `2` and
+        // `3` split the turn evenly; `All` shares it out by duration over a
+        // 100-minute queue, so 30M is 108°, 20M is 72°, 10M is 36°, 40M is 144°.
+        let expected: [(zoom: Double, spans: [(start: Double, end: Double)])] = [
+            (0, [(-60, 240)]),
+            (1, [(0, 180), (-180, 0)]),
+            (2, [(30, 150), (-90, 30), (-210, -90)]),
+            (3, [(36, 144), (-36, 36), (-72, -36), (-216, -72)]),
+        ]
+
+        for entry in expected {
+            let spans = FocusWheelGeometry.carouselSpans(
+                zoom: entry.zoom,
+                durations: durations,
+                rotation: 0
+            )
+            for (index, want) in entry.spans.enumerated() {
+                #expect(abs(spans[index].start - want.start) < 0.0001)
+                #expect(abs(spans[index].end - want.end) < 0.0001)
             }
         }
+
+        // And the same values the discrete layout has always produced, for
+        // every mode and every block it shows — the guarantee that settling on
+        // a view leaves the four screens unchanged.
+        for (index, mode) in WheelVisibility.carouselModes.enumerated() {
+            let shown = FocusWheelGeometry.visibleCount(for: mode, queueCount: durations.count)
+            let visible = Array(durations.prefix(shown))
+            let spans = FocusWheelGeometry.carouselSpans(
+                zoom: Double(index),
+                durations: durations,
+                rotation: 17
+            )
+            for block in 0..<shown {
+                let discrete = FocusWheelGeometry.carouselSpan(
+                    index: block,
+                    visibility: mode,
+                    durations: visible,
+                    rotation: 17
+                )
+                #expect(abs(spans[block].start - discrete.start) < 0.0001)
+                #expect(abs(spans[block].end - discrete.end) < 0.0001)
+            }
+        }
+    }
+
+    @Test("A zoom between two views draws the layout between them")
+    func fractionalZoomInterpolatesBetweenTheTwoLayouts() {
+        let durations = [30, 20, 10, 40]
+
+        // Halfway from `2` (180° each) to `3` (120° each) is 150° each, so the
+        // active block spans 90 ± 75 and the next one hangs off its lower edge.
+        let spans = FocusWheelGeometry.carouselSpans(zoom: 1.5, durations: durations, rotation: 0)
+        #expect(abs(spans[0].start - 15) < 0.0001)
+        #expect(abs(spans[0].end - 165) < 0.0001)
+        #expect(abs(spans[1].start - (-135)) < 0.0001)
+        #expect(abs(spans[1].end - 15) < 0.0001)
+        // The third block is halfway into existence: 60° of an eventual 120°.
+        #expect(abs((spans[2].end - spans[2].start) - 60) < 0.0001)
+        #expect(abs(spans[2].end - (-135)) < 0.0001)
+
+        // The blocks stay a contiguous ring at every fractional zoom — no gap
+        // opens between one block's end and the next one's start.
+        for zoom in [0.3, 1.0, 1.75, 2.5, 3.0] {
+            let ring = FocusWheelGeometry.carouselSpans(zoom: zoom, durations: durations, rotation: 0)
+            for index in 1..<ring.count {
+                #expect(abs(ring[index].end - ring[index - 1].start) < 0.0001)
+            }
+        }
+    }
+
+    @Test("A block grows in from the right rather than appearing on top of its neighbour")
+    func newBlockGrowsFromZeroWidth() {
+        let durations = [30, 20, 10, 40]
+
+        // At `2` exactly the third block has no width at all, and it is not
+        // drawn: a slice narrower than its own two separator gaps would invert
+        // its arc and paint most of the ring.
+        let settled = FocusWheelGeometry.carouselSpans(zoom: 1, durations: durations, rotation: 0)
+        let settledGap = FocusWheelGeometry.carouselGap(zoom: 1, durations: durations)
+        #expect(settled[2].end - settled[2].start == 0)
+        #expect(!FocusWheelGeometry.carouselWedgeIsDrawn(width: 0, gap: settledGap))
+
+        // A hair into the pinch it exists but is still too narrow to draw.
+        let barely = FocusWheelGeometry.carouselSpans(zoom: 1.01, durations: durations, rotation: 0)
+        let barelyWidth = barely[2].end - barely[2].start
+        #expect(abs(barelyWidth - 1.2) < 0.0001)
+        #expect(!FocusWheelGeometry.carouselWedgeIsDrawn(
+            width: barelyWidth,
+            gap: FocusWheelGeometry.carouselGap(zoom: 1.01, durations: durations)
+        ))
+
+        // A tenth of the way it is 12° wide and earns its wedge.
+        let opening = FocusWheelGeometry.carouselSpans(zoom: 1.1, durations: durations, rotation: 0)
+        let openingWidth = opening[2].end - opening[2].start
+        #expect(abs(openingWidth - 12) < 0.0001)
+        #expect(FocusWheelGeometry.carouselWedgeIsDrawn(
+            width: openingWidth,
+            gap: FocusWheelGeometry.carouselGap(zoom: 1.1, durations: durations)
+        ))
+    }
+
+    @Test("The separator gap and the ring's turn interpolate with the layout")
+    func gapAndSweepFollowTheZoom() {
+        let durations = [30, 20, 10, 40]
+
+        // `1` shows a single block, which needs no separator; every other view
+        // shows more than one, so the gap is the full 1.6° from `2` onward.
+        #expect(FocusWheelGeometry.carouselGap(zoom: 0, durations: durations) == 0)
+        #expect(abs(FocusWheelGeometry.carouselGap(zoom: 1, durations: durations) - 1.6) < 0.0001)
+        #expect(abs(FocusWheelGeometry.carouselGap(zoom: 0.5, durations: durations) - 0.8) < 0.0001)
+        #expect(abs(FocusWheelGeometry.carouselGap(zoom: 2.4, durations: durations) - 1.6) < 0.0001)
+
+        // The sweep the ring's rotation is measured in matches the settled
+        // value at every view, and lerps between them in-flight.
+        for (index, mode) in WheelVisibility.carouselModes.enumerated() {
+            #expect(FocusWheelGeometry.carouselSweep(zoom: Double(index), queueCount: 4)
+                == FocusWheelGeometry.carouselSweep(for: mode, queueCount: 4))
+        }
+        #expect(abs(FocusWheelGeometry.carouselSweep(zoom: 0.5, queueCount: 4) - 240) < 0.0001)
+        #expect(abs(FocusWheelGeometry.carouselSweep(zoom: 2.5, queueCount: 4) - 105) < 0.0001)
+    }
+
+    @Test("A one-task queue and an empty one both survive every zoom")
+    func degenerateQueuesStayInBounds() {
+        // One task keeps the quiet 300° window in the close views and closes
+        // into a full ring at All, exactly as the discrete layouts do.
+        let single = FocusWheelGeometry.carouselSpans(zoom: 0, durations: [25], rotation: 0)
+        #expect(abs((single[0].end - single[0].start) - 300) < 0.0001)
+        let singleAll = FocusWheelGeometry.carouselSpans(zoom: 3, durations: [25], rotation: 0)
+        #expect(abs((singleAll[0].end - singleAll[0].start) - 360) < 0.0001)
+
+        #expect(FocusWheelGeometry.carouselSpans(zoom: 1.5, durations: [], rotation: 0).isEmpty)
+        #expect(FocusWheelGeometry.carouselWidths(zoom: 1.5, durations: []).isEmpty)
+        #expect(FocusWheelGeometry.carouselGap(zoom: 1.5, durations: []) == 0)
     }
 }
 

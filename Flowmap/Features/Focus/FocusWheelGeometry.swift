@@ -321,18 +321,129 @@ public enum FocusWheelGeometry {
         return min(high, max(low, tickAngle))
     }
 
-    /// The zoom step a pinch produces. The chips and the gesture have to offer
-    /// exactly the same four states, so the step lives beside them rather than
-    /// inside the gesture handler, where it could quietly drift onto the legacy
-    /// `5M` mode the circular dial can no longer draw.
-    public static func nextCarouselVisibility(
-        from current: WheelVisibility,
-        magnification: Double
-    ) -> WheelVisibility {
+    // MARK: - Continuous zoom axis
+    //
+    // The four chip modes are also four points on one continuous axis, so a
+    // pinch can rest between them while the fingers are still down instead of
+    // snapping from one settled layout to the next. Everything below is an
+    // interpolation of the discrete layouts above, and at an integer zoom each
+    // function returns exactly what its discrete counterpart returns — which is
+    // what keeps the four settled states unchanged.
+
+    /// Where a settled mode sits on the continuous zoom axis: `0` is `1`, `3`
+    /// is `All`.
+    public static func carouselZoom(for visibility: WheelVisibility) -> Double {
+        Double(WheelVisibility.carouselModes.firstIndex(of: visibility) ?? 0)
+    }
+
+    /// The live zoom for a pinch that began at `base`. One doubling of the
+    /// fingers' spread is one mode step, so the dial answers the hand at a
+    /// constant perceptual rate rather than by raw screen distance, and
+    /// spreading still moves toward `All` as the old discrete step did.
+    public static func carouselZoom(base: Double, magnification: Double) -> Double {
+        let top = Double(WheelVisibility.carouselModes.count - 1)
+        guard magnification > 0 else { return min(top, max(0, base)) }
+        return min(top, max(0, base + log2(magnification)))
+    }
+
+    /// The mode a released pinch lands on: the nearest of the four. A dead-even
+    /// half step rounds outward, toward `All`, so a tie always resolves the same
+    /// way rather than depending on which side the fingers arrived from.
+    public static func settledCarouselMode(forZoom zoom: Double) -> WheelVisibility {
         let modes = WheelVisibility.carouselModes
-        guard let index = modes.firstIndex(of: current) else { return modes[0] }
-        let step = magnification > 1 ? 1 : -1
-        return modes[min(modes.count - 1, max(0, index + step))]
+        let top = modes.count - 1
+        return modes[Int(min(Double(top), max(0, zoom)).rounded())]
+    }
+
+    /// The angular width every queued block gets at a settled mode — the one
+    /// description all four layouts share. `1`/`2`/`3` hand an equal slice to
+    /// the blocks they show and nothing to the rest; `All` shares the full turn
+    /// out by duration. Laid out contiguously from the active block (see
+    /// `carouselSpans`) these reproduce `carouselSpan` exactly, which is what
+    /// lets a fractional zoom interpolate one vector of widths instead of
+    /// trying to interpolate four differently-shaped layouts.
+    public static func carouselWidths(for visibility: WheelVisibility, durations: [Int]) -> [Double] {
+        guard !durations.isEmpty else { return [] }
+        if visibility == .all {
+            let total = max(1, durations.reduce(0, +))
+            return durations.map { 360 * Double($0) / Double(total) }
+        }
+        let shown = visibleCount(for: visibility, queueCount: durations.count)
+        let sweep = carouselSweep(for: visibility, queueCount: durations.count)
+        return durations.indices.map { $0 < shown ? sweep : 0 }
+    }
+
+    /// The two settled modes a zoom sits between, and how far along it is.
+    private static func carouselBracket(zoom: Double) -> (lower: WheelVisibility, upper: WheelVisibility, fraction: Double) {
+        let modes = WheelVisibility.carouselModes
+        let clamped = min(Double(modes.count - 1), max(0, zoom))
+        let lower = Int(clamped)
+        return (modes[lower], modes[min(modes.count - 1, lower + 1)], clamped - Double(lower))
+    }
+
+    /// Block widths at a fractional zoom.
+    public static func carouselWidths(zoom: Double, durations: [Int]) -> [Double] {
+        let bracket = carouselBracket(zoom: zoom)
+        let lower = carouselWidths(for: bracket.lower, durations: durations)
+        guard bracket.fraction > 0 else { return lower }
+        let upper = carouselWidths(for: bracket.upper, durations: durations)
+        return zip(lower, upper).map { $0 + ($1 - $0) * bracket.fraction }
+    }
+
+    /// Every block's slice at a fractional zoom. The active block stays centred
+    /// on the pointer and the rest are laid contiguously anticlockwise from it,
+    /// so a block that is about to earn a slice grows out of nothing on the
+    /// right — the same place a block always enters from — rather than fading
+    /// in on top of its neighbour.
+    public static func carouselSpans(
+        zoom: Double,
+        durations: [Int],
+        rotation: Double
+    ) -> [(start: Double, end: Double)] {
+        let widths = carouselWidths(zoom: zoom, durations: durations)
+        guard let active = widths.first else { return [] }
+        var edge = bottomAngle - active / 2
+        var spans = [(start: edge + rotation, end: edge + active + rotation)]
+        for width in widths.dropFirst() {
+            spans.append((start: edge - width + rotation, end: edge + rotation))
+            edge -= width
+        }
+        return spans
+    }
+
+    /// The active block's sweep at a fractional zoom, which is what the ring's
+    /// rotation through the running task is measured in. Interpolated from the
+    /// same two modes as the widths so the turn and the slices cannot disagree
+    /// halfway through a pinch.
+    public static func carouselSweep(zoom: Double, queueCount: Int) -> Double {
+        let bracket = carouselBracket(zoom: zoom)
+        let lower = carouselSweep(for: bracket.lower, queueCount: queueCount)
+        guard bracket.fraction > 0 else { return lower }
+        let upper = carouselSweep(for: bracket.upper, queueCount: queueCount)
+        return lower + (upper - lower) * bracket.fraction
+    }
+
+    /// The separator gap at a fractional zoom. The gap depends on how many
+    /// blocks are on the ring, and that count changes the moment a pinch starts
+    /// growing the next block — so it is interpolated rather than stepped, or
+    /// every wedge on the dial would jump by the gap's width at the first
+    /// millimetre of finger movement.
+    public static func carouselGap(zoom: Double, durations: [Int]) -> Double {
+        let bracket = carouselBracket(zoom: zoom)
+        func gap(_ visibility: WheelVisibility) -> Double {
+            wedgeGap(itemCount: carouselWidths(for: visibility, durations: durations).count { $0 > 0 })
+        }
+        let lower = gap(bracket.lower)
+        guard bracket.fraction > 0 else { return lower }
+        return lower + (gap(bracket.upper) - lower) * bracket.fraction
+    }
+
+    /// Whether a slice this wide still leaves a wedge once its separator gap is
+    /// cut from both ends. Below that the arc inverts and paints nearly the
+    /// whole ring — which is exactly what a block interpolating up from zero
+    /// width would do for its first frames.
+    public static func carouselWedgeIsDrawn(width: Double, gap: Double) -> Bool {
+        width > 2 * gap
     }
 
     // MARK: - Bottom-arc dial
