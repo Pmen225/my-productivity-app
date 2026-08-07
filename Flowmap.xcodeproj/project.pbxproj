@@ -183,11 +183,13 @@
 		E149ED17A3A71AA46CD965FF /* WatchFocusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04F4E8D3C5B85D607E2FDA84 /* WatchFocusView.swift */; };
 		E1DDD267980CF18D751F1536 /* DeleteConfirmationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E63A2C5E33FE10EB42647FB7 /* DeleteConfirmationTests.swift */; };
 		E3B394D0A3AD9A3F962D705C /* WatchRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46EF00399F4D077E3B24DEF5 /* WatchRootView.swift */; };
+		E5822B26C91695452A359CF5 /* AssistantProviderSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01963C29FE8EC6AFF8B403BD /* AssistantProviderSetupView.swift */; };
 		E617350C5AF3919882250225 /* TaskDetailInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8388A9C91062B2AA6C520547 /* TaskDetailInspector.swift */; };
 		E6D76C63B0541C99CB1A420D /* PlanInboxSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7127EC1848DFA16988B58F6 /* PlanInboxSection.swift */; };
 		E7A1FF167A20F7F770D00E97 /* LaunchUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40BA7D92EA187980C0530783 /* LaunchUITests.swift */; };
 		E81F69336C940567B5AF4569 /* Project.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCB88FF804A5D540239434E7 /* Project.swift */; };
 		E8846AFF0934BE3E42D3B0F4 /* ProjectTasksTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0F610FA9645988CDEAF350A /* ProjectTasksTab.swift */; };
+		E948E85CE42C7373B4B5B285 /* AssistantMiniDockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD7B7E43CFF206EC8139BE08 /* AssistantMiniDockView.swift */; };
 		EB43A8992CBC827068033CD2 /* SealedTodayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 428EAE8A07F31D396920A8A9 /* SealedTodayTests.swift */; };
 		EC6E77BFA296769C83BC262B /* AssistantThread.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E5DBB4D086FC56330264D5 /* AssistantThread.swift */; };
 		EDF00CC710C3D0A93FB5AC3A /* CalendarHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8915375C86D791354947538E /* CalendarHub.swift */; };
@@ -245,6 +247,7 @@
 		000AB24E52FD4C0D5866003B /* Initiative.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Initiative.swift; sourceTree = "<group>"; };
 		00E639C60CF01D64FE44F5A3 /* ProjectDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectDetailView.swift; sourceTree = "<group>"; };
 		015E051EF8CD81D0B32913D9 /* GoogleOAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleOAuth.swift; sourceTree = "<group>"; };
+		01963C29FE8EC6AFF8B403BD /* AssistantProviderSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantProviderSetupView.swift; sourceTree = "<group>"; };
 		01F38906D636F34FE49BBF21 /* GateCopyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GateCopyTests.swift; sourceTree = "<group>"; };
 		0227BDE1EEE39057B019F10B /* MapLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapLayout.swift; sourceTree = "<group>"; };
 		027E10DFFDC2C8CACBA7AAEF /* MapOutlineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapOutlineView.swift; sourceTree = "<group>"; };
@@ -407,6 +410,7 @@
 		DB6AB9BE4F6D57F905D3B1B7 /* NoteSlashMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteSlashMenu.swift; sourceTree = "<group>"; };
 		DBE335EAEEE9C02198299BAF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		DCA70554D0B0A357184CF0E7 /* SmartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartView.swift; sourceTree = "<group>"; };
+		DD7B7E43CFF206EC8139BE08 /* AssistantMiniDockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantMiniDockView.swift; sourceTree = "<group>"; };
 		DD844E3158685B395C00397C /* MapDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapDocument.swift; sourceTree = "<group>"; };
 		DE92E4A0D9D60DB59668B2B8 /* MapHitTarget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapHitTarget.swift; sourceTree = "<group>"; };
 		E0FAB11E09F545922FCFD24E /* SeedData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeedData.swift; sourceTree = "<group>"; };
@@ -541,6 +545,8 @@
 				E16183C63A9438933AF44DC5 /* AssistantConversationView.swift */,
 				C0AC001236DE458368552395 /* AssistantHistoryView.swift */,
 				06CC1F8183C75D6214F87C8A /* AssistantMessageRow.swift */,
+				DD7B7E43CFF206EC8139BE08 /* AssistantMiniDockView.swift */,
+				01963C29FE8EC6AFF8B403BD /* AssistantProviderSetupView.swift */,
 				22FC31B834EE4619646D4D7B /* AssistantScreen.swift */,
 				BE97604132C1BFFAB3E2CA3D /* AssistantViewModel.swift */,
 				42C7ACDC2383B2070CAE3863 /* QuickCommandParser.swift */,
@@ -1047,6 +1053,8 @@
 				62DB46FCCC0D14BD97715B8C /* AssistantHistoryView.swift in Sources */,
 				C32AE76FF9F03F29F1CF9726 /* AssistantMessage.swift in Sources */,
 				70A7EB2D9C4682154880F1E4 /* AssistantMessageRow.swift in Sources */,
+				E948E85CE42C7373B4B5B285 /* AssistantMiniDockView.swift in Sources */,
+				E5822B26C91695452A359CF5 /* AssistantProviderSetupView.swift in Sources */,
 				1A646FE7E830E18DEED86E4A /* AssistantScreen.swift in Sources */,
 				B0FB283F720CE52C82B10C04 /* AssistantService.swift in Sources */,
 				2A28278789146C377D928120 /* AssistantSettingsSection.swift in Sources */,

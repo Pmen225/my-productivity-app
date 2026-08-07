@@ -6,15 +6,29 @@ import SwiftUI
 /// message goes out.
 public struct AssistantConversationView: View {
     @Environment(\.colorScheme) private var scheme
-    @Environment(\.dismiss) private var dismiss
     @State private var viewModel: AssistantViewModel
     @FocusState private var isComposerFocused: Bool
     @State private var isDictating = false
     private let flow: AppEnvironment
+    /// Overrides the default per-scheme background. The mini dock passes
+    /// `.clear` so its own dark-glass panel shows through instead.
+    private let background: Color?
+    /// Fires when the disconnected status pill is tapped. The full screen
+    /// opens the in-conversation setup sheet directly; the mini dock instead
+    /// hands off to the full screen first (HIG: close one sheet before
+    /// showing another, rather than stacking sheet-on-sheet).
+    private let onConnectTapped: () -> Void
 
-    public init(thread: AssistantThread, flow: AppEnvironment) {
+    public init(
+        thread: AssistantThread,
+        flow: AppEnvironment,
+        background: Color? = nil,
+        onConnectTapped: @escaping () -> Void
+    ) {
         _viewModel = State(initialValue: AssistantViewModel(thread: thread, flow: flow))
         self.flow = flow
+        self.background = background
+        self.onConnectTapped = onConnectTapped
     }
 
     public var body: some View {
@@ -39,7 +53,7 @@ public struct AssistantConversationView: View {
             }
             composer
         }
-        .background(FlowTheme.background(scheme))
+        .background(background ?? FlowTheme.background(scheme))
     }
 
     /// A small status pill under the navigation title: whether a provider key
@@ -69,14 +83,7 @@ public struct AssistantConversationView: View {
                 }
                 .accessibilityLabel("Connected. Model: \(flow.settings.assistantModel). Tap to change model.")
             } else {
-                Button {
-                    // Batch 2: route to inline setup pane
-                    dismiss()
-                    NotificationCenter.default.post(
-                        name: .flowmapOpenDeepLink,
-                        object: DeepLinkRequest(destination: .settings)
-                    )
-                } label: {
+                Button(action: onConnectTapped) {
                     statusPillLabel(text: "Local commands only — tap to connect", connected: false)
                 }
                 .buttonStyle(.plain)

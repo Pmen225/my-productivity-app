@@ -22,6 +22,7 @@ struct PhoneRootView: View {
     // The mockup's launch screen is Focus (`00-initial.png`).
     @State private var tab: DeepLink = .focus
     @State private var showingAssistant = false
+    @State private var showingAssistantDock = false
     @State private var showingSearch = false
     @State private var showingCapture = false
     // Today is no longer a tab (decision 1b) — it stays reachable by deep
@@ -108,6 +109,20 @@ struct PhoneRootView: View {
         .sheet(isPresented: $showingAssistant) {
             NavigationStack { AssistantScreen() }
         }
+        // The mini dock (decision 26, HIG ruling 1): a nonmodal, resizable
+        // supplementary surface. The orb opens this first; `⤢` hands off to
+        // the full `showingAssistant` sheet above. Hosted here, on the
+        // shell's own body, per the `.sheet`-on-`Section` trap.
+        .sheet(isPresented: $showingAssistantDock) {
+            AssistantMiniDockView(
+                onExpand: expandAssistantDock,
+                onClose: { showingAssistantDock = false }
+            )
+            .presentationDetents([.height(360), .large])
+            .presentationDragIndicator(.visible)
+            .presentationBackgroundInteraction(.enabled)
+            .presentationCornerRadius(FlowRadius.large)
+        }
         .sheet(isPresented: $showingSearch) {
             GlobalSearchView { result in navigate(to: result) }
         }
@@ -153,10 +168,21 @@ struct PhoneRootView: View {
             shadowColor: FlowTheme.accentShadow,
             accessibilityLabel: "New task, project or initiative",
             badgeSystemImage: "sparkles",
-            assistantAction: { showingAssistant = true },
+            assistantAction: { showingAssistantDock = true },
             hapticsEnabled: flow?.settings.focusHapticsEnabled ?? false
         ) {
             showingCapture = true
+        }
+    }
+
+    /// Closes the dock before presenting the full screen (HIG: close one
+    /// sheet before showing another, rather than stacking sheet-on-sheet).
+    /// Reduce Motion skips the hand-off delay instead of imposing one.
+    private func expandAssistantDock() {
+        showingAssistantDock = false
+        let delay = reduceMotion ? 0 : 0.25
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            showingAssistant = true
         }
     }
 

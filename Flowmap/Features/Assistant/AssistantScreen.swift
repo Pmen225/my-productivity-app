@@ -6,10 +6,12 @@ import SwiftUI
 public struct AssistantScreen: View {
     @Environment(\.flow) private var flow
     @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
     @Query(sort: \AssistantThread.updatedAt, order: .reverse) private var threads: [AssistantThread]
 
     @State private var activeThread: AssistantThread?
     @State private var showHistory = false
+    @State private var showingSetup = false
 
     public init() {}
 
@@ -17,8 +19,12 @@ public struct AssistantScreen: View {
         NavigationStack {
             Group {
                 if let flow, let activeThread {
-                    AssistantConversationView(thread: activeThread, flow: flow)
-                        .id(activeThread.id)
+                    AssistantConversationView(
+                        thread: activeThread,
+                        flow: flow,
+                        onConnectTapped: { showingSetup = true }
+                    )
+                    .id(activeThread.id)
                 } else {
                     ProgressView()
                 }
@@ -30,19 +36,33 @@ public struct AssistantScreen: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button {
-                        showHistory = true
+                        dismiss()
                     } label: {
-                        Image(systemName: "clock.arrow.circlepath")
+                        Image(systemName: "chevron.backward")
                     }
-                    .accessibilityLabel("Conversation history")
+                    .accessibilityLabel("Close")
                 }
                 ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        activeThread = makeThread()
+                    Menu {
+                        Button {
+                            showingSetup = true
+                        } label: {
+                            Label("Provider & API Key…", systemImage: "gearshape")
+                        }
+                        Button {
+                            showHistory = true
+                        } label: {
+                            Label("Chat History", systemImage: "clock.arrow.circlepath")
+                        }
+                        Button {
+                            activeThread = makeThread()
+                        } label: {
+                            Label("New Chat", systemImage: "square.and.pencil")
+                        }
                     } label: {
-                        Image(systemName: "square.and.pencil")
+                        Image(systemName: "ellipsis.circle")
                     }
-                    .accessibilityLabel("New conversation")
+                    .accessibilityLabel("More options")
                 }
             }
         }
@@ -60,10 +80,28 @@ public struct AssistantScreen: View {
                 }
             )
         }
+        .sheet(isPresented: $showingSetup) {
+            AssistantProviderSetupSheet(onConnected: postConnectedMessage)
+        }
         .onAppear {
             guard activeThread == nil else { return }
             activeThread = threads.first(where: { !$0.isArchived }) ?? makeThread()
         }
+    }
+
+    /// Posts the mockup's welcome message onto the active thread once
+    /// `AssistantProviderSetupSheet` confirms a key is saved and the setup
+    /// sheet has dismissed itself.
+    private func postConnectedMessage(model: String) {
+        guard let activeThread else { return }
+        let message = AssistantMessage(
+            role: .assistant,
+            text: "Connected to \(model). Full conversation enabled — ask me anything about your plan.",
+            thread: activeThread
+        )
+        context.insert(message)
+        activeThread.touch()
+        try? context.save()
     }
 
     @discardableResult

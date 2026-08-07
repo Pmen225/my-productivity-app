@@ -50,7 +50,7 @@ public final class AssistantViewModel {
         } else {
             appendMessage(
                 role: .assistant,
-                text: "Add an API key in Settings → Assistant to chat freely. Meanwhile I can run quick commands like \"Add gym tomorrow at 9 for 1 hour\", \"Complete <task>\", \"Start focus\", or \"Search <text>\"."
+                text: "Locally I can run quick commands like \"Add gym tomorrow at 9 for 1 hour\", \"Complete <task>\", \"Cancel <task>\", \"Start focus\", \"Search <text>\", or \"Plan my day\" / \"Summarise today\". For full conversation, connect a provider — tap ⋯ top right."
             )
         }
     }
