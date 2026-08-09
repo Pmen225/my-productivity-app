@@ -6,9 +6,17 @@ struct FocusScreen: View {
     @Environment(\.flow) private var flow
     @Environment(\.colorScheme) private var scheme
     @Environment(\.modelContext) private var context
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @State private var page: FocusCardPage = .today
-    @State private var cardDetent: FocusCardDetent = .rest
+    /// Read for the idle screen's inbox count only — the same
+    /// `SmartView.inbox` filter the Plan tab's badge uses, so the two
+    /// numbers can never disagree.
+    @Query private var allTasks: [FlowTask]
+
+    /// Task 58 (founder ruling 2026-08-08, option B): the queue lives in a
+    /// native sheet the always-visible `FocusNowBar` opens on tap. It never
+    /// self-presents — see the removed auto-open note below.
+    @State private var queueSheetShown = false
     @State private var visibilityHUD: String?
     @State private var showingDurationPicker = false
     /// Set only while a pinch is in progress: the live, fractional position on
@@ -17,10 +25,38 @@ struct FocusScreen: View {
     @State private var liveZoom: Double?
     /// Where the pinch in progress started from.
     @State private var pinchBaseZoom: Double = 0
+    /// Set only while a close-up pinch is in progress: the live magnification
+    /// about the pointer. `nil` means the dial is showing the settled factor.
+    @State private var liveMagnify: Double?
+    /// Where the close-up pinch in progress started from.
+    @State private var pinchBaseMagnify: Double = 1
+    /// The re-forming style's live swell, `1` at rest. Rendering only.
+    @State private var dialScale: Double = 1
     /// Decision 13: the countdown is tappable to hide, with a `◷` button in
     /// its place to bring it back. Deliberately not persisted — a hidden
     /// timer is a "let me look at the dial" moment, not a setting.
     @State private var isTimerHidden = false
+    /// Degrees of time-travel preview while a one-finger drag is peeking ahead,
+    /// springing back to zero on release. Never persisted: it is a look, not a
+    /// change of state.
+    @State private var previewOffset: Double = 0
+    /// Where the drag in progress started from, so the ring follows the finger
+    /// from wherever it already was rather than jumping to zero.
+    @State private var dragBaseOffset: Double = 0
+    @State private var isDragging = false
+    /// The dial's drawn radius, recorded when it is laid out. The drag maps
+    /// finger travel to degrees against it, and a tab that is off screen has
+    /// no radius to map against.
+    @State private var dialRadius: CGFloat = 0
+    /// A tab bar keeps every tab alive, so "is this view built" is not the same
+    /// question as "is the user looking at it". Haptics must only fire for the
+    /// second one.
+    @State private var isOnScreen = false
+    /// The "Pinch to zoom" caption idle-fades once the founder has had a
+    /// moment to read it (DESIGN_ANALYSIS.md: chrome idle-fades ~3.5s).
+    /// Opacity-only — the row keeps its space so nothing else on the screen
+    /// moves when it goes.
+    @State private var hintVisible = true
 
     /// Redraws the countdown once a second without touching the store.
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -34,7 +70,7 @@ struct FocusScreen: View {
                     wheelLayer(in: proxy.size)
                     cardLayer(in: proxy.size)
                 } else {
-                    completionState
+                    emptyLayer
                 }
 
                 if let hud = visibilityHUD {
@@ -51,29 +87,69 @@ struct FocusScreen: View {
         .onReceive(ticker) { date in
             flow?.tick(date)
         }
-        // Feedback task 17: the checklist is the task's externalised working
-        // memory, so the card opens straight to it whenever a task is
-        // active. Keyed on the id, not the task object, so the user's own
-        // mid-session swipe away from Subtasks is respected until the
-        // active task itself actually changes.
         .onAppear {
-            page = activeTask == nil ? .today : .subtasks
-            cardDetent = activeTask == nil ? .rest : .open
+            isOnScreen = true
         }
-        .onChange(of: activeTask?.id) { _, newID in
-            page = newID == nil ? .today : .subtasks
-            if newID != nil { cardDetent = .open }
+        .onDisappear { isOnScreen = false }
+        // Changing the style in Settings while a session runs must land on the
+        // new style's rest state, not on half of the old one's gesture.
+        .onChange(of: zoomStyle) { _, _ in
+            liveZoom = nil
+            liveMagnify = nil
+            dialScale = 1
+            previewOffset = 0
+            isDragging = false
+        }
+        // Four detents, no more. Each is a discrete event the eye can already
+        // see happening, which is what stops the wheel from buzzing at the
+        // reader (HIG: short haptics for discrete events, never a running one).
+        // Every trigger is derived state, so nothing here owns a timer.
+        //
+        // A pinch settling on a new level of detail.
+        .sensoryFeedback(trigger: zoomDetent) { old, new in
+            guard old != nil, new != nil else { return nil }
+            return .impact(weight: .medium)
+        }
+        // Each five-minute mark disappearing into the pointer. A paused session
+        // freezes its remaining time, so the bucket stops moving and this
+        // stays silent on its own.
+        .sensoryFeedback(trigger: fiveMinuteMark) { old, new in
+            guard let old, let new, new < old else { return nil }
+            return .impact(weight: .light)
+        }
+        // The handover to the next task: the one moment worth a firmer knock.
+        .sensoryFeedback(trigger: isOnScreen ? activeSegment?.id : nil) { old, new in
+            guard old != nil, new != nil else { return nil }
+            return .impact(weight: .heavy)
+        }
+        // A block boundary passing the pointer while the finger is dragging,
+        // so peeking ahead is counted out rather than just watched.
+        .sensoryFeedback(trigger: previewIndex) { old, new in
+            guard old != nil, new != nil else { return nil }
+            return .impact(weight: .light)
         }
         #if os(macOS)
         .toolbar { toolbarContent }
         #endif
         .sheet(isPresented: $showingDurationPicker) {
-            FocusDurationPicker { minutes, task in
-                _ = task.map { flow?.focusEngine.start(task: $0, minutes: minutes) }
-                    ?? flow?.focusEngine.startFreeFocus(minutes: minutes)
+            FocusDurationPicker { minutes in
+                _ = flow?.focusEngine.startFreeFocus(minutes: minutes)
                 showingDurationPicker = false
             }
         }
+        // Task 58: attached to the screen's own body root, never to a nested
+        // `Section` (CLAUDE.md trap — a `.sheet` on a view whose body roots at
+        // `Section` never presents). macOS gets no sheet: its queue renders
+        // inline instead (see `cardLayer`).
+        #if !os(macOS)
+        .sheet(isPresented: $queueSheetShown) {
+            FocusQueueSheet(
+                queue: queue,
+                activeTask: activeTask,
+                activeSegmentID: activeSegment?.id
+            )
+        }
+        #endif
         // The mock's screen title is a small centred word inside the content,
         // not the system navigation bar — this tab keeps no back button to lose.
         #if !os(macOS)
@@ -99,31 +175,54 @@ struct FocusScreen: View {
 
     private var hasAnythingToShow: Bool { session != nil || !queue.isEmpty }
 
+    /// A build that persisted the removed `5M` state stores a raw string the
+    /// enum can no longer decode, so `AppSettings`' own `?? .two` fallback
+    /// already resolves it — nothing left to translate here.
     private var visibility: WheelVisibility {
-        let stored = flow?.settings.wheelVisibility ?? .two
-        // A previous bowl build could persist `5M`; the current circular dial
-        // has no visible 5M state, so fall back to the nearest exposed zoom.
-        return WheelVisibility.carouselModes.contains(stored) ? stored : .one
+        flow?.settings.wheelVisibility ?? .two
+    }
+
+    /// Which of the two things a pinch does. The close-up is the default: the
+    /// founder's ruling is that zooming in should hide the rest of the wheel,
+    /// not re-form it to keep the whole circle on screen.
+    private var zoomStyle: WheelZoomStyle {
+        flow?.settings.wheelZoomStyle ?? .magnify
     }
 
     /// The dial's place on the continuous zoom axis: the live pinch value while
     /// the fingers are down, otherwise the settled mode's own index.
+    ///
+    /// The close-up style pins this to the whole-day layout — there the pinch
+    /// drives `magnification` instead, so the ring keeps one set of widths and
+    /// is simply drawn larger.
     private var zoom: Double {
-        liveZoom ?? FocusWheelGeometry.carouselZoom(for: visibility)
+        if zoomStyle == .magnify { return FocusWheelGeometry.carouselZoom(for: .all) }
+        return liveZoom ?? FocusWheelGeometry.carouselZoom(for: visibility)
     }
 
-    /// Which chip reads as selected. Mid-pinch that is the mode the dial would
-    /// settle on if the fingers lifted now, so the row keeps stating the
-    /// current state instead of a stale one.
-    private var highlightedMode: WheelVisibility {
-        liveZoom.map { FocusWheelGeometry.settledCarouselMode(forZoom: $0) } ?? visibility
+    /// How far the close-up is magnified about the pointer: the live pinch
+    /// value while the fingers are down, otherwise the factor it settled on.
+    /// Always `1` in the re-forming style, which draws the whole circle.
+    private var magnification: Double {
+        guard zoomStyle == .magnify else { return 1 }
+        return liveMagnify ?? FocusWheelGeometry.clampMagnify(flow?.settings.wheelMagnifyFactor ?? 1)
+    }
+
+    /// What a settle is worth knocking for in each style: the level landed on
+    /// in the re-forming style, the doubling crossed in the close-up. One
+    /// derived value so both styles share the one existing haptic.
+    private var zoomDetent: String? {
+        guard isOnScreen else { return nil }
+        if zoomStyle == .magnify {
+            return "m\(FocusWheelGeometry.magnifyHapticBucket(factor: magnification))"
+        }
+        return visibility.rawValue
     }
 
     /// The active task first, then the queue behind it, each carrying the
-    /// clock time it starts. The time-based bowl needs every scheduled
-    /// segment, not just the next handful — it crops what's actually drawn
-    /// by visible angle, not by a task-count cap (`focus-wheel-spec.md` §2),
-    /// so nothing here truncates by `visibility` any more.
+    /// clock time it starts. Every scheduled segment is passed on, not just
+    /// the next handful: the dial decides what to draw from the zoom's own
+    /// slice widths, so nothing here truncates by `visibility`.
     private var wheelItems: [WheelItem] {
         var ordered: [(task: FlowTask?, minutes: Int, id: UUID, start: Date)] = []
 
@@ -159,8 +258,8 @@ struct FocusScreen: View {
     }
 
     /// Minutes since midnight on the day `date` falls on — the common time
-    /// axis the bowl places every segment along (`focus-wheel-spec.md` §2's
-    /// `start`/`nowW` units). This is unit conversion, not geometry:
+    /// axis every segment carries (`focus-wheel-spec.md` §2's `start`/`nowW`
+    /// units). This is unit conversion, not geometry:
     /// `FocusWheelGeometry` still does every angular computation from the
     /// raw minute value returned here.
     private func minutesFromMidnight(_ date: Date) -> Double {
@@ -173,20 +272,47 @@ struct FocusScreen: View {
 
     private var progress: Double { session?.progress(at: now) ?? 0 }
 
+    /// Which five-minute mark the pointer is on, or `nil` when there is nothing
+    /// running to count. A bucket rather than a time: the value only changes
+    /// when a mark is actually consumed, so the feedback it drives cannot fire
+    /// per frame however often the view is rebuilt.
+    private var fiveMinuteMark: Int? {
+        guard isOnScreen, let session, session.isRunning else { return nil }
+        return Int(session.remainingSeconds(at: now) / 60) / 5
+    }
+
+    /// The block the pointer is reading during a time-travel drag, or `nil` when
+    /// no drag is in progress — so the boundary detent is silent the rest of
+    /// the time rather than firing as the queue re-plans underneath it.
+    private var previewIndex: Int? {
+        guard isOnScreen, isDragging else { return nil }
+        return FocusWheelGeometry.carouselIndexAtPointer(
+            zoom: zoom,
+            durations: wheelItems.map(\.minutes),
+            elapsed: progress,
+            offset: previewOffset
+        )
+    }
+
     // MARK: - Layers
 
     /// The wheel sits above the card with a real gap: the card's resting height
     /// plus a spacing constant is reserved, so the two can never touch at rest.
     private func wheelLayer(in size: CGSize) -> some View {
-        let reserved = cardDetent.height(for: size.height) + FlowSpacing.wheelCardGap
+        #if os(macOS)
+        let reserved = Self.macQueueHeight(for: size.height) + FlowSpacing.wheelCardGap
+        #else
+        let reserved = FocusNowBar.height + FlowSpacing.wheelCardGap
+        #endif
         // The title bar and centre readout sit above the dial, so reserve their
         // stable space alongside the card's. There is no transient hint row:
         // the dial itself is the visual instruction.
         let chromeReserve = FlowSpacing.xxxl * 2 + FlowSpacing.xl
         let dialWidth = size.width - FlowSpacing.screen * 2
-        // Collapsing the card is a request to see the dial, so its ceiling
-        // lifts with it — otherwise the freed height is just empty screen.
-        let dialCeiling: CGFloat = cardDetent == .hidden ? 500 : 430
+        // Task 58: the slim now-bar frees far more height than the old card
+        // ever did, so the wheel is the screen's one anchor now — a single
+        // ceiling rather than a value that shifts with the card's detent.
+        let dialCeiling: CGFloat = 500
         // The ring is the screen's visual anchor. Size its container from the
         // available width first, then let the checklist card occupy the lower
         // surface; reserving the open card before sizing the ring made the
@@ -203,10 +329,14 @@ struct FocusScreen: View {
             Text("Pinch to zoom")
                 .font(.system(size: 16, weight: .regular, design: .rounded))
                 .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                .opacity(hintVisible ? 1 : 0)
                 .accessibilityHidden(true)
-            #if !os(macOS)
-            visibilityPill
-            #endif
+                .task {
+                    try? await Task.sleep(for: .seconds(3.5))
+                    withAnimation(.easeOut(duration: 0.6)) {
+                        hintVisible = false
+                    }
+                }
 
             ZStack {
                 FocusWheelView(
@@ -215,18 +345,52 @@ struct FocusScreen: View {
                     activeID: wheelItems.first?.id,
                     nowMinutes: nowMinutes,
                     zoom: zoom,
-                    isZooming: liveZoom != nil
+                    isZooming: liveZoom != nil || liveMagnify != nil,
+                    previewOffset: previewOffset,
+                    magnification: magnification,
+                    reformScale: dialScale
                 )
                 focusDialCentre
             }
             .frame(width: dialWidth, height: dialHeight)
+            // The drag maps finger travel against the ring the user can see, so
+            // it reads the dial's own radius rather than a second guess at it.
+            .onAppear {
+                dialRadius = FocusWheelGeometry.carouselDiameter(
+                    in: CGSize(width: dialWidth, height: dialHeight)
+                ) / 2
+            }
+            .onChange(of: dialHeight) { _, newHeight in
+                dialRadius = FocusWheelGeometry.carouselDiameter(
+                    in: CGSize(width: dialWidth, height: newHeight)
+                ) / 2
+            }
+            // With the chips gone, this is VoiceOver's whole path to the zoom.
+            // A custom gesture must never be the only way to reach a state.
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Focus wheel zoom")
+            .accessibilityValue(zoomStyle == .magnify ? magnifyAnnouncement : visibility.announcement)
+            .accessibilityAdjustableAction { direction in
+                let delta = direction == .increment ? 1 : -1
+                if zoomStyle == .magnify {
+                    stepMagnify(delta)
+                } else {
+                    stepVisibility(delta)
+                }
+            }
 
             Spacer(minLength: FlowSpacing.wheelCardGap)
         }
         .padding(.top, FlowSpacing.s)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         #if !os(macOS)
+        // Both, not one or the other. `MagnifyGesture` never begins on one
+        // finger, so the drag owns the single-finger case on its own; an
+        // `ExclusiveGesture` instead waits for a pinch that will never fail and
+        // swallows the drag entirely (verified: the ring did not move under a
+        // live finger). The drag bows out for itself while a pinch is live.
         .gesture(pinchGesture)
+        .simultaneousGesture(timeTravelGesture)
         #endif
     }
 
@@ -260,46 +424,6 @@ struct FocusScreen: View {
         .accessibilityLabel("Open focus options")
         .accessibilityValue(visibility.announcement)
         .accessibilityHint("Choose a focus duration")
-    }
-
-    /// The zoom state is always visible, as in the reference, so the user
-    /// never has to remember which level the dial is using.
-    private var visibilityPill: some View {
-        HStack(spacing: FlowSpacing.s) {
-            Text("View:")
-                .foregroundStyle(FlowTheme.secondaryText(scheme))
-                .fixedSize()
-            ForEach(WheelVisibility.carouselModes, id: \.self) { mode in
-                if mode == .all {
-                    Rectangle()
-                        .fill(FlowTheme.separator(scheme))
-                        .frame(width: 1, height: 20)
-                        .padding(.horizontal, FlowSpacing.xs)
-                }
-                Button {
-                    setVisibility(mode)
-                } label: {
-                    Text(mode.displayName)
-                        .font(.system(size: 16, weight: mode == highlightedMode ? .semibold : .regular, design: .rounded))
-                        .foregroundStyle(mode == highlightedMode ? .white : FlowTheme.primaryText(scheme))
-                        .frame(width: mode == .fiveMinute ? 38 : 34, height: 34)
-                        .fixedSize()
-                        .background {
-                            if mode == highlightedMode { Circle().fill(FlowTheme.accent) }
-                        }
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("focus-wheel-mode-\(mode.rawValue)")
-                .accessibilityLabel(mode.announcement)
-            }
-        }
-        .padding(.horizontal, FlowSpacing.m)
-        .padding(.vertical, FlowSpacing.xs)
-        .background(Capsule().fill(FlowTheme.surface(scheme)))
-        .overlay(Capsule().strokeBorder(FlowTheme.separator(scheme), lineWidth: 1))
-        .shadow(color: FlowTheme.shadow(scheme), radius: 8, y: 3)
-        .frame(minWidth: 250)
-        .accessibilityElement(children: .contain)
     }
 
     private var appearanceSymbol: String {
@@ -338,20 +462,55 @@ struct FocusScreen: View {
     }
     #endif
 
+    /// Task 58 (founder ruling 2026-08-08, option B): iPhone pins the slim
+    /// `FocusNowBar` at the bottom, tapped to open `FocusQueueSheet`. macOS
+    /// gets no sheet or bar — it renders the merged queue list inline, at the
+    /// same bottom-aligned spot the old card sat in.
     private func cardLayer(in size: CGSize) -> some View {
-        FocusTaskCard(
-            queue: queue,
-            activeTask: activeTask,
-            activeSegmentID: activeSegment?.id,
-            onSelect: { segment in
-                _ = engine?.start(segment: segment, now: now)
-            },
-            page: $page,
-            detent: $cardDetent
-        )
+        #if os(macOS)
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            FocusQueueListView(
+                queue: queue,
+                activeTask: activeTask,
+                activeSegmentID: activeSegment?.id
+            )
+            .frame(height: Self.macQueueHeight(for: size.height))
+            .flowGlass(radius: FlowRadius.large)
+            .padding(.horizontal, FlowSpacing.screen)
+            .padding(.bottom, FlowSpacing.l)
+        }
         .frame(height: size.height)
         .allowsHitTesting(true)
+        #else
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            FocusNowBar(
+                queue: queue,
+                activeTask: activeTask,
+                activeSegmentID: activeSegment?.id
+            ) {
+                queueSheetShown = true
+            }
+            .padding(.horizontal, FlowSpacing.screen)
+            .padding(.bottom, FlowSpacing.l)
+        }
+        .frame(height: size.height)
+        .allowsHitTesting(true)
+        #endif
     }
+
+    #if os(macOS)
+    /// Ported forward from the deleted `FocusCardDetent.height(for:)`'s own
+    /// `.open` formula, so the wheel's reserved space (see `wheelLayer`)
+    /// still matches what is actually drawn beneath it. macOS has no bar to
+    /// measure — spec is silent on its sizing beyond "render inline where
+    /// the card sits today" — so the existing pattern in this file is
+    /// carried forward rather than invented fresh.
+    private static func macQueueHeight(for totalHeight: CGFloat) -> CGFloat {
+        max(180, totalHeight * 0.20)
+    }
+    #endif
 
     // MARK: - Centre
 
@@ -556,6 +715,61 @@ struct FocusScreen: View {
 
     // MARK: - Empty and transition
 
+    /// Which of the two truthful empty screens an idle Focus shows. The old
+    /// single "That's the plan done" claimed completion even while captured
+    /// tasks sat unplanned in the Inbox — the founder captured a task and
+    /// could not see how it reached the wheel (Task 61). Pure so the
+    /// boundary is covered without a store.
+    enum EmptyStateKind: Equatable {
+        case planPrompt(inboxCount: Int)
+        case dayDone
+    }
+
+    static func emptyState(inboxCount: Int) -> EmptyStateKind {
+        inboxCount > 0 ? .planPrompt(inboxCount: inboxCount) : .dayDone
+    }
+
+    /// The app does the counting — cognitive profile: state restated on
+    /// screen, arithmetic never left to the reader.
+    static func planPromptMessage(inboxCount: Int) -> String {
+        inboxCount == 1
+            ? "1 task in your Inbox is waiting to be planned."
+            : "\(inboxCount) tasks in your Inbox are waiting to be planned."
+    }
+
+    private var inboxCount: Int { SmartView.inbox.matches(allTasks).count }
+
+    @ViewBuilder
+    private var emptyLayer: some View {
+        switch Self.emptyState(inboxCount: inboxCount) {
+        case .planPrompt(let count): planPrompt(count)
+        case .dayDone: completionState
+        }
+    }
+
+    /// Signposting only — wheel-philosophy: the wheel takes no walk-ins, so
+    /// this routes to Plan rather than offering tasks to pick from here.
+    private func planPrompt(_ count: Int) -> some View {
+        VStack(spacing: FlowSpacing.l) {
+            FlowEmptyState(
+                symbol: "tray",
+                title: "Nothing on the wheel yet",
+                message: Self.planPromptMessage(inboxCount: count)
+            )
+            PrimaryActionButton("Plan your day", systemImage: "square.stack") {
+                NotificationCenter.default.post(
+                    name: .flowmapOpenDeepLink,
+                    object: DeepLinkRequest(destination: .inbox)
+                )
+            }
+            .frame(maxWidth: 320)
+            SecondaryActionButton("Start a focus session", systemImage: "timer") {
+                showingDurationPicker = true
+            }
+        }
+        .padding(FlowSpacing.screen)
+    }
+
     private var completionState: some View {
         VStack(spacing: FlowSpacing.l) {
             FlowEmptyState(
@@ -660,27 +874,82 @@ struct FocusScreen: View {
         guard let flow, flow.settings.wheelVisibility != new else { return }
         flow.settings.wheelVisibility = new
         try? context.save()
-        withAnimation(.easeOut(duration: 0.2)) { visibilityHUD = new.announcement }
+        announce(new.announcement)
+    }
+
+    /// Persist where the close-up settled, so the wheel is where it was left
+    /// next session — the same promise the settled level already makes.
+    private func setMagnify(_ factor: Double) {
+        guard let flow else { return }
+        let clamped = FocusWheelGeometry.clampMagnify(factor)
+        guard flow.settings.wheelMagnifyFactor != clamped else { return }
+        flow.settings.wheelMagnifyFactor = clamped
+        try? context.save()
+        announce(magnifyAnnouncement(for: clamped))
+    }
+
+    /// One doubling in either direction, for the VoiceOver adjustable action.
+    private func stepMagnify(_ delta: Int) {
+        setMagnify(FocusWheelGeometry.steppedMagnifyFactor(from: magnification, delta: delta))
+    }
+
+    private var magnifyAnnouncement: String { magnifyAnnouncement(for: magnification) }
+
+    private func magnifyAnnouncement(for factor: Double) -> String {
+        let rounded = Int(factor.rounded())
+        return rounded <= 1 ? "Whole wheel" : "Magnified \(rounded) times"
+    }
+
+    /// The one brief readout both zoom styles use, so a settle is confirmed the
+    /// same way whichever the pinch is driving.
+    private func announce(_ text: String) {
+        withAnimation(.easeOut(duration: 0.2)) { visibilityHUD = text }
         Task {
             try? await Task.sleep(for: .seconds(1.4))
             withAnimation(.easeIn(duration: 0.25)) { visibilityHUD = nil }
         }
     }
 
+    /// One settled level in either direction, for the VoiceOver adjustable
+    /// action. It walks `carouselModes` so the rotor and the pinch can never
+    /// disagree about which levels exist, and it routes through `setVisibility`
+    /// so the announcement and the persistence are the ones already in use.
+    private func stepVisibility(_ delta: Int) {
+        let modes = WheelVisibility.carouselModes
+        guard let index = modes.firstIndex(of: visibility) else { return }
+        let next = min(modes.count - 1, max(0, index + delta))
+        setVisibility(modes[next])
+    }
+
     #if !os(macOS)
     /// Pinching zooms the ring live: it grows and shrinks under the fingers,
     /// through the layouts between the four views, and settles on the nearest
-    /// one when they lift. Spreading reveals more of the day; pinching narrows
-    /// the focus. The mapping and the settle both live in `FocusWheelGeometry`,
-    /// so the gesture and the visible chips can never drift onto different mode
-    /// lists — and the chips remain the tap alternative the HIG asks for, since
-    /// a custom gesture must never be the only way to reach a state.
+    /// one when they lift. It magnifies like a map: spreading the fingers
+    /// enlarges one task until it fills the ring, pinching inward pulls back to
+    /// the whole day. The mapping and the settle both live in `FocusWheelGeometry`,
+    /// so the gesture and the settled level can never drift apart. Since the
+    /// founder's ruling removed the chips row, the non-gesture path the HIG asks
+    /// for is the wheel's `.accessibilityAdjustableAction`, not a visible
+    /// control.
     ///
     /// Nothing is persisted and no HUD fires until release: a per-frame write
     /// would announce three modes on the way to the one that was wanted.
     private var pinchGesture: some Gesture {
         MagnifyGesture(minimumScaleDelta: 0.02)
             .onChanged { value in
+                // The close-up magnifies the drawing instead of re-forming it:
+                // one layout, drawn bigger about the pointer, so spreading the
+                // fingers pushes the far side of the ring off the screen.
+                if zoomStyle == .magnify {
+                    if liveMagnify == nil {
+                        pinchBaseMagnify = magnification
+                    }
+                    liveMagnify = FocusWheelGeometry.magnifyFactor(
+                        base: pinchBaseMagnify,
+                        magnification: value.magnification
+                    )
+                    return
+                }
                 if liveZoom == nil {
                     pinchBaseZoom = FocusWheelGeometry.carouselZoom(for: visibility)
                 }
@@ -688,8 +957,20 @@ struct FocusScreen: View {
                     base: pinchBaseZoom,
                     magnification: value.magnification
                 )
+                // Set outside any animation: the swell is the dial answering
+                // the fingers, and easing it would put it behind the hand.
+                dialScale = FocusWheelGeometry.reformScale(magnification: value.magnification)
             }
             .onEnded { value in
+                if zoomStyle == .magnify {
+                    let settled = FocusWheelGeometry.magnifyFactor(
+                        base: pinchBaseMagnify,
+                        magnification: value.magnification
+                    )
+                    liveMagnify = nil
+                    setMagnify(settled)
+                    return
+                }
                 let settled = FocusWheelGeometry.settledCarouselMode(
                     forZoom: FocusWheelGeometry.carouselZoom(
                         base: pinchBaseZoom,
@@ -697,7 +978,63 @@ struct FocusScreen: View {
                     )
                 )
                 liveZoom = nil
+                // The level settles and the swell lets go together, with the
+                // same gentleness the time-travel drag springs back at.
+                withAnimation(
+                    reduceMotion
+                        ? .easeOut(duration: 0.2)
+                        : .spring(response: 0.4, dampingFraction: 0.86)
+                ) {
+                    dialScale = 1
+                }
                 setVisibility(settled)
+            }
+    }
+
+    /// Drag the band to look ahead. The ring turns with the finger and springs
+    /// back on release: nothing is committed, so a peek at what is coming can
+    /// never be mistaken for a change to the plan.
+    ///
+    /// It lives on the dial, far from every screen edge, so it cannot fight the
+    /// back swipe, the tab bar or the home indicator (HIG: never compete with a
+    /// system gesture). The clamp and the degree mapping are both
+    /// `FocusWheelGeometry`'s, so the travel limit matches the queue that is
+    /// actually drawn.
+    private var timeTravelGesture: some Gesture {
+        DragGesture(minimumDistance: 12)
+            .onChanged { value in
+                // Two fingers mean zoom, not travel: a pinch that lands a
+                // fraction unevenly must never spin the ring as well.
+                guard liveZoom == nil, liveMagnify == nil else { return }
+                if !isDragging {
+                    isDragging = true
+                    dragBaseOffset = previewOffset
+                }
+                previewOffset = FocusWheelGeometry.clampDragPreview(
+                    dragBaseOffset + FocusWheelGeometry.dragPreviewOffset(
+                        translationWidth: value.translation.width,
+                        // Against the ring as DRAWN: under the close-up the
+                        // band is magnified, so the same finger travel should
+                        // cover proportionally fewer degrees of it.
+                        radius: FocusWheelGeometry.magnifiedRadius(dialRadius, factor: magnification)
+                    ),
+                    zoom: zoom,
+                    durations: wheelItems.map(\.minutes),
+                    elapsed: progress
+                )
+            }
+            .onEnded { _ in
+                isDragging = false
+                // Gentle by default; Reduce Motion gets a short easeOut with no
+                // overshoot, since a spring's bounce is exactly what it asks to
+                // be spared.
+                withAnimation(
+                    reduceMotion
+                        ? .easeOut(duration: 0.2)
+                        : .spring(response: 0.45, dampingFraction: 0.85)
+                ) {
+                    previewOffset = 0
+                }
             }
     }
     #endif
@@ -724,20 +1061,20 @@ struct FocusScreen: View {
     #endif
 }
 
-/// Duration chooser for a focus session with no task attached.
+/// Duration chooser for a focus session with no task attached. Deliberately
+/// offers no task list: tasks enter the wheel from Plan only, never picked
+/// from here (state/specs/wheel-philosophy.md — the wheel takes no walk-ins).
 struct FocusDurationPicker: View {
     @Environment(\.flow) private var flow
     @Environment(\.colorScheme) private var scheme
     @Environment(\.dismiss) private var dismiss
-    @Query(sort: \FlowTask.sortOrder) private var tasks: [FlowTask]
 
     /// 30 minutes is the free-focus default; 15 remains a preset.
     private let presets = [15, 25, 30, 45, 60]
 
     @State private var minutes: Int = 30
-    @State private var selectedTask: FlowTask?
 
-    let onStart: (Int, FlowTask?) -> Void
+    let onStart: (Int) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: FlowSpacing.l) {
@@ -779,18 +1116,8 @@ struct FocusDurationPicker: View {
                 }
             }
 
-            if !openTasks.isEmpty {
-                Picker("Task (optional)", selection: $selectedTask) {
-                    Text("No task").tag(FlowTask?.none)
-                    ForEach(openTasks) { task in
-                        Text(task.title).tag(FlowTask?.some(task))
-                    }
-                }
-                .pickerStyle(.menu)
-            }
-
             PrimaryActionButton("Start focus", systemImage: "play.fill") {
-                onStart(minutes, selectedTask)
+                onStart(minutes)
                 dismiss()
             }
 
@@ -802,9 +1129,5 @@ struct FocusDurationPicker: View {
         .onAppear {
             minutes = flow?.settings.defaultFreeFocusMinutes ?? 30
         }
-    }
-
-    private var openTasks: [FlowTask] {
-        tasks.filter { $0.status.isOpen }
     }
 }

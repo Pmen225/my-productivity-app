@@ -24,7 +24,7 @@ struct MapTodayScreen: View {
     var body: some View {
         ZStack {
             if pane == .map {
-                MapListView(showsScreenTitle: false, taskScope: scope)
+                AutoMapScreen(scope: scope, showsScreenTitle: false)
                     .transition(.move(edge: .leading).combined(with: .opacity))
             } else {
                 todayPane

@@ -189,7 +189,6 @@ struct PhoneRootView: View {
     private func navigate(to result: SearchResult) {
         switch result.kind {
         case .task, .project, .note: tab = .library
-        case .mapNode: tab = .map
         case .assistantThread: showingAssistant = true
         }
     }

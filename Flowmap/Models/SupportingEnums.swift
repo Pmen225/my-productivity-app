@@ -295,23 +295,23 @@ public enum AppearanceMode: String, Codable, CaseIterable, Sendable {
 }
 
 /// How many wheel segments the Focus screen reveals at once.
+///
+/// Declaration order is the zoom axis, magnified first: `one` is the deepest
+/// zoom and `all` the widest, so `allCases.firstIndex(of:)` doubles as the
+/// continuous zoom coordinate the pinch gesture works in.
 public enum WheelVisibility: String, Codable, CaseIterable, Sendable {
-    // Declaration order preserves the legacy bowl sequence for persisted data;
-    // the current circular dial uses `carouselModes` for its visible order.
-    case fiveMinute = "fiveMinute"
     case one
     case two
     case three
     case all
 
-    /// The production carousel states exposed by the current circular dial.
-    /// `fiveMinute` remains in the model for legacy bowl geometry and persisted
-    /// data, but it is not a state the circular UI can display or select.
+    /// The carousel states, in zoom order. Identical to `allCases` since the
+    /// legacy `fiveMinute` bowl state was removed; kept as the named axis so
+    /// call sites read as geometry rather than as enum housekeeping.
     public static let carouselModes: [WheelVisibility] = [.one, .two, .three, .all]
 
     public var displayName: String {
         switch self {
-        case .fiveMinute: "5M"
         case .one: "1"
         case .two: "2"
         case .three: "3"
@@ -320,13 +320,9 @@ public enum WheelVisibility: String, Codable, CaseIterable, Sendable {
     }
 
     /// Number of upcoming tasks drawn beside the active one, or `nil` for
-    /// every task. `5M` is a zoom level on the time-based bowl, not a task
-    /// cap — like `all`, it returns `nil` so every scheduled segment is
-    /// considered and the bowl's own visible-angle window decides what's
-    /// actually drawn (`focus-wheel-spec.md` §2).
+    /// every task.
     public var visibleCount: Int? {
         switch self {
-        case .fiveMinute: nil
         case .one: 1
         case .two: 2
         case .three: 3
@@ -338,9 +334,39 @@ public enum WheelVisibility: String, Codable, CaseIterable, Sendable {
         switch self {
         case .all: "All tasks visible"
         case .one: "1 task visible"
-        // "5M tasks visible" would misreport a zoom level as a task count.
-        case .fiveMinute: "Zoomed to a five-minute window"
         default: "\(displayName) tasks visible"
+        }
+    }
+}
+
+/// What a pinch on the focus wheel visibly does.
+///
+/// Both styles exist because the founder rejected a pinch that only changed an
+/// invisible parameter. `magnify` is the default: zooming in must look like
+/// leaning towards the ring, with the far side leaving the screen entirely.
+public enum WheelZoomStyle: String, Codable, CaseIterable, Sendable {
+    /// Magnify the rendering about the pointer — the ring grows past the
+    /// screen edges and the user reads a close-up slice of it.
+    case magnify
+    /// Keep the whole circle on screen and re-form it into fewer, wider
+    /// blocks, swelling under the fingers while the pinch is live.
+    case reform
+
+    /// Listed magnify-first so the Settings picker's leading option is the
+    /// default the founder chose.
+    public static let pickerOrder: [WheelZoomStyle] = [.magnify, .reform]
+
+    public var displayName: String {
+        switch self {
+        case .magnify: "Close-up"
+        case .reform: "Re-form"
+        }
+    }
+
+    public var announcement: String {
+        switch self {
+        case .magnify: "Close-up zoom"
+        case .reform: "Re-forming zoom"
         }
     }
 }

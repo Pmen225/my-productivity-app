@@ -31,6 +31,16 @@ public final class MapNode {
     /// At most one task per node. Converting an already-linked node reuses this.
     public var linkedTask: FlowTask?
 
+    /// The auto-map's link to the task a node displays. `AutoMapBuilder`'s
+    /// tree is never inserted, and assigning `linkedTask` there writes the
+    /// INVERSE (`FlowTask.mapNode`) onto the persisted task — SwiftData
+    /// asserted and crashed on every reseeded launch that opened the Map.
+    /// @Transient keeps the reference entirely outside the store; read
+    /// through `displayTask`, which resolves whichever link a node carries.
+    @Transient public var transientTask: FlowTask? = nil
+
+    public var displayTask: FlowTask? { transientTask ?? linkedTask }
+
     @Relationship(deleteRule: .nullify, inverse: \Note.mapNode)
     public var linkedNote: Note?
 
@@ -83,6 +93,21 @@ public final class MapNode {
             if count > 64 { break } // cycle guard
         }
         return count
+    }
+
+    /// This node's position among the root's direct children — the depth-1
+    /// ancestor's `sortOrder`. `MapPalette.branchColour` keys a whole branch
+    /// subtree's colour off this so it stays flat top to bottom (Task 63
+    /// MindNode restyle). Meaningless for the root itself, which never reads it.
+    public var rootChildIndex: Int {
+        var current = self
+        var hops = 0
+        while let ancestor = current.parent, !ancestor.isRoot {
+            current = ancestor
+            hops += 1
+            if hops > 64 { break } // cycle guard, matches `depth`/`ancestorIDs`
+        }
+        return current.sortOrder
     }
 
     /// Self and all descendants, depth-first in display order.
@@ -139,5 +164,5 @@ public final class MapNode {
     }
 
     /// Completion mirrors the linked task so the canvas reflects real progress.
-    public var isCompleted: Bool { linkedTask?.status == .completed }
+    public var isCompleted: Bool { displayTask?.status == .completed }
 }

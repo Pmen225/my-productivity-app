@@ -1,7 +1,7 @@
 import SwiftData
 import SwiftUI
 
-/// One branch of the map with the week's work hanging off it — the mock's bold
+/// One project with the week's work hanging off it — the mock's bold
 /// branch-name eyebrow and the rows underneath it.
 struct WeeklyPlanGroup: Identifiable {
     let id: String
@@ -19,24 +19,8 @@ struct WeeklyPlanItem: Identifiable {
 }
 
 /// The grouping the Weekly Plan page draws, kept apart from the view so the
-/// branch walk and the week window can be tested without a `View`.
+/// week window can be tested without a `View`.
 enum CalendarWeeklyPlan {
-    /// The branch a leaf belongs to: its highest ancestor that still has a
-    /// parent, i.e. the child of the map's root. A node hanging straight off
-    /// the root is its own branch.
-    ///
-    /// The hop cap matches `MapNode`'s own cycle guards — a corrupted parent
-    /// chain from an imported backup must not spin here either.
-    static func branch(for node: MapNode) -> MapNode {
-        var current = node
-        var hops = 0
-        while let parent = current.parent, parent.parent != nil, hops < 64 {
-            current = parent
-            hops += 1
-        }
-        return current
-    }
-
     /// Every task with time booked inside `week`, once each, under its branch.
     ///
     /// A task can hold several segments in one week; the row stands for the
@@ -79,14 +63,9 @@ enum CalendarWeeklyPlan {
         }
     }
 
-    /// A task that never came off the map still belongs in the week, so it
-    /// falls back to its project and then to a plain heading rather than
+    /// A task with no project falls back to a plain heading rather than
     /// vanishing from the plan.
     private static func bucket(for task: FlowTask) -> (key: String, title: String) {
-        if let node = task.mapNode {
-            let branch = branch(for: node)
-            return (branch.id.uuidString, branch.title.isEmpty ? "Untitled branch" : branch.title)
-        }
         if let project = task.project, !project.title.isEmpty {
             return ("project-\(project.id.uuidString)", project.title)
         }
@@ -95,7 +74,7 @@ enum CalendarWeeklyPlan {
 }
 
 /// The Calendar panel's second page: the whole week's work grouped under the
-/// map branch each task came from.
+/// project each task came from.
 struct CalendarWeeklyPlanView: View {
     @Environment(\.flow) private var flow
     @Environment(\.colorScheme) private var scheme

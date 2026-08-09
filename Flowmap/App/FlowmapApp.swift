@@ -18,6 +18,10 @@ struct FlowmapApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                // Identity keyed to the font choice: the type tokens are
+                // statics, not observed state, so a Settings switch lands
+                // everywhere at once by rebuilding the shell.
+                .id(environment.settings.appFontRaw)
                 .environment(\.flow, environment)
                 .preferredColorScheme(environment.colourScheme)
                 .tint(environment.settings.accent.base)

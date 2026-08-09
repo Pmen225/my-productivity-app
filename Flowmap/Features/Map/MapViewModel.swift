@@ -26,11 +26,11 @@ public enum MapViewMode: String, CaseIterable, Sendable {
 }
 
 /// Drives one open `MapDocument`: canvas viewport, selection, search, Focus
-/// Branch, undo/redo and every node mutation.
+/// Branch and collapse/expand.
 ///
-/// The Map canvas and the Outline list both read and mutate through this one
-/// object — neither keeps its own copy of the graph, so an edit made in
-/// either view is visible in the other the moment SwiftData saves it.
+/// The Map canvas and the Outline list both read through this one object —
+/// neither keeps its own copy of the graph, so a viewport or collapse change
+/// made in either view is visible in the other the moment SwiftData saves it.
 @Observable
 @MainActor
 public final class MapViewModel {
@@ -48,7 +48,6 @@ public final class MapViewModel {
     public var viewMode: MapViewMode = .map
     public var isCompact: Bool = false
     public var focusBranchID: UUID?
-    public var pendingDeletion: MapNode?
     public var searchQuery: String = ""
     public var isSearchPresented: Bool = false
     /// The canvas's current size, published here so the toolbar's canvas menu
@@ -61,6 +60,15 @@ public final class MapViewModel {
         self.context = context
         self.zoom = CGFloat(map.canvasZoom == 0 ? 1 : map.canvasZoom)
         self.panOffset = CGSize(width: map.canvasOffsetX, height: map.canvasOffsetY)
+    }
+
+    /// Every mutation funnels its persistence through here rather than
+    /// calling `context.save()` directly. Safe unconditionally: the
+    /// transient, read-only auto map (Task 63) never inserts its `MapDocument`
+    /// / `MapNode`s into `context` in the first place, so a save here has
+    /// nothing of theirs to write.
+    private func save() {
+        try? context.save()
     }
 
     // MARK: - Derived reads
@@ -93,7 +101,7 @@ public final class MapViewModel {
         set {
             guard newValue != map.layoutOrientation else { return }
             map.layoutOrientation = newValue
-            try? context.save()
+            save()
         }
     }
 
@@ -102,9 +110,6 @@ public final class MapViewModel {
     public func position(of node: MapNode, in positions: [UUID: CGPoint]) -> CGPoint {
         node.manualPosition ?? positions[node.id] ?? .zero
     }
-
-    public var canUndo: Bool { !undoStack.isEmpty }
-    public var canRedo: Bool { !redoStack.isEmpty }
 
     private func nodeByID(_ id: UUID) -> MapNode? {
         map.allNodes.first { $0.id == id }
@@ -160,270 +165,12 @@ public final class MapViewModel {
         focusBranchID = (focusBranchID == node.id) ? nil : node.id
     }
 
-    // MARK: - Node creation
-
-    /// Creates the map's first idea. Only meaningful while the map has none —
-    /// `MapDocument` keeps exactly one root once it exists.
-    @discardableResult
-    public static func createRootTopic(in map: MapDocument, title: String, context: ModelContext) -> MapNode {
-        let node = MapNode(title: title, colourToken: map.themeToken, map: map)
-        context.insert(node)
-        try? context.save()
-        return node
-    }
-
-    @discardableResult
-    public func addRootTopic(title: String = "Main idea") -> MapNode {
-        let node = Self.createRootTopic(in: map, title: title, context: context)
-        selectedNodeID = node.id
-        let snapshot = NodeSnapshot(node: node)
-        record(
-            undo: { [weak self] in self?.rawDelete(nodeID: snapshot.id) },
-            redo: { [weak self] in self?.rawRestore(snapshot, parentID: nil) }
-        )
-        return node
-    }
-
-    @discardableResult
-    public func addChild(to parent: MapNode, title: String = "New idea") -> MapNode {
-        let child = MapNode(
-            title: title,
-            colourToken: parent.colourToken,
-            sortOrder: (parent.children ?? []).count,
-            map: map,
-            parent: parent
-        )
-        context.insert(child)
-        parent.isCollapsed = false
-        selectedNodeID = child.id
-        try? context.save()
-
-        let snapshot = NodeSnapshot(node: child)
-        let parentID = parent.id
-        record(
-            undo: { [weak self] in self?.rawDelete(nodeID: snapshot.id) },
-            redo: { [weak self] in self?.rawRestore(snapshot, parentID: parentID) }
-        )
-        return child
-    }
-
-    /// Adds a sibling positioned right after `node`. A root has no siblings to
-    /// join, so a sibling request on the root becomes a child instead.
-    @discardableResult
-    public func addSibling(to node: MapNode, title: String = "New idea") -> MapNode {
-        guard let parent = node.parent else { return addChild(to: node, title: title) }
-        let sibling = MapNode(
-            title: title,
-            colourToken: parent.colourToken,
-            sortOrder: node.sortOrder + 1,
-            map: map,
-            parent: parent
-        )
-        for other in parent.orderedChildren where other.sortOrder > node.sortOrder {
-            other.sortOrder += 1
-        }
-        context.insert(sibling)
-        selectedNodeID = sibling.id
-        try? context.save()
-
-        let snapshot = NodeSnapshot(node: sibling)
-        let parentID = parent.id
-        record(
-            undo: { [weak self] in self?.rawDelete(nodeID: snapshot.id) },
-            redo: { [weak self] in self?.rawRestore(snapshot, parentID: parentID) }
-        )
-        return sibling
-    }
-
-    // MARK: - Rename
-
-    public func rename(_ node: MapNode, to title: String) {
-        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, trimmed != node.title else { return }
-        let nodeID = node.id
-        let previous = node.title
-        rawSetTitle(nodeID: nodeID, title: trimmed)
-        record(
-            undo: { [weak self] in self?.rawSetTitle(nodeID: nodeID, title: previous) },
-            redo: { [weak self] in self?.rawSetTitle(nodeID: nodeID, title: trimmed) }
-        )
-    }
-
-    private func rawSetTitle(nodeID: UUID, title: String) {
-        guard let node = nodeByID(nodeID) else { return }
-        node.title = title
-        node.touch()
-        try? context.save()
-    }
-
     // MARK: - Collapse / expand
 
-    /// Not undo-tracked: a disclosure state is view chrome, not content — on a
-    /// par with scroll position, not with an edit.
     public func toggleCollapse(_ node: MapNode) {
         node.isCollapsed.toggle()
         node.touch()
-        try? context.save()
-    }
-
-    // MARK: - Manual position (free drag on the canvas)
-
-    public func setManualPosition(_ node: MapNode, to point: CGPoint?) {
-        node.setManualPosition(point)
-        try? context.save()
-    }
-
-    // MARK: - Reparent / reorder (drag and drop in the Outline)
-
-    /// Moves `node` to become a sibling positioned immediately before
-    /// `target`, adopting `target`'s parent. Refuses to drop a node onto its
-    /// own descendant, which would otherwise create a cycle.
-    public func moveNode(_ node: MapNode, beforeSibling target: MapNode) {
-        guard node.id != target.id, !node.subtreeNodes.contains(where: { $0.id == target.id }) else { return }
-        let nodeID = node.id
-        let targetID = target.id
-        let previousParentID = node.parent?.id
-        let previousSortOrder = node.sortOrder
-
-        rawMove(nodeID: nodeID, beforeSiblingID: targetID)
-
-        record(
-            undo: { [weak self] in
-                self?.rawRestoreParent(nodeID: nodeID, parentID: previousParentID, sortOrder: previousSortOrder)
-            },
-            redo: { [weak self] in self?.rawMove(nodeID: nodeID, beforeSiblingID: targetID) }
-        )
-    }
-
-    private func rawMove(nodeID: UUID, beforeSiblingID: UUID) {
-        guard let node = nodeByID(nodeID), let target = nodeByID(beforeSiblingID) else { return }
-        let newParent = target.parent
-        node.parent = newParent
-        var siblings = (newParent?.children ?? map.allNodes.filter { $0.parent == nil })
-            .filter { $0.id != node.id }
-            .sorted { $0.sortOrder < $1.sortOrder }
-        if let targetIndex = siblings.firstIndex(where: { $0.id == target.id }) {
-            siblings.insert(node, at: targetIndex)
-        } else {
-            siblings.append(node)
-        }
-        for (index, sibling) in siblings.enumerated() { sibling.sortOrder = index }
-        node.touch()
-        try? context.save()
-    }
-
-    private func rawRestoreParent(nodeID: UUID, parentID: UUID?, sortOrder: Int) {
-        guard let node = nodeByID(nodeID) else { return }
-        node.parent = parentID.flatMap(nodeByID)
-        node.sortOrder = sortOrder
-        node.touch()
-        try? context.save()
-    }
-
-    // MARK: - Delete (with confirmation)
-
-    public func requestDelete(_ node: MapNode) {
-        pendingDeletion = node
-    }
-
-    public func cancelDelete() {
-        pendingDeletion = nil
-    }
-
-    public func confirmDelete() {
-        guard let node = pendingDeletion else { return }
-        let snapshot = NodeSnapshot(node: node)
-        let parentID = node.parent?.id
-        rawDelete(nodeID: node.id)
-        pendingDeletion = nil
-        record(
-            undo: { [weak self] in self?.rawRestore(snapshot, parentID: parentID) },
-            redo: { [weak self] in self?.rawDelete(nodeID: snapshot.id) }
-        )
-    }
-
-    /// Deletes a node and its subtree (children cascade via the model's
-    /// relationship). Also clears selection and Focus Branch if either
-    /// pointed inside the deleted subtree, so the UI never references a node
-    /// that no longer exists.
-    private func rawDelete(nodeID: UUID) {
-        guard let node = nodeByID(nodeID) else { return }
-        if selectedNodeID == nodeID || node.subtreeNodes.contains(where: { $0.id == selectedNodeID }) {
-            selectedNodeID = node.parent?.id
-        }
-        if let focusBranchID, focusBranchID == nodeID || node.subtreeNodes.contains(where: { $0.id == focusBranchID }) {
-            self.focusBranchID = nil
-        }
-        context.delete(node)
-        try? context.save()
-    }
-
-    /// Rebuilds a node (and, for a delete undo, its whole subtree) from a
-    /// snapshot. A deleted SwiftData object cannot safely be resurrected in
-    /// place, so undoing a delete or redoing a create always creates fresh
-    /// model instances rather than reusing the original one — `NodeSnapshot`
-    /// carries the original id across so selection and further undo entries
-    /// keep working by id.
-    @discardableResult
-    private func rawRestore(_ snapshot: NodeSnapshot, parentID: UUID?) -> MapNode {
-        rebuild(snapshot, parent: parentID.flatMap(nodeByID))
-    }
-
-    @discardableResult
-    private func rebuild(_ snapshot: NodeSnapshot, parent: MapNode?) -> MapNode {
-        let node = MapNode(
-            title: snapshot.title,
-            body: snapshot.body,
-            iconName: snapshot.iconName,
-            colourToken: snapshot.colourToken,
-            sortOrder: snapshot.sortOrder,
-            map: map,
-            parent: parent
-        )
-        node.id = snapshot.id
-        node.isCollapsed = snapshot.isCollapsed
-        node.isTask = snapshot.isTask
-        node.priorityRaw = snapshot.priorityRaw
-        node.estimatedMinutes = snapshot.estimatedMinutes
-        node.manualPositionX = snapshot.manualPositionX
-        node.manualPositionY = snapshot.manualPositionY
-        context.insert(node)
-        for childSnapshot in snapshot.children {
-            rebuild(childSnapshot, parent: node)
-        }
-        try? context.save()
-        return node
-    }
-
-    // MARK: - Undo / redo stack
-
-    private struct UndoEntry {
-        let undo: () -> Void
-        let redo: () -> Void
-    }
-
-    private var undoStack: [UndoEntry] = []
-    private var redoStack: [UndoEntry] = []
-
-    /// Every public mutation calls this exactly once, with closures built from
-    /// the private `raw...` primitives. Those primitives must never call
-    /// `record` themselves — undo and redo would otherwise push extra entries
-    /// every time they run, corrupting the stack.
-    private func record(undo: @escaping () -> Void, redo: @escaping () -> Void) {
-        undoStack.append(UndoEntry(undo: undo, redo: redo))
-        redoStack.removeAll()
-    }
-
-    public func undo() {
-        guard let entry = undoStack.popLast() else { return }
-        entry.undo()
-        redoStack.append(entry)
-    }
-
-    public func redo() {
-        guard let entry = redoStack.popLast() else { return }
-        entry.redo()
-        undoStack.append(entry)
+        save()
     }
 
     // MARK: - Canvas viewport
@@ -433,7 +180,7 @@ public final class MapViewModel {
         map.canvasOffsetX = Double(panOffset.width)
         map.canvasOffsetY = Double(panOffset.height)
         map.touch()
-        try? context.save()
+        save()
     }
 
     /// Zooms and pans so every visible node fits inside `viewportSize`.
@@ -477,47 +224,5 @@ public final class MapViewModel {
             height: viewportSize.height / 2 - (point.y - box.minY + margin) * zoom
         )
         persistCanvasState()
-    }
-}
-
-// MARK: - Node snapshot
-
-/// A plain-value copy of a node and its subtree, used to survive the moment
-/// of deletion so undo can rebuild what was there — a deleted `@Model`
-/// instance cannot be safely reused, so undo always rebuilds fresh objects
-/// and restores the original id onto them.
-///
-/// Deliberately does not carry `linkedTask` / `linkedNote`: those are separate
-/// records with their own lifetime, and re-linking them automatically on an
-/// undone delete would risk resurrecting a stale link silently.
-private struct NodeSnapshot {
-    let id: UUID
-    let title: String
-    let body: String
-    let iconName: String
-    let colourToken: String
-    let sortOrder: Int
-    let isCollapsed: Bool
-    let isTask: Bool
-    let priorityRaw: String
-    let estimatedMinutes: Int
-    let manualPositionX: Double?
-    let manualPositionY: Double?
-    let children: [NodeSnapshot]
-
-    init(node: MapNode) {
-        id = node.id
-        title = node.title
-        body = node.body
-        iconName = node.iconName
-        colourToken = node.colourToken
-        sortOrder = node.sortOrder
-        isCollapsed = node.isCollapsed
-        isTask = node.isTask
-        priorityRaw = node.priorityRaw
-        estimatedMinutes = node.estimatedMinutes
-        manualPositionX = node.manualPositionX
-        manualPositionY = node.manualPositionY
-        children = node.orderedChildren.map(NodeSnapshot.init)
     }
 }

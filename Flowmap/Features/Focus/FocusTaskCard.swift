@@ -1,293 +1,128 @@
 import SwiftData
 import SwiftUI
 
-/// The two pages of the lower focus card.
-enum FocusCardPage: Int, CaseIterable, Identifiable {
-    case today
-    case subtasks
-
-    var id: Int { rawValue }
-
-    var title: String {
-        switch self {
-        case .today: "Today"
-        case .subtasks: "Subtasks"
-        }
-    }
-
-    /// The eyebrow shown above the page on iPhone — the mock's "Today's
-    /// queue" / "Subtasks" wording, distinct from the terser Mac tab title.
-    var eyebrowTitle: String {
-        switch self {
-        case .today: "Today's queue"
-        case .subtasks: "Subtasks"
-        }
-    }
-}
-
-/// The three heights the lower card snaps between (decision 14). `hidden`
-/// gives the dial the screen; `rest` keeps the queue readable under it;
-/// `open` gives the checklist a compact scrollable working surface below it.
-enum FocusCardDetent: Int, CaseIterable {
-    case hidden
-    case rest
-    case open
-
-    /// The mock's 18px `hidden` strip is under the HIG's 44pt floor, and the
-    /// handle it leaves is the only way to bring the card back — so the strip
-    /// is the handle's whole 44pt target plus the card's own top padding,
-    /// rather than the mock's 18px. Anything shorter clips the target, since
-    /// the card clips to its own shape.
-    static let hiddenHeight: CGFloat = 44 + FlowSpacing.m
-
-    func height(for total: CGFloat) -> CGFloat {
-        switch self {
-        case .hidden: Self.hiddenHeight
-        case .rest: FocusTaskCard.restingHeight(for: total)
-        case .open: FocusTaskCard.expandedHeight(for: total)
-        }
-    }
-
-    /// One step up (`hidden` → `rest` → `open`) or down, stopping at the ends.
-    func stepped(up: Bool) -> FocusCardDetent {
-        FocusCardDetent(rawValue: min(2, max(0, rawValue + (up ? 1 : -1)))) ?? self
-    }
-
-    /// What tapping the handle does: cycles round rather than dead-ending.
-    var next: FocusCardDetent {
-        FocusCardDetent(rawValue: (rawValue + 1) % FocusCardDetent.allCases.count) ?? .rest
-    }
-}
-
-/// The card beneath the wheel: today's queue on one page, the active task's
-/// subtasks on the other.
+/// The always-visible strip above the tab bar: the one active subtask (or
+/// its nearest fallback), tapped to open `FocusQueueSheet`.
 ///
-/// On iPhone it is draggable and expands to at least three fifths of the screen.
-/// At rest it keeps a measurable gap from the wheel — the two never touch.
-struct FocusTaskCard: View {
+/// Task 58 (founder ruling 2026-08-08, option B) replaces the old
+/// three-detent, two-page `FocusTaskCard` with this bar plus a native
+/// resizable sheet — the horizontal page swipe was unreliable, the handle
+/// band wasted space, and the card duplicated what a bar can say in one row.
+struct FocusNowBar: View {
     @Environment(\.colorScheme) private var scheme
-    @Environment(\.flow) private var flow
 
     let queue: [TaskSegment]
     let activeTask: FlowTask?
     let activeSegmentID: UUID?
-    let onSelect: (TaskSegment) -> Void
+    let onTap: () -> Void
 
-    @Binding var page: FocusCardPage
-    /// Which of the three heights the card rests at.
-    @Binding var detent: FocusCardDetent
+    /// The bar's own fixed footprint: content padding plus the 44pt hit
+    /// target, the same accounting the old card's hidden strip used.
+    static let height: CGFloat = 44 + FlowSpacing.m * 2
 
-    @State private var dragOffset: CGFloat = 0
-    /// Which queue row has been unfolded to show its checklist. One at a
-    /// time — the card is short, and two open rows leave nothing readable.
+    private var model: FocusQueueModel {
+        FocusQueueModel(queue: queue, activeTask: activeTask, activeSegmentID: activeSegmentID)
+    }
+
+    var body: some View {
+        if model.isBarVisible {
+            Button(action: onTap) {
+                HStack(spacing: FlowSpacing.m) {
+                    Circle()
+                        .fill((activeTask?.colour ?? .violet).onSoft)
+                        .frame(width: 10, height: 10)
+                        .accessibilityHidden(true)
+
+                    Text(model.barTitle)
+                        .font(FlowFont.body.weight(.semibold))
+                        .foregroundStyle(FlowTheme.primaryText(scheme))
+                        .lineLimit(1)
+
+                    Spacer(minLength: FlowSpacing.s)
+
+                    Text(model.barCaption)
+                        .font(FlowFont.caption)
+                        .foregroundStyle(FlowTheme.secondaryText(scheme))
+                        .lineLimit(1)
+
+                    Image(systemName: "chevron.up")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                }
+                .padding(.horizontal, FlowSpacing.l)
+                .padding(.vertical, FlowSpacing.m)
+                .frame(minHeight: 44)
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .flowGlass(radius: FlowRadius.pill)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(model.barTitle), \(model.barCaption)")
+            .accessibilityHint("Opens today's queue")
+        }
+    }
+}
+
+/// Today's whole queue as one list, the active task's checklist nested under
+/// its own row (decision 15 stands: a row's tap unfolds it, starting a task
+/// keeps its own control). Shared verbatim between the iPhone sheet
+/// (`FocusQueueSheet`) and the Mac's inline pane.
+struct FocusQueueListView: View {
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.flow) private var flow
+    /// Closes the iPhone sheet before "Plan your day" switches the tab
+    /// underneath it (HIG: never leave a modal floating over a changed
+    /// context). Inline on the Mac pane it is a harmless no-op.
+    @Environment(\.dismiss) private var dismiss
+
+    let queue: [TaskSegment]
+    let activeTask: FlowTask?
+    let activeSegmentID: UUID?
+
+    /// Which queue row has been unfolded. One at a time — the existing rule.
+    /// Seeded from the active segment when the view first appears, never
+    /// re-seeded afterwards: the founder's own taps are what move this.
     @State private var expandedSegmentID: UUID?
 
     /// Ticks with the same clock `FocusScreen` uses, so the active row's
     /// remaining time counts down without a timer of its own.
     private var now: Date { flow?.now ?? Date() }
 
-    /// Rest is a deliberate peek: a full handle target and one calm status row,
-    /// leaving the wheel as the screen's visual anchor instead of crushing a
-    /// scroll page against the tab bar.
-    nonisolated static func restingHeight(for total: CGFloat) -> CGFloat {
-        FlowControlSize.hero + FlowControlSize.utility + FlowSpacing.xxxl
-    }
-    /// The checklist remains a scrollable working surface, but it must not
-    /// swallow the circular dial when it opens. A compact 20% sheet keeps the
-    /// first rows visible while preserving the ring's width-based diameter.
-    nonisolated static func expandedHeight(for total: CGFloat) -> CGFloat { max(180, total * 0.20) }
-
     var body: some View {
-        GeometryReader { proxy in
-            let expanded = Self.expandedHeight(for: proxy.size.height)
-            let height = detent.height(for: proxy.size.height) + dragOffset
+        VStack(alignment: .leading, spacing: 0) {
+            // Premium-UX mandate (2026-08-08): a sheet's main header is a real
+            // title, not a tracked all-caps eyebrow — the founder rejected the
+            // eyebrow here on device. Eyebrows stay for labels INSIDE content.
+            Text("Today's queue")
+                .font(FlowFont.sectionTitle)
+                .foregroundStyle(FlowTheme.primaryText(scheme))
+                .accessibilityAddTraits(.isHeader)
+                .padding(.horizontal, FlowSpacing.screen)
+                // Clear of the sheet grabber, with air on both sides — the
+                // founder rejected the cramped 16pt version on device.
+                .padding(.top, FlowSpacing.xl)
+                .padding(.bottom, FlowSpacing.l)
 
-            VStack(spacing: 0) {
-                Spacer(minLength: 0)
-                card(
-                    height: min(expanded, max(FocusCardDetent.hiddenHeight, height)),
-                    canExpand: expanded > Self.restingHeight(for: proxy.size.height)
-                )
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        }
-    }
-
-    // MARK: - Card
-
-    private func card(height: CGFloat, canExpand: Bool) -> some View {
-        // The mock's hand-held shape: tighter top corners, a deep flare at
-        // the bottom rather than a plain rectangle.
-        let shape = UnevenRoundedRectangle(
-            topLeadingRadius: FlowRadius.large,
-            bottomLeadingRadius: FlowRadius.deep,
-            bottomTrailingRadius: FlowRadius.deep,
-            topTrailingRadius: FlowRadius.large,
-            style: .continuous
-        )
-
-        return VStack(spacing: FlowSpacing.m) {
-            #if !os(macOS)
-            grabber
-            #endif
-            if detent == .rest {
-                collapsedPeek
-            } else if detent == .open {
-                header
-                content
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, FlowSpacing.screen)
-        .padding(.top, FlowSpacing.m)
-        .padding(.bottom, FlowSpacing.l)
-        .frame(maxWidth: .infinity)
-        .frame(height: height, alignment: .top)
-        .clipShape(shape)
-        .background(
-            shape
-                .fill(FlowTheme.surface(scheme))
-                .overlay(shape.strokeBorder(FlowTheme.separator(scheme), lineWidth: 1))
-                .shadow(color: FlowTheme.shadow(scheme), radius: 18, y: -4)
-        )
-        #if !os(macOS)
-        .gesture(dragGesture(canExpand: canExpand))
-        #endif
-    }
-
-    private var grabber: some View {
-        Capsule()
-            .fill(FlowTheme.separatorStrong(scheme))
-            .frame(width: 42, height: 5)
-            // A 5pt capsule is far under the 44pt floor, and when the card is
-            // collapsed it is the only way back — so the target is grown
-            // around the artwork rather than the artwork scaled up.
-            .flowHitTarget(44)
-            .onTapGesture { cycleDetent() }
-            .accessibilityLabel("Task card, \(detentDescription)")
-            .accessibilityHint("Changes the card's height")
-            .accessibilityAddTraits(.isButton)
-            .accessibilityAction { cycleDetent() }
-    }
-
-    private var detentDescription: String {
-        switch detent {
-        case .hidden: "collapsed"
-        case .rest: "resting"
-        case .open: "expanded"
-        }
-    }
-
-    private func cycleDetent() {
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-            detent = detent.next
-        }
-    }
-
-    private var header: some View {
-        HStack(spacing: FlowSpacing.m) {
-            #if os(macOS)
-            // A segmented switch reads better than a swipe on a pointer-driven Mac.
-            Picker("Page", selection: $page) {
-                ForEach(FocusCardPage.allCases) { Text($0.title).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(maxWidth: 240)
-            #else
-            FlowEyebrow(page.eyebrowTitle)
-            Spacer()
-            pageDots
-            #endif
-        }
-    }
-
-    /// The resting card intentionally previews one thought instead of clipping
-    /// a full page. The handle remains the stable, 44pt route to expand it.
-    private var collapsedPeek: some View {
-        HStack(spacing: FlowSpacing.s) {
-            Image(systemName: "checklist")
-                .foregroundStyle(FlowTheme.secondaryText(scheme))
-                .accessibilityHidden(true)
-            Text(collapsedPeekText)
-                .font(FlowFont.caption)
-                .foregroundStyle(FlowTheme.secondaryText(scheme))
-                .lineLimit(1)
-            Spacer(minLength: FlowSpacing.s)
-        }
-        .padding(.vertical, FlowSpacing.s)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Task card preview: \(collapsedPeekText)")
-    }
-
-    private var collapsedPeekText: String {
-        guard let task = activeTask else { return "No task running" }
-        let progress = task.subtaskProgressLabel ?? "No checklist"
-        guard let next = task.orderedSubtasks.first(where: { !$0.isCompleted }) else {
-            return "\(progress) · Ready to finish"
-        }
-        return "\(progress) · \(next.title)"
-    }
-
-    private var pageDots: some View {
-        HStack(spacing: 6) {
-            ForEach(FocusCardPage.allCases) { candidate in
-                Button {
-                    withAnimation(.snappy(duration: 0.24)) { page = candidate }
-                } label: {
-                    Circle()
-                        .fill(
-                            candidate == page
-                                ? FlowTheme.accent
-                                : FlowTheme.separator(scheme)
-                        )
-                        .frame(width: 6, height: 6)
-                        // HIG override: full 44pt of height, but 24pt of width
-                        // — a 44pt-wide target throws the pair of dots to
-                        // opposite ends of the header and they stop reading as
-                        // a pager. Swipe remains the primary way to change page.
-                        .frame(width: 24, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(candidate.eyebrowTitle)
-                .accessibilityAddTraits(candidate == page ? [.isButton, .isSelected] : .isButton)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var content: some View {
-        #if os(macOS)
-        pageContent(page)
-        #else
-        TabView(selection: $page) {
-            ForEach(FocusCardPage.allCases) { candidate in
-                pageContent(candidate).tag(candidate)
-            }
-        }
-        .tabViewStyle(.page(indexDisplayMode: .never))
-        #endif
-    }
-
-    @ViewBuilder
-    private func pageContent(_ candidate: FocusCardPage) -> some View {
-        switch candidate {
-        case .today: todayQueue
-        case .subtasks: subtaskList
-        }
-    }
-
-    // MARK: - Pages
-
-    private var todayQueue: some View {
-        Group {
             if queue.isEmpty {
-                FlowEmptyState(
-                    symbol: "checkmark.circle",
-                    title: "Nothing scheduled",
-                    message: "Plan your day on the Today screen and it will appear here."
-                )
+                // Task 61: the old copy named a "Today screen" that is not a
+                // tab and offered no route. Signpost the real one — Plan.
+                VStack(spacing: FlowSpacing.l) {
+                    FlowEmptyState(
+                        symbol: "tray",
+                        title: "Nothing on the wheel",
+                        message: "Tasks join the wheel when you plan your day."
+                    )
+                    SecondaryActionButton("Plan your day", systemImage: "square.stack") {
+                        dismiss()
+                        NotificationCenter.default.post(
+                            name: .flowmapOpenDeepLink,
+                            object: DeepLinkRequest(destination: .inbox)
+                        )
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, FlowSpacing.screen)
+                Spacer(minLength: 0)
             } else {
                 ScrollView {
                     LazyVStack(spacing: FlowSpacing.s) {
@@ -298,9 +133,18 @@ struct FocusTaskCard: View {
                             }
                         }
                     }
-                    .padding(.bottom, FlowSpacing.m)
+                    .padding(.horizontal, FlowSpacing.screen)
+                    .padding(.bottom, FlowSpacing.l)
                 }
             }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .onAppear {
+            expandedSegmentID = FocusQueueModel(
+                queue: queue,
+                activeTask: activeTask,
+                activeSegmentID: activeSegmentID
+            ).initiallyExpandedSegmentID
         }
     }
 
@@ -366,20 +210,13 @@ struct FocusTaskCard: View {
                     .font(FlowFont.caption.weight(.heavy).monospacedDigit())
                     .foregroundStyle(FlowTheme.accentDeep)
             } else {
+                // No per-row start control: the wheel is a commitment device —
+                // picking an arbitrary queued task from Focus is exactly what
+                // `wheel-philosophy.md` forbids, and the row reads calmer
+                // without a CTA competing with the wheel's own (2026-08-08).
                 Text("\(DurationFormatter.time(segment.startDate)) · \(DurationFormatter.compact(minutes: segment.durationMinutes))")
                     .font(.system(size: 12, design: .rounded).monospacedDigit())
                     .foregroundStyle(FlowTheme.secondaryText(scheme))
-
-                Button {
-                    onSelect(segment)
-                } label: {
-                    Image(systemName: "play.fill")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(FlowTheme.accent)
-                        .flowHitTarget(44)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Start \(task?.title ?? "task")")
             }
         }
         .padding(.horizontal, FlowSpacing.m)
@@ -390,18 +227,33 @@ struct FocusTaskCard: View {
         )
     }
 
-    /// What a tapped queue row unfolds: what "done" means for this task, and
-    /// its checklist — read-only here. Ticking happens on the Subtasks page,
-    /// which owns that interaction already.
+    /// What a tapped queue row unfolds. Every row shows what "done" means for
+    /// its task; only the ACTIVE task's checklist is interactive — ticking a
+    /// subtask only makes sense for the task actually being worked (decision
+    /// 15) — everything else stays the old read-only preview.
+    @ViewBuilder
     private func queueRowDetail(_ segment: TaskSegment) -> some View {
         let task = segment.task
         let subtasks = task?.orderedSubtasks ?? []
-        return VStack(alignment: .leading, spacing: FlowSpacing.xs) {
-            if subtasks.isEmpty {
-                Text("No subtasks.")
-                    .font(FlowFont.caption)
-                    .foregroundStyle(FlowTheme.tertiaryText(scheme))
-            } else {
+        let isActive = segment.id == activeSegmentID
+
+        if subtasks.isEmpty {
+            Text("No subtasks.")
+                .font(FlowFont.caption)
+                .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                .padding(.horizontal, FlowSpacing.xl)
+                .padding(.bottom, FlowSpacing.xs)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else if isActive {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(subtasks.enumerated()), id: \.element.id) { index, subtask in
+                    subtaskRow(subtask, isFirst: index == 0, isLast: index == subtasks.count - 1)
+                }
+            }
+            .padding(.horizontal, FlowSpacing.xl)
+            .padding(.bottom, FlowSpacing.xs)
+        } else {
+            VStack(alignment: .leading, spacing: FlowSpacing.xs) {
                 ForEach(subtasks) { subtask in
                     HStack(spacing: FlowSpacing.s) {
                         Image(systemName: subtask.isCompleted ? "checkmark.circle.fill" : "circle")
@@ -417,10 +269,10 @@ struct FocusTaskCard: View {
                     }
                 }
             }
+            .padding(.horizontal, FlowSpacing.xl)
+            .padding(.bottom, FlowSpacing.xs)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, FlowSpacing.xl)
-        .padding(.bottom, FlowSpacing.xs)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// A continuation says so, the way the mock does — the same task coming
@@ -428,42 +280,6 @@ struct FocusTaskCard: View {
     private func rowTitle(task: FlowTask?, segment: TaskSegment) -> String {
         let base = task?.title ?? "Task"
         return segment.isContinuation ? "\(base) · moved" : base
-    }
-
-    private var subtaskList: some View {
-        Group {
-            if let task = activeTask, !task.orderedSubtasks.isEmpty {
-                VStack(alignment: .leading, spacing: FlowSpacing.s) {
-                    if let progress = task.subtaskProgressLabel {
-                        Text(progress)
-                            .font(FlowFont.caption)
-                            .foregroundStyle(FlowTheme.secondaryText(scheme))
-                    }
-                    ScrollView {
-                        // No spacing between rows: the timeline connector is
-                        // drawn per row and a gap would break it into dashes.
-                        LazyVStack(spacing: 0) {
-                            let subtasks = task.orderedSubtasks
-                            ForEach(Array(subtasks.enumerated()), id: \.element.id) { index, subtask in
-                                subtaskRow(
-                                    subtask,
-                                    isFirst: index == 0,
-                                    isLast: index == subtasks.count - 1
-                                )
-                            }
-                        }
-                    }
-                }
-            } else {
-                FlowEmptyState(
-                    symbol: "checklist",
-                    title: activeTask == nil ? "No task running" : "No subtasks",
-                    message: activeTask == nil
-                        ? "Start a task to see its checklist here."
-                        : "Break this task down from its detail view when it helps."
-                )
-            }
-        }
     }
 
     /// The width the checklist's circles are centred in, so the connector
@@ -486,7 +302,9 @@ struct FocusTaskCard: View {
             HStack(spacing: FlowSpacing.m) {
                 Image(systemName: subtask.isCompleted ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 17))
-                    .foregroundStyle(subtask.isCompleted ? FlowTheme.accent : FlowTheme.secondaryText(scheme))
+                    // Hairline weight for the unticked state — the checklist
+                    // is supporting detail, not a second row of controls.
+                    .foregroundStyle(subtask.isCompleted ? FlowTheme.accent : FlowTheme.separatorStrong(scheme))
                     // A fixed column so the connector behind it lines up with
                     // every circle, whatever the symbol's own width.
                     .frame(width: Self.subtaskDotColumn)
@@ -518,31 +336,27 @@ struct FocusTaskCard: View {
         .accessibilityValue(subtask.isCompleted ? "Completed" : "Not completed")
         .accessibilityAddTraits(.isButton)
     }
+}
 
-    // MARK: - Drag
+/// The iPhone presentation of `FocusQueueListView`: a native resizable sheet
+/// (founder ruling 2026-08-08, option B) replacing the old paged,
+/// three-detent card. Self-configures its own presentation modifiers, the
+/// pattern already used by `RolloverReviewView`.
+struct FocusQueueSheet: View {
+    @Environment(\.colorScheme) private var scheme
 
-    #if !os(macOS)
-    /// One drag steps one height, up or down — dragging down from `rest`
-    /// collapses the card and hands the dial the screen (decision 14).
-    private func dragGesture(canExpand: Bool) -> some Gesture {
-        DragGesture(minimumDistance: 8)
-            .onChanged { value in
-                guard canExpand else { return }
-                dragOffset = -value.translation.height
-            }
-            .onEnded { value in
-                guard canExpand else { return }
-                let travel = -value.translation.height
-                let flick = -value.predictedEndTranslation.height
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    if travel > 60 || flick > 140 {
-                        detent = detent.stepped(up: true)
-                    } else if travel < -60 || flick < -140 {
-                        detent = detent.stepped(up: false)
-                    }
-                    dragOffset = 0
-                }
-            }
+    let queue: [TaskSegment]
+    let activeTask: FlowTask?
+    let activeSegmentID: UUID?
+
+    var body: some View {
+        FocusQueueListView(
+            queue: queue,
+            activeTask: activeTask,
+            activeSegmentID: activeSegmentID
+        )
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(FlowTheme.surface(scheme))
     }
-    #endif
 }

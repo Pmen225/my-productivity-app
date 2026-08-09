@@ -1,37 +1,64 @@
 import SwiftUI
 
-/// Composes every settings section onto one scrollable screen. Each section
-/// is its own file and persists straight to the shared `AppSettings` record —
-/// there is no separate settings view model.
+/// The Settings hub: a native drill-in list (task 55) rather than one long
+/// scroll of every section at once. `SettingsHub.groups` owns the grouping;
+/// each row pushes its section's existing content, unchanged, as its own
+/// screen. Each section still persists straight to the shared `AppSettings`
+/// record — there is no separate settings view model.
 struct SettingsScreen: View {
+    var body: some View {
+        List {
+            ForEach(SettingsHub.groups) { group in
+                Section {
+                    ForEach(group.rows) { row in
+                        NavigationLink {
+                            destination(for: row)
+                        } label: {
+                            Label(row.title, systemImage: row.symbolName)
+                        }
+                        .accessibilityLabel(row.title)
+                    }
+                } header: {
+                    FlowEyebrow(group.title)
+                }
+            }
+        }
+        .navigationTitle("Settings")
+        .flowScreenTitle("Settings")
+    }
+
+    @ViewBuilder
+    private func destination(for row: SettingsHubRow) -> some View {
+        switch row {
+        case .general: SettingsSectionScreen(title: row.title) { GeneralSettingsSection() }
+        case .focusWheel: SettingsSectionScreen(title: row.title) { FocusWheelSettingsSection() }
+        case .sounds: SettingsSectionScreen(title: row.title) { SoundSettingsSection() }
+        case .notifications: SettingsSectionScreen(title: row.title) { NotificationSettingsSection() }
+        case .calendar: SettingsSectionScreen(title: row.title) { CalendarSettingsSection() }
+        case .assistant: SettingsSectionScreen(title: row.title) { AssistantSettingsSection() }
+        case .data: SettingsSectionScreen(title: row.title) { DataSettingsSection() }
+        case .about: SettingsSectionScreen(title: row.title) { AboutSettingsSection() }
+        }
+    }
+}
+
+/// Wraps one existing `…SettingsSection` as its own pushed screen. Reproduces
+/// the hub's old all-sections-at-once scroll container, now per-section — the
+/// section content itself is untouched, only its container changed.
+private struct SettingsSectionScreen<Content: View>: View {
     @Environment(\.colorScheme) private var scheme
+    let title: String
+    @ViewBuilder let content: () -> Content
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: FlowSpacing.l) {
-                header
-
-                GeneralSettingsSection()
-                FocusWheelSettingsSection()
-                SoundSettingsSection()
-                NotificationSettingsSection()
-                CalendarSettingsSection()
-                AssistantSettingsSection()
-                DataSettingsSection()
-                AboutSettingsSection()
+                content()
             }
             .padding(FlowSpacing.screen)
         }
         .background(FlowTheme.background(scheme).ignoresSafeArea())
-    }
-
-    /// Drawn in the scroll content rather than the navigation bar: this screen
-    /// has no bar for a principal item to sit in, so `.flowScreenTitle` would
-    /// leave it with no title at all. Matches `ProgressScreen`'s treatment.
-    private var header: some View {
-        Text("Settings")
-            .font(FlowFont.screenTitleCompact)
-            .foregroundStyle(FlowTheme.primaryText(scheme))
-            .frame(maxWidth: .infinity, alignment: .center)
+        .navigationTitle(title)
+        .flowScreenTitle(title)
     }
 }

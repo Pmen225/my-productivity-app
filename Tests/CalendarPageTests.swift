@@ -29,46 +29,6 @@ struct CalendarPageTests {
 
     // MARK: - Weekly Plan grouping
 
-    @Test func itGroupsTheWeekUnderTheBranchEachTaskCameFrom() throws {
-        let world = try TestWorld()
-        let map = MapDocument(title: "Launch")
-        let root = MapNode(title: "Launch", map: map)
-        let design = MapNode(title: "Design", map: map, parent: root)
-        let leaf = MapNode(title: "Wireframes", map: map, parent: design)
-        world.context.insert(map)
-        world.context.insert(root)
-        world.context.insert(design)
-        world.context.insert(leaf)
-
-        let task = world.makeTask("Sketch the flow", minutes: 45)
-        task.mapNode = leaf
-        world.makeSegment(for: task, start: world.date(hour: 9), minutes: 45)
-
-        let groups = CalendarWeeklyPlan.groups(
-            segments: world.allSegments,
-            week: CalendarDateMath.weekInterval(containing: world.date(hour: 9), calendar: world.calendar)
-        )
-
-        #expect(groups.count == 1)
-        #expect(groups.first?.title == "Design")
-        #expect(groups.first?.items.map(\.title) == ["Sketch the flow"])
-        #expect(groups.first?.items.first?.minutes == 45)
-    }
-
-    /// A node hanging straight off the root is its own branch — there is no
-    /// higher ancestor to name the group after.
-    @Test func aNodeUnderTheRootIsItsOwnBranch() throws {
-        let world = try TestWorld()
-        let map = MapDocument(title: "Launch")
-        let root = MapNode(title: "Launch", map: map)
-        let branch = MapNode(title: "Copy", map: map, parent: root)
-        world.context.insert(map)
-        world.context.insert(root)
-        world.context.insert(branch)
-
-        #expect(CalendarWeeklyPlan.branch(for: branch).title == "Copy")
-    }
-
     @Test func aTaskWithNoMapNodeFallsBackToItsProject() throws {
         let world = try TestWorld()
         let project = Project(title: "Website")

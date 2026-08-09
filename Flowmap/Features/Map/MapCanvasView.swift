@@ -17,14 +17,8 @@ struct MapCanvasView: View {
     @State private var hasFitted = false
     /// Once the user pans or zooms by hand, automatic re-fitting stops.
     @State private var userAdjustedCanvas = false
-    @State private var draggingNodeID: UUID?
-    @State private var dragTranslation: CGSize = .zero
-    @State private var renamingNodeID: UUID?
     @GestureState private var pinchDelta: CGFloat = 1
     @GestureState private var panDelta: CGSize = .zero
-    /// Persisted, so the canvas hint is shown once in the app's life rather
-    /// than on every launch.
-    @AppStorage("flowmap.hasSeenMapCanvasHint") private var hasSeenCanvasHint = false
 
     private var metrics: MapLayout.Metrics { .shared }
     private let margin: CGFloat = 160
@@ -37,7 +31,7 @@ struct MapCanvasView: View {
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .topLeading) {
-                FlowTheme.background(scheme)
+                MapPalette.canvas(scheme)
                     .contentShape(Rectangle())
                     .gesture(panGesture)
 
@@ -84,7 +78,6 @@ struct MapCanvasView: View {
             .overlay(alignment: .center) {
                 if viewModel.map.nodeCount == 0 { emptyState }
             }
-            .overlay(alignment: .bottom) { canvasHint }
             .overlay(alignment: .top) { if viewModel.isSearchPresented { searchBar } }
         }
         .clipped()
@@ -92,20 +85,14 @@ struct MapCanvasView: View {
 
     // MARK: - Merged positions
 
-    /// Automatic layout, with each node's manual override (and, for the node
-    /// being dragged right now, the live drag delta) applied on top. Both the
-    /// node bubbles and the connector paths read this one dictionary, which is
-    /// what keeps them from ever visually separating.
+    /// Automatic layout, with each node's manual override applied on top.
+    /// Both the node bubbles and the connector paths read this one
+    /// dictionary, which is what keeps them from ever visually separating.
     private var positionMap: [UUID: CGPoint] {
         let auto = viewModel.layoutPositions
         var merged: [UUID: CGPoint] = [:]
         for node in viewModel.visibleNodes {
-            var point = viewModel.position(of: node, in: auto)
-            if node.id == draggingNodeID {
-                point.x += dragTranslation.width / max(viewModel.zoom, 0.01)
-                point.y += dragTranslation.height / max(viewModel.zoom, 0.01)
-            }
-            merged[node.id] = point
+            merged[node.id] = viewModel.position(of: node, in: auto)
         }
         return merged
     }
@@ -154,11 +141,13 @@ struct MapCanvasView: View {
                         to: CGPoint(x: childPoint.x + shift.x, y: childPoint.y + shift.y),
                         startSize: sizes[parent.id] ?? fallbackSize,
                         endSize: sizes[node.id] ?? fallbackSize,
+                        parentDepth: parent.depth,
+                        childDepth: node.depth,
                         orientation: orientation,
-                        // The CHILD's own tint, not the parent's — each branch
-                        // reads as one coloured thread from its pill back to
-                        // its parent, matching the reference mock.
-                        colour: node.colour.base,
+                        // The CHILD's own branch colour, not the parent's —
+                        // each branch reads as one coloured thread from its
+                        // pill back to its parent, matching MindNode.
+                        colour: MapPalette.branchColour(rootChildIndex: node.rootChildIndex),
                         dimmed: isDimmed(node) || isDimmed(parent),
                         in: context
                     )
@@ -175,45 +164,124 @@ struct MapCanvasView: View {
         .frame(width: size.width, height: size.height, alignment: .topLeading)
     }
 
-    /// Draws the parent-tinted curved stroke joining a node to its parent —
-    /// horizontal (right edge to left edge) in "Left to right", vertical
-    /// (bottom edge to top edge) in "Top down (org chart)". Anchors from each
-    /// node's own real size rather than a fixed width, so the stroke always
-    /// starts and ends exactly at the pill's edge.
+    /// Draws the child-tinted single-elbow stroke joining a node to its
+    /// parent. In "Top down (org chart)" this rides MindNode's connector
+    /// rails (`MapConnectorGeometry`): the parent exits through its own
+    /// rail's bottom edge, and the child is entered either through its own
+    /// rail's top edge (a depth-1 child, collinear with its own outgoing
+    /// spine) or through whichever side faces the parent's rail (a stacked
+    /// depth >= 2 child). "Left to right" keeps the plain pill-edge anchors
+    /// — MindNode's rails are a vertical-tree concept the clone never
+    /// applies to its horizontal orientation either.
     private func drawConnector(
         from start: CGPoint,
         to end: CGPoint,
         startSize: CGSize,
         endSize: CGSize,
+        parentDepth: Int,
+        childDepth: Int,
         orientation: MapLayoutOrientation,
         colour: Color,
         dimmed: Bool,
         in context: GraphicsContext
     ) {
-        var path = Path()
+        let path: Path
         switch orientation {
         case .leftToRight:
             let origin = CGPoint(x: start.x + startSize.width / 2, y: start.y)
             let destination = CGPoint(x: end.x - endSize.width / 2, y: end.y)
-            let controlOffset = max(40, (destination.x - origin.x) / 2)
-            path.move(to: origin)
-            path.addCurve(
-                to: destination,
-                control1: CGPoint(x: origin.x + controlOffset, y: origin.y),
-                control2: CGPoint(x: destination.x - controlOffset, y: destination.y)
-            )
+            path = Self.elbowPath(from: origin, to: destination, horizontal: true, endsHorizontally: false)
         case .topDown:
-            let origin = CGPoint(x: start.x, y: start.y + startSize.height / 2)
-            let destination = CGPoint(x: end.x, y: end.y - endSize.height / 2)
-            let controlOffset = max(30, (destination.y - origin.y) / 2)
-            path.move(to: origin)
-            path.addCurve(
-                to: destination,
-                control1: CGPoint(x: origin.x, y: origin.y + controlOffset),
-                control2: CGPoint(x: destination.x, y: destination.y - controlOffset)
+            let parentRailX = MapConnectorGeometry.railX(center: start, size: startSize, depth: parentDepth)
+            let origin = MapConnectorGeometry.start(parentCenter: start, parentSize: startSize, parentDepth: parentDepth)
+            let destination = MapConnectorGeometry.end(
+                childCenter: end,
+                childSize: endSize,
+                childDepth: childDepth,
+                parentRailX: parentRailX
             )
+            let endsHorizontally = MapConnectorGeometry.endsHorizontally(childDepth: childDepth)
+            path = Self.elbowPath(from: origin, to: destination, horizontal: false, endsHorizontally: endsHorizontally)
         }
-        context.stroke(path, with: .color(colour.opacity(dimmed ? 0.12 : 0.55)), lineWidth: 2)
+        context.stroke(
+            path,
+            with: .color(colour.opacity(dimmed ? 0.12 : 1)),
+            style: StrokeStyle(lineWidth: 6, lineCap: .round)
+        )
+    }
+
+    /// MindNode's routed connector: a straight run out of the parent, one
+    /// smooth rounded elbow, a straight run into the child — never a bezier
+    /// curve. The elbow sits a short fixed distance from the parent (never a
+    /// canvas-spanning midpoint, which would stretch flat for far-apart
+    /// nodes) and its corner radius shrinks to fit tight gaps rather than
+    /// overshooting them. `endsHorizontally` selects MindNode's second
+    /// vertical-orientation shape: a stacked depth >= 2 child is entered from
+    /// its SIDE, so the connector is a single L — one straight drop along the
+    /// parent's own rail, one rounded corner, one straight run into the
+    /// child's edge — rather than the three-segment bus every depth-1 child
+    /// uses. Ported verbatim from `roundedElbowPath`
+    /// (MindNodeClone/Sources/MindNodeClone/CanvasView.swift :1752-1827).
+    private static func elbowPath(from origin: CGPoint, to destination: CGPoint, horizontal: Bool, endsHorizontally: Bool) -> Path {
+        let dx = destination.x - origin.x
+        let dy = destination.y - origin.y
+        let sx: CGFloat = dx >= 0 ? 1 : -1
+        let sy: CGFloat = dy >= 0 ? 1 : -1
+
+        guard abs(dx) > 1, abs(dy) > 1 else {
+            var straight = Path()
+            straight.move(to: origin)
+            straight.addLine(to: destination)
+            return straight
+        }
+
+        var path = Path()
+        if horizontal {
+            let busOffset = min(44, max(18, abs(dx) * 0.5))
+            let radius = min(16, busOffset, abs(dy) * 0.5)
+            let elbowX = origin.x + sx * busOffset
+            path.move(to: origin)
+            path.addLine(to: CGPoint(x: elbowX - sx * radius, y: origin.y))
+            path.addQuadCurve(
+                to: CGPoint(x: elbowX, y: origin.y + sy * radius),
+                control: CGPoint(x: elbowX, y: origin.y)
+            )
+            path.addLine(to: CGPoint(x: elbowX, y: destination.y - sy * radius))
+            path.addQuadCurve(
+                to: CGPoint(x: elbowX + sx * radius, y: destination.y),
+                control: CGPoint(x: elbowX, y: destination.y)
+            )
+            path.addLine(to: destination)
+        } else if endsHorizontally {
+            // MindNode sub-branch: single L — straight drop along the
+            // parent's spine, one rounded corner, straight run into the
+            // child's side.
+            let radius = MapConnectorGeometry.singleLRadius(dx: dx, dy: dy)
+            path.move(to: origin)
+            path.addLine(to: CGPoint(x: origin.x, y: destination.y - sy * radius))
+            path.addQuadCurve(
+                to: CGPoint(x: origin.x + sx * radius, y: destination.y),
+                control: CGPoint(x: origin.x, y: destination.y)
+            )
+            path.addLine(to: destination)
+        } else {
+            let busOffset = min(44, max(18, abs(dy) * 0.5))
+            let radius = min(16, busOffset, abs(dx) * 0.5)
+            let elbowY = origin.y + sy * busOffset
+            path.move(to: origin)
+            path.addLine(to: CGPoint(x: origin.x, y: elbowY - sy * radius))
+            path.addQuadCurve(
+                to: CGPoint(x: origin.x + sx * radius, y: elbowY),
+                control: CGPoint(x: origin.x, y: elbowY)
+            )
+            path.addLine(to: CGPoint(x: destination.x - sx * radius, y: elbowY))
+            path.addQuadCurve(
+                to: CGPoint(x: destination.x, y: elbowY + sy * radius),
+                control: CGPoint(x: destination.x, y: elbowY)
+            )
+            path.addLine(to: destination)
+        }
+        return path
     }
 
     @ViewBuilder
@@ -221,20 +289,15 @@ struct MapCanvasView: View {
         MapNodeView(
             node: node,
             size: size,
+            rootChildIndex: node.rootChildIndex,
             isSelected: viewModel.selectedNodeID == node.id,
             isDimmed: isDimmed(node),
             isCompact: viewModel.isCompact,
             isSearchMatch: viewModel.searchMatchIDs.contains(node.id),
-            isRenaming: Binding(
-                get: { renamingNodeID == node.id },
-                set: { renamingNodeID = $0 ? node.id : nil }
-            ),
             onSelect: { viewModel.selectedNodeID = node.id },
-            onCommitTitle: { viewModel.rename(node, to: $0) },
             onToggleCollapse: { viewModel.toggleCollapse(node) }
         )
         .position(point)
-        .gesture(nodeDragGesture(for: node))
         .contextMenu { contextMenu(for: node) }
     }
 
@@ -243,7 +306,7 @@ struct MapCanvasView: View {
     /// it simply does not compete with work that belongs to that window.
     private func isDimmed(_ node: MapNode) -> Bool {
         guard !viewModel.isDimmed(node.id) else { return true }
-        let starts = node.linkedTask?.liveSegments.map(\.startDate) ?? []
+        let starts = node.displayTask?.liveSegments.map(\.startDate) ?? []
         return !MapTaskScopeFilter.shouldEmphasise(
             segmentStarts: starts,
             scope: taskScope,
@@ -253,33 +316,12 @@ struct MapCanvasView: View {
 
     // MARK: - Gestures
 
-    private func nodeDragGesture(for node: MapNode) -> some Gesture {
-        DragGesture(minimumDistance: 4, coordinateSpace: .local)
-            .onChanged { value in
-                draggingNodeID = node.id
-                dragTranslation = value.translation
-            }
-            .onEnded { value in
-                let base = viewModel.position(of: node, in: viewModel.layoutPositions)
-                let delta = CGSize(
-                    width: value.translation.width / max(viewModel.zoom, 0.01),
-                    height: value.translation.height / max(viewModel.zoom, 0.01)
-                )
-                viewModel.setManualPosition(node, to: CGPoint(x: base.x + delta.width, y: base.y + delta.height))
-                draggingNodeID = nil
-                dragTranslation = .zero
-            }
-    }
-
     private var panGesture: some Gesture {
         DragGesture(minimumDistance: 2)
             .updating($panDelta) { value, state, _ in
-                guard draggingNodeID == nil else { return }
                 state = value.translation
             }
             .onEnded { value in
-                guard draggingNodeID == nil else { return }
-                hasSeenCanvasHint = true
                 userAdjustedCanvas = true
                 viewModel.panOffset.width += value.translation.width
                 viewModel.panOffset.height += value.translation.height
@@ -307,7 +349,6 @@ struct MapCanvasView: View {
     /// started — the way out of being lost that the mock gives, and the
     /// reason no "reset view" button is needed.
     private func resetViewport() {
-        hasSeenCanvasHint = true
         userAdjustedCanvas = false
         viewModel.zoom = 1
         viewModel.panOffset = .zero
@@ -315,31 +356,12 @@ struct MapCanvasView: View {
         viewModel.fitToMap(viewportSize: viewModel.viewportSize)
     }
 
-    /// The mock's one-shot onboarding line. Shown once ever, and gone the
-    /// moment the canvas is touched — a hint that keeps reappearing stops
-    /// being a hint.
-    @ViewBuilder
-    private var canvasHint: some View {
-        if !hasSeenCanvasHint, viewModel.map.nodeCount > 0 {
-            Text("Pinch to zoom · drag to pan · hold a node to delete")
-                .font(FlowFont.caption)
-                .foregroundStyle(.white)
-                .padding(.horizontal, FlowSpacing.l)
-                .padding(.vertical, FlowSpacing.s)
-                .background(FlowTheme.popoverSurface, in: Capsule())
-                .padding(.bottom, FlowSpacing.xxxl * 2)
-                .allowsHitTesting(false)
-                .transition(.opacity)
-        }
-    }
-
     // MARK: - Context menu
 
+    /// Collapse-toggle and Focus Branch are the only node actions the
+    /// read-only auto map offers (R1–R7: no authoring).
     @ViewBuilder
     private func contextMenu(for node: MapNode) -> some View {
-        Button("Add child", systemImage: "plus.circle") { _ = viewModel.addChild(to: node) }
-        Button("Add sibling", systemImage: "plus.square.on.square") { _ = viewModel.addSibling(to: node) }
-        Button("Rename", systemImage: "pencil") { renamingNodeID = node.id }
         if node.hasChildren {
             Button(
                 node.isCollapsed ? "Expand branch" : "Collapse branch",
@@ -351,13 +373,6 @@ struct MapCanvasView: View {
         Button(viewModel.focusBranchID == node.id ? "Exit Focus Branch" : "Focus Branch", systemImage: "eye") {
             viewModel.toggleFocusBranch(on: node)
         }
-        if node.manualPosition != nil {
-            Button("Reset position", systemImage: "arrow.uturn.backward") {
-                viewModel.setManualPosition(node, to: nil)
-            }
-        }
-        Divider()
-        Button("Delete", systemImage: "trash", role: .destructive) { viewModel.requestDelete(node) }
     }
 
     // MARK: - Empty state
@@ -365,12 +380,9 @@ struct MapCanvasView: View {
     private var emptyState: some View {
         FlowEmptyState(
             symbol: "point.topleft.down.to.point.bottomright.curvepath",
-            title: "No ideas yet",
-            message: "Start the map with its first topic.",
-            actionTitle: "Add root topic"
-        ) {
-            _ = viewModel.addRootTopic()
-        }
+            title: "Nothing planned yet.",
+            message: "Tasks appear here once your day is planned."
+        )
     }
 
     // MARK: - Floating controls

@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Appearance, first day of week, the working day's shape, and the default
-/// duration new tasks are given.
+/// Appearance, accent, app font, first day of week, the working day's shape,
+/// and the default duration new tasks are given.
 struct GeneralSettingsSection: View {
     @Environment(\.flow) private var flow
     @Environment(\.colorScheme) private var scheme
@@ -15,6 +15,7 @@ struct GeneralSettingsSection: View {
                 if let flow {
                     appearanceRow(flow)
                     accentRow(flow)
+                    appFontRow(flow)
                     firstWeekdayRow(flow)
                     workdayRow(flow)
                     defaultDurationRow(flow)
@@ -73,6 +74,25 @@ struct GeneralSettingsSection: View {
         .buttonStyle(.plain)
         .accessibilityLabel(token.displayName)
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+
+    private func appFontRow(_ flow: AppEnvironment) -> some View {
+        VStack(alignment: .leading, spacing: FlowSpacing.xs) {
+            Text("App font").font(FlowFont.secondary).foregroundStyle(FlowTheme.secondaryText(scheme))
+            Picker("App font", selection: Binding(
+                get: { flow.settings.appFont },
+                set: { newValue in
+                    flow.settings.appFont = newValue
+                    save()
+                }
+            )) {
+                ForEach(AppFontChoice.allCases, id: \.self) { font in
+                    Text(font.displayName).tag(font)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+        }
     }
 
     private func firstWeekdayRow(_ flow: AppEnvironment) -> some View {

@@ -1,10 +1,10 @@
 import SwiftUI
 
-/// One idea bubble: a rounded pill sized to its own text, filled with the
-/// node's pastel tint (or, for the root, the inverse-of-scheme "anchor"
-/// fill) — never a fixed-width card. Purely presentational — every
-/// interaction it exposes is a closure or binding so `MapCanvasView` stays
-/// the single place that talks to `MapViewModel`.
+/// One idea bubble: a rounded pill sized to its own text, filled with its
+/// branch's flat MindNode colour (or, for the root, `MapPalette`'s neutral
+/// root fill) — never a fixed-width card. Purely presentational — every
+/// interaction it exposes is a closure so `MapCanvasView` stays the single
+/// place that talks to `MapViewModel`.
 struct MapNodeView: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -15,17 +15,17 @@ struct MapNodeView: View {
     /// the pill is drawn at this size, never recomputed here, so the visible
     /// bubble and the connector anchored to it can never disagree.
     let size: CGSize
+    /// This node's position among the root's direct children — `node`'s own
+    /// `sortOrder` if it IS a depth-1 branch, otherwise that ancestor's.
+    /// Feeds `MapPalette.branchColour` so a whole branch reads as one flat
+    /// colour. Meaningless (and unused) for the root.
+    let rootChildIndex: Int
     let isSelected: Bool
     let isDimmed: Bool
     let isCompact: Bool
     let isSearchMatch: Bool
-    @Binding var isRenaming: Bool
     let onSelect: () -> Void
-    let onCommitTitle: (String) -> Void
     let onToggleCollapse: () -> Void
-
-    @State private var draftTitle: String = ""
-    @FocusState private var isFieldFocused: Bool
 
     private var metrics: MapLayout.Metrics { .shared }
 
@@ -38,8 +38,13 @@ struct MapNodeView: View {
         pill
             .mapMinimumHitTarget()
             .opacity(isDimmed ? 0.25 : 1)
-            .onTapGesture(count: 2) { beginRenaming() }
-            .onTapGesture(count: 1) { onSelect() }
+            .onTapGesture(count: 1) {
+                // The pill is the expand control for a collapsed branch —
+                // the "+N" text below is informational, too small to be a
+                // 44pt target in the inter-pill gap.
+                if node.isCollapsed, node.hasChildren { onToggleCollapse() }
+                onSelect()
+            }
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isSelected)
             .accessibilityElement(children: .combine)
             .accessibilityLabel(node.title.isEmpty ? "Untitled idea" : node.title)
@@ -56,29 +61,22 @@ struct MapNodeView: View {
                     activeDot.offset(x: -3, y: -3)
                 }
             }
-            .overlay(alignment: .bottom) {
-                VStack(spacing: FlowSpacing.xs) {
-                    if node.isCollapsed, node.hasChildren {
-                        collapsedBadge
-                    }
-                    belowPillContent
+            .overlay(alignment: .top) {
+                // MindNode draws nothing beneath a pill except a collapsed
+                // branch's count — no per-node progress captions (Task 63
+                // pixel gate: literal match; level/XP live on Stats).
+                if node.isCollapsed, node.hasChildren {
+                    collapsedBadge
+                        .offset(y: size.height + FlowSpacing.xs)
                 }
-                .offset(y: size.height / 2 + FlowSpacing.xs)
             }
     }
 
-    @ViewBuilder
+    /// One solid-fill pill treatment for every node — root or not, task or
+    /// not, leaf or branch. MindNode never gives a leaf its own outlined
+    /// variant (Task 63 MindNode restyle, item 3): the whole subtree under a
+    /// branch reads as that branch's flat colour.
     private var pillCore: some View {
-        if isLeafTask {
-            leafTaskPillCore
-        } else {
-            defaultPillCore
-        }
-    }
-
-    /// Root and branch pills, plus a plain (non-task, childless) idea —
-    /// unchanged from the map's original single pill treatment.
-    private var defaultPillCore: some View {
         HStack(spacing: FlowSpacing.xs) {
             if !isCompact, node.hasChildren, !node.isCollapsed {
                 Image(systemName: "circle.fill")
@@ -106,45 +104,29 @@ struct MapNodeView: View {
                 DurationChip(minutes: node.estimatedMinutes, tint: node.isRoot ? nil : node.colour)
             }
         }
-        .padding(.horizontal, metrics.horizontalPadding)
+        .padding(.horizontal, metrics.horizontalPadding(forRoot: node.isRoot))
+        .padding(.vertical, metrics.verticalPadding(forRoot: node.isRoot))
         .frame(width: size.width, height: size.height)
-        .background(Capsule(style: .continuous).fill(fillColour))
-        .overlay(Capsule(style: .continuous).strokeBorder(borderColour, lineWidth: isSelected ? 2.5 : 1.5))
-        .shadow(color: FlowTheme.shadow(scheme), radius: isSelected ? 6 : 3, y: 1)
+        .background(pillShape.fill(fillColour))
+        .overlay(pillShape.strokeBorder(borderColour, lineWidth: isSelected ? 2.5 : 1.5))
     }
 
-    /// A leaf task: white capsule, coloured outline, title then the linked
-    /// task's duration inline — the mock's outlined pill, distinct from a
-    /// branch's filled tint.
-    private var leafTaskPillCore: some View {
-        HStack(spacing: FlowSpacing.xs) {
-            titleField
-            if let linkedTask = node.linkedTask {
-                Text(DurationFormatter.compact(minutes: linkedTask.estimatedMinutes))
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .foregroundStyle(FlowTheme.tertiaryText(scheme))
-            }
-        }
-        .padding(.horizontal, metrics.horizontalPadding)
-        .frame(width: size.width, height: size.height)
-        .background(Capsule(style: .continuous).fill(FlowTheme.surface(scheme)))
-        .overlay(Capsule(style: .continuous).strokeBorder(leafBorderColour, lineWidth: isSelected ? 2.5 : 1.5))
-        .shadow(color: FlowTheme.shadow(scheme), radius: 3, y: 1)
+    /// MindNode's continuous rounded-rect pill, scaled to this pill's own
+    /// drawn height — never `Capsule()`, and never recomputed anywhere else,
+    /// so the fill, the stroke and (were one ever added) a clip all agree on
+    /// the exact same outline.
+    private var pillShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: MapLayout.nodeCornerRadius(forHeight: size.height), style: .continuous)
     }
 
-    /// The "+N" badge beneath a pill with children hidden behind it — tapping
-    /// it re-expands the branch, the same action the outline's chevron and
-    /// the canvas context menu's "Expand branch" trigger.
+    /// The "+N" count beside a collapsed pill's caption. Informational only:
+    /// a 44pt button cannot fit the below-pill gap, so the pill itself is
+    /// the expand control (tap expands via `onSelect` in the canvas).
     private var collapsedBadge: some View {
-        Button(action: onToggleCollapse) {
-            Text("+\(node.orderedChildren.count)")
-                .font(FlowFont.mapBadge)
-                .foregroundStyle(FlowTheme.tertiaryText(scheme))
-                .padding(.horizontal, FlowSpacing.xs)
-                .mapMinimumHitTarget()
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Expand branch, \(node.orderedChildren.count) hidden")
+        Text("+\(node.orderedChildren.count)")
+            .font(FlowFont.mapBadge)
+            .foregroundStyle(FlowTheme.tertiaryText(scheme))
+            .accessibilityHidden(true)
     }
 
     /// The 7pt clay dot marking a leaf task whose segment is the focus
@@ -156,129 +138,39 @@ struct MapNodeView: View {
             .accessibilityHidden(true)
     }
 
-    // MARK: - Below-pill content
-
-    /// Everything drawn beneath the pill itself: the root's level/XP stack,
-    /// a branch's completion caption, or a leaf task's subtask count —
-    /// mutually exclusive, so at most one renders per node.
-    @ViewBuilder
-    private var belowPillContent: some View {
-        if node.isRoot {
-            rootStack
-        } else if node.hasChildren {
-            branchCaption
-        } else if isLeafTask, let linkedTask = node.linkedTask, !linkedTask.orderedSubtasks.isEmpty {
-            subtaskCaption(count: linkedTask.orderedSubtasks.count)
-        }
-    }
-
-    /// `D/T` beneath a branch pill — completion across its whole subtree,
-    /// regardless of collapse state, so the count never flickers as branches
-    /// fold and unfold.
-    @ViewBuilder
-    private var branchCaption: some View {
-        let counts = taskCounts(in: node)
-        if counts.total > 0 {
-            captionText("\(counts.completed)/\(counts.total)")
-        }
-    }
-
-    private func subtaskCaption(count: Int) -> some View {
-        Text("+\(count) SUBTASKS")
-            .font(.system(size: 9, weight: .bold, design: .rounded))
-            .foregroundStyle(FlowTheme.tertiaryText(scheme))
-            .kerning(1.2)
-    }
-
-    /// The root's level/XP line, progress bar and task count — stacked
-    /// beneath the dark anchor pill, map-wide rather than per-branch.
-    private var rootStack: some View {
-        let counts = taskCounts(in: node)
-        let level = flow?.gamification.level ?? GamificationCurve.level(forTotalXP: 0)
-        return VStack(spacing: FlowSpacing.xxs) {
-            Text("LV \(level.level) · \(level.xpIntoLevel) XP")
-                .font(.system(size: 10, weight: .heavy, design: .rounded))
-                .foregroundStyle(FlowTheme.accent)
-                .kerning(0.8)
-            progressBar(completed: counts.completed, total: counts.total)
-            if counts.total > 0 {
-                captionText("\(counts.completed)/\(counts.total) TASKS")
-            }
-        }
-    }
-
-    private func captionText(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 10, weight: .bold, design: .rounded))
-            .foregroundStyle(FlowTheme.tertiaryText(scheme))
-            .kerning(0.6)
-    }
-
-    private static let progressBarWidth: CGFloat = 120
-
-    private func progressBar(completed: Int, total: Int) -> some View {
-        let fraction = total > 0 ? CGFloat(completed) / CGFloat(total) : 0
-        let fillWidth = Self.progressBarWidth * fraction
-        return ZStack(alignment: .leading) {
-            Capsule().fill(FlowTheme.separator(scheme))
-                .frame(width: Self.progressBarWidth, height: 4)
-            Capsule().fill(FlowTheme.accent)
-                .frame(width: fillWidth, height: 4)
-            if completed > 0 {
-                Circle().fill(FlowTheme.accent)
-                    .frame(width: 6, height: 6)
-                    .offset(x: fillWidth - 3)
-            }
-        }
-        .frame(width: Self.progressBarWidth, height: 6)
-    }
-
-    @ViewBuilder
     private var titleField: some View {
-        if isRenaming {
-            TextField("Idea", text: $draftTitle)
-                .textFieldStyle(.plain)
-                .font(titleFont)
-                .foregroundStyle(textColour)
-                .focused($isFieldFocused)
-                .onSubmit(commit)
-                .onAppear {
-                    draftTitle = node.title
-                    isFieldFocused = true
-                }
-                .onChange(of: isFieldFocused) { _, focused in
-                    if !focused { commit() }
-                }
-        } else {
-            Text(node.title.isEmpty ? "Untitled" : node.title)
-                .font(titleFont)
-                .foregroundStyle(textColour)
-                .strikethrough(node.isCompleted)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-        }
+        Text(node.title.isEmpty ? "Untitled" : node.title)
+            .font(titleFont)
+            .foregroundStyle(textColour)
+            .strikethrough(node.isCompleted)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
     }
 
     // MARK: - Styling
 
-    /// The root reads as the tree's fixed anchor — a dark fill with light
-    /// text, the inverse of every pastel branch or leaf beneath it. Every
-    /// other pill is its own tint at low opacity.
+    /// MindNode's own fixed palette (Task 63 MindNode restyle), not the
+    /// app-wide `ColourToken` pastel: root is a flat neutral fill, every
+    /// other node is its branch's colour SOLID — no wash, no per-depth
+    /// variant.
     private var fillColour: Color {
-        node.isRoot ? FlowTheme.mapRootFill(scheme) : node.colour.soft
+        node.isRoot ? MapPalette.rootFill(scheme) : MapPalette.branchColour(rootChildIndex: rootChildIndex)
     }
 
     private var textColour: Color {
-        node.isRoot ? FlowTheme.mapRootText(scheme) : FlowTheme.primaryText(scheme)
+        node.isRoot ? MapPalette.rootText(scheme) : MapPalette.titleInk(on: fillColour)
     }
 
-    /// Root keeps its own bold title. A leaf task and a branch share the
-    /// mock's bold caption size; a plain (non-task, childless) idea keeps
-    /// the original fixed-size title.
+    /// Root is semibold, every other node is bold, at the clone's own
+    /// `NodeTextSizeStyle` sizes — flat across branch, leaf task and plain
+    /// idea alike, no per-kind variant. Matches `MapLayout.pillSize`'s own
+    /// measurement exactly, or the pill and its title drift apart.
     private var titleFont: Font {
-        if node.isRoot { return FlowFont.mapRootTitle }
-        if isLeafTask || node.hasChildren { return FlowFont.caption.weight(.bold) }
-        return isCompact ? FlowFont.mapNodeTitleCompact : FlowFont.mapNodeTitle
+        .system(
+            size: MapLayout.titleFontSize(isRoot: node.isRoot, isCompact: isCompact),
+            weight: node.isRoot ? .semibold : .bold,
+            design: .rounded
+        )
     }
 
     private var borderColour: Color {
@@ -287,42 +179,17 @@ struct MapNodeView: View {
         return .clear
     }
 
-    private var leafBorderColour: Color {
-        if isSelected { return node.colour.base }
-        if isSearchMatch { return FlowTheme.accent }
-        return node.colour.base.opacity(0.7)
-    }
-
     private var accessibilityValue: String {
         guard node.isCollapsed, node.hasChildren else { return "" }
         return "\(node.orderedChildren.count) hidden"
     }
 
-    private func beginRenaming() {
-        onSelect()
-        isRenaming = true
-    }
-
-    private func commit() {
-        guard isRenaming else { return }
-        onCommitTitle(draftTitle)
-        isRenaming = false
-    }
-
     // MARK: - Task progress
-
-    /// Completed vs. total linked tasks across `node`'s whole subtree —
-    /// ignoring collapse state, so a folded branch's caption never lies
-    /// about what is actually done underneath it.
-    private func taskCounts(in node: MapNode) -> (completed: Int, total: Int) {
-        let tasks = node.subtreeNodes.compactMap(\.linkedTask)
-        return (tasks.count { $0.status == .completed }, tasks.count)
-    }
 
     /// Whether this leaf's linked task is the one the focus engine is
     /// running right now.
     private var isActiveSegment: Bool {
-        guard let linkedTask = node.linkedTask else { return false }
-        return flow?.focusEngine.activeSession?.task?.id == linkedTask.id
+        guard let displayTask = node.displayTask else { return false }
+        return flow?.focusEngine.activeSession?.task?.id == displayTask.id
     }
 }

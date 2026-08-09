@@ -12,9 +12,6 @@ public enum AssistantToolName: String, CaseIterable, Sendable {
     case scheduleTask
     case rescheduleDay
     case createProject
-    case createMap
-    case addMapNode
-    case convertNodeToTask
     case createNote
     case appendNoteBlock
     case searchAppContent
@@ -52,8 +49,6 @@ public struct AssistantToolResult: Codable, Sendable {
     public enum UndoAction: Codable, Sendable {
         case deleteTask(UUID)
         case deleteProject(UUID)
-        case deleteMap(UUID)
-        case deleteMapNode(UUID)
         case deleteNote(UUID)
         case deleteNoteBlock(UUID)
         case unscheduleSegment(UUID)
@@ -151,16 +146,6 @@ public struct AssistantToolRouter {
             context.delete(project)
             save()
             return AssistantToolResult(toolName: "undo", success: true, message: "Removed the project that was created.")
-        case .deleteMap(let id):
-            guard let map = fetchMap(id) else { return undoFailed() }
-            context.delete(map)
-            save()
-            return AssistantToolResult(toolName: "undo", success: true, message: "Removed the map that was created.")
-        case .deleteMapNode(let id):
-            guard let node = fetchNode(id) else { return undoFailed() }
-            context.delete(node)
-            save()
-            return AssistantToolResult(toolName: "undo", success: true, message: "Removed the idea that was added.")
         case .deleteNote(let id):
             guard let note = fetchNote(id) else { return undoFailed() }
             context.delete(note)
@@ -209,9 +194,6 @@ public struct AssistantToolRouter {
         case .scheduleTask: return scheduleTask(argumentsJSON)
         case .rescheduleDay: return rescheduleDay(argumentsJSON)
         case .createProject: return createProject(argumentsJSON)
-        case .createMap: return createMap(argumentsJSON)
-        case .addMapNode: return addMapNode(argumentsJSON)
-        case .convertNodeToTask: return convertNode(argumentsJSON)
         case .createNote: return createNote(argumentsJSON)
         case .appendNoteBlock: return appendNoteBlock(argumentsJSON)
         case .searchAppContent: return searchAppContent(argumentsJSON)
@@ -491,89 +473,6 @@ public struct AssistantToolRouter {
         )
     }
 
-    // MARK: - Maps
-
-    private struct CreateMapArgs: Codable {
-        let title: String
-        let colourToken: String?
-    }
-
-    private func createMap(_ json: String) -> AssistantToolResult {
-        guard let args = decode(CreateMapArgs.self, json) else {
-            return AssistantToolResult(toolName: AssistantToolName.createMap.rawValue, success: false, message: "I need a map title.")
-        }
-        let title = args.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !title.isEmpty else {
-            return AssistantToolResult(toolName: AssistantToolName.createMap.rawValue, success: false, message: "I need a map title.")
-        }
-        let token = args.colourToken.flatMap(ColourToken.init(rawValue:)) ?? .violet
-        let map = MapDocument(title: title, themeToken: token.rawValue)
-        context.insert(map)
-        save()
-        MapViewModel.createRootTopic(in: map, title: title, context: context)
-        return AssistantToolResult(
-            toolName: AssistantToolName.createMap.rawValue,
-            success: true,
-            message: "Created map \"\(map.title)\" with a starting topic.",
-            undo: .deleteMap(map.id)
-        )
-    }
-
-    private struct AddMapNodeArgs: Codable {
-        let mapTitle: String
-        let title: String
-        let parentTitle: String?
-    }
-
-    private func addMapNode(_ json: String) -> AssistantToolResult {
-        guard let args = decode(AddMapNodeArgs.self, json) else {
-            return AssistantToolResult(toolName: AssistantToolName.addMapNode.rawValue, success: false, message: "I need a map and an idea title.")
-        }
-        let title = args.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !title.isEmpty else {
-            return AssistantToolResult(toolName: AssistantToolName.addMapNode.rawValue, success: false, message: "I need a map and an idea title.")
-        }
-        guard let map = findMap(matching: args.mapTitle) else {
-            return AssistantToolResult(toolName: AssistantToolName.addMapNode.rawValue, success: false, message: "I couldn't find a single map matching \"\(args.mapTitle)\".")
-        }
-        let viewModel = MapViewModel(map: map, context: context)
-        let node: MapNode
-        if let parentTitle = args.parentTitle, let parent = findNode(matching: parentTitle, in: map) {
-            node = viewModel.addChild(to: parent, title: title)
-        } else if let root = map.rootNode {
-            node = viewModel.addChild(to: root, title: title)
-        } else {
-            node = MapViewModel.createRootTopic(in: map, title: title, context: context)
-        }
-        return AssistantToolResult(
-            toolName: AssistantToolName.addMapNode.rawValue,
-            success: true,
-            message: "Added \"\(node.title)\" to \(map.title).",
-            undo: .deleteMapNode(node.id)
-        )
-    }
-
-    private struct ConvertNodeArgs: Codable {
-        let mapTitle: String
-        let nodeTitle: String
-    }
-
-    private func convertNode(_ json: String) -> AssistantToolResult {
-        guard let args = decode(ConvertNodeArgs.self, json) else {
-            return AssistantToolResult(toolName: AssistantToolName.convertNodeToTask.rawValue, success: false, message: "I need a map and an idea to convert.")
-        }
-        guard let map = findMap(matching: args.mapTitle), let node = findNode(matching: args.nodeTitle, in: map) else {
-            return AssistantToolResult(toolName: AssistantToolName.convertNodeToTask.rawValue, success: false, message: "I couldn't find a single idea matching \"\(args.nodeTitle)\" in \"\(args.mapTitle)\".")
-        }
-        let wasAlreadyLinked = node.linkedTask != nil
-        _ = MapNodeConversion.convertToTask(node, in: context)
-        return AssistantToolResult(
-            toolName: AssistantToolName.convertNodeToTask.rawValue,
-            success: true,
-            message: wasAlreadyLinked ? "\"\(node.title)\" was already a task." : "Converted \"\(node.title)\" into a task in the Inbox."
-        )
-    }
-
     // MARK: - Notes
 
     private struct CreateNoteArgs: Codable {
@@ -722,22 +621,8 @@ public struct AssistantToolRouter {
         findByTitle(Project.self, query: query, title: { $0.title })
     }
 
-    private func findMap(matching query: String) -> MapDocument? {
-        findByTitle(MapDocument.self, query: query, title: { $0.title })
-    }
-
     private func findNote(matching query: String) -> Note? {
         findByTitle(Note.self, query: query, title: { $0.title })
-    }
-
-    private func findNode(matching query: String, in map: MapDocument) -> MapNode? {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        let items = map.allNodes
-        let exact = items.filter { $0.title.caseInsensitiveCompare(trimmed) == .orderedSame }
-        if exact.count == 1 { return exact.first }
-        let partial = items.filter { $0.title.range(of: trimmed, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
-        return partial.count == 1 ? partial.first : nil
     }
 
     private func fetchTask(_ id: UUID) -> FlowTask? {
@@ -748,18 +633,6 @@ public struct AssistantToolRouter {
 
     private func fetchProject(_ id: UUID) -> Project? {
         var descriptor = FetchDescriptor<Project>(predicate: #Predicate { $0.id == id })
-        descriptor.fetchLimit = 1
-        return (try? context.fetch(descriptor))?.first
-    }
-
-    private func fetchMap(_ id: UUID) -> MapDocument? {
-        var descriptor = FetchDescriptor<MapDocument>(predicate: #Predicate { $0.id == id })
-        descriptor.fetchLimit = 1
-        return (try? context.fetch(descriptor))?.first
-    }
-
-    private func fetchNode(_ id: UUID) -> MapNode? {
-        var descriptor = FetchDescriptor<MapNode>(predicate: #Predicate { $0.id == id })
         descriptor.fetchLimit = 1
         return (try? context.fetch(descriptor))?.first
     }
@@ -883,37 +756,6 @@ public struct AssistantToolRouter {
             """
         ),
         AssistantToolDefinition(
-            name: AssistantToolName.createMap.rawValue,
-            description: "Create a new mind map with a starting topic.",
-            parametersSchemaJSON: """
-            {"type":"object","properties":{
-              "title":{"type":"string"},
-              "colourToken":{"type":"string"}
-            },"required":["title"]}
-            """
-        ),
-        AssistantToolDefinition(
-            name: AssistantToolName.addMapNode.rawValue,
-            description: "Add an idea (node) to an existing map, optionally under a parent idea.",
-            parametersSchemaJSON: """
-            {"type":"object","properties":{
-              "mapTitle":{"type":"string","description":"Text to find the map by title."},
-              "title":{"type":"string","description":"The new idea's text."},
-              "parentTitle":{"type":"string","description":"An existing idea in the map to nest this under, if any."}
-            },"required":["mapTitle","title"]}
-            """
-        ),
-        AssistantToolDefinition(
-            name: AssistantToolName.convertNodeToTask.rawValue,
-            description: "Turn a map idea into a task in the Inbox.",
-            parametersSchemaJSON: """
-            {"type":"object","properties":{
-              "mapTitle":{"type":"string"},
-              "nodeTitle":{"type":"string"}
-            },"required":["mapTitle","nodeTitle"]}
-            """
-        ),
-        AssistantToolDefinition(
             name: AssistantToolName.createNote.rawValue,
             description: "Create a new note.",
             parametersSchemaJSON: """
@@ -936,7 +778,7 @@ public struct AssistantToolRouter {
         ),
         AssistantToolDefinition(
             name: AssistantToolName.searchAppContent.rawValue,
-            description: "Search tasks, projects, maps and notes for matching text. Read-only.",
+            description: "Search tasks, projects and notes for matching text. Read-only.",
             parametersSchemaJSON: """
             {"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}
             """

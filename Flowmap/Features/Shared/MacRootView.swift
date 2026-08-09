@@ -162,7 +162,7 @@ struct MacRootView: View {
         case .inbox: TaskListScreen(source: .smartView(.inbox))
         case .calendar: CalendarRootView()
         case .focus: FocusScreen()
-        case .maps: MapListView()
+        case .maps: AutoMapScreen(scope: .day)
         case .projects: ProjectsScreen()
         case .notes: NotesRootView()
         case .progress: ProgressScreen()
@@ -192,7 +192,6 @@ struct MacRootView: View {
         switch result.kind {
         case .task: selection = .smartView(.allTasks)
         case .project: selection = .projects
-        case .mapNode: selection = .maps
         case .note: selection = .notes
         case .assistantThread: selection = .assistant
         }

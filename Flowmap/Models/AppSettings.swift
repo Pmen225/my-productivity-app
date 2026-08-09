@@ -10,6 +10,9 @@ public final class AppSettings {
     // Appearance
     public var appearanceRaw: String = AppearanceMode.system.rawValue
     public var accentToken: String = ColourToken.clay.rawValue
+    /// Which typeface the app renders in. Defaults to the system face; the
+    /// founder can switch to iA Writer in Settings → General.
+    public var appFontRaw: String = AppFontChoice.system.rawValue
     /// 1 = Sunday, 2 = Monday, matching `Calendar.firstWeekday`.
     public var firstWeekday: Int = 2
 
@@ -23,6 +26,10 @@ public final class AppSettings {
 
     // Focus wheel
     public var wheelVisibilityRaw: String = WheelVisibility.two.rawValue
+    public var wheelZoomStyleRaw: String = WheelZoomStyle.magnify.rawValue
+    /// How far the close-up style is magnified about the pointer, 1…8. Settles
+    /// where the pinch left it so the wheel is where you left it next session.
+    public var wheelMagnifyFactor: Double = 1
     public var focusSoundEnabled: Bool = true
     public var focusTickEnabled: Bool = true
     public var focusHapticsEnabled: Bool = true
@@ -115,9 +122,25 @@ public final class AppSettings {
         set { accentToken = newValue.rawValue; touch() }
     }
 
+    public var appFont: AppFontChoice {
+        get { AppFontChoice(rawValue: appFontRaw) ?? .system }
+        set {
+            appFontRaw = newValue.rawValue
+            // Keep the static tokens in lockstep wherever the choice is set —
+            // the Settings picker and the demo seed's reset both rely on this.
+            FlowFont.choice = newValue
+            touch()
+        }
+    }
+
     public var wheelVisibility: WheelVisibility {
         get { WheelVisibility(rawValue: wheelVisibilityRaw) ?? .two }
         set { wheelVisibilityRaw = newValue.rawValue; touch() }
+    }
+
+    public var wheelZoomStyle: WheelZoomStyle {
+        get { WheelZoomStyle(rawValue: wheelZoomStyleRaw) ?? .magnify }
+        set { wheelZoomStyleRaw = newValue.rawValue; touch() }
     }
 
     public var focusVoiceStyle: FocusVoiceStyle {

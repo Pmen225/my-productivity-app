@@ -16,6 +16,7 @@ struct FocusWheelSettingsSection: View {
 
                 if let flow {
                     visibleTasksRow(flow)
+                    zoomStyleRow(flow)
                     Toggle("Haptics", isOn: binding(flow, \.focusHapticsEnabled))
                     Toggle("Automatically start next task", isOn: binding(flow, \.autoStartNextTask))
                     reducedMotionRow
@@ -44,6 +45,29 @@ struct FocusWheelSettingsSection: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .accessibilityValue(flow.settings.wheelVisibility.announcement)
+        }
+    }
+
+    /// What a pinch on the wheel does. Close-up leads because it is the
+    /// default: zooming in shows one part of the ring in detail rather than
+    /// keeping the whole circle on screen.
+    private func zoomStyleRow(_ flow: AppEnvironment) -> some View {
+        VStack(alignment: .leading, spacing: FlowSpacing.xs) {
+            Text("Zoom style").font(FlowFont.secondary).foregroundStyle(FlowTheme.secondaryText(scheme))
+            Picker("Zoom style", selection: Binding(
+                get: { flow.settings.wheelZoomStyle },
+                set: { newValue in
+                    flow.settings.wheelZoomStyle = newValue
+                    save()
+                }
+            )) {
+                ForEach(WheelZoomStyle.pickerOrder, id: \.self) { style in
+                    Text(style.displayName).tag(style)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .accessibilityValue(flow.settings.wheelZoomStyle.announcement)
         }
     }
 

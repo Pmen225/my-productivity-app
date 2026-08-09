@@ -54,6 +54,9 @@ public final class AppEnvironment {
     public init(context: ModelContext) {
         self.context = context
         self.settings = Self.loadOrCreateSettings(in: context)
+        // The font tokens are statics, so the persisted choice must be pushed
+        // into them before the first view renders.
+        FlowFont.choice = settings.appFont
         self.calendarService = CalendarService()
         self.notificationService = NotificationService()
         self.voiceService = FocusVoiceService(moments: moments)

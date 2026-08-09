@@ -41,6 +41,13 @@ targets:
         NSMicrophoneUsageDescription: Flowmap uses the microphone for voice capture of tasks and assistant messages.
         UIBackgroundModes: [remote-notification]
         UILaunchScreen: {}
+        # The iA Writer font option (Settings → General). XcodeGen copies the
+        # Fonts/ files flat into the bundle's resource root, hence the bare
+        # filenames here and "." for the macOS font-scan path.
+        UIAppFonts:
+          - iAWriterQuattroS-Regular.ttf
+          - iAWriterQuattroS-Bold.ttf
+        ATSApplicationFontsPath: "."
         CFBundleURLTypes:
           - CFBundleURLName: com.flowmap.app.deeplink
             CFBundleURLSchemes: [flowmap]

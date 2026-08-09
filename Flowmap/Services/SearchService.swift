@@ -6,7 +6,6 @@ public struct SearchResult: Identifiable, Sendable {
     public enum Kind: String, Sendable {
         case task
         case project
-        case mapNode
         case note
         case assistantThread
 
@@ -14,7 +13,6 @@ public struct SearchResult: Identifiable, Sendable {
             switch self {
             case .task: "Task"
             case .project: "Project"
-            case .mapNode: "Idea"
             case .note: "Note"
             case .assistantThread: "Conversation"
             }
@@ -24,7 +22,6 @@ public struct SearchResult: Identifiable, Sendable {
             switch self {
             case .task: "checkmark.circle"
             case .project: "folder"
-            case .mapNode: "point.topleft.down.to.point.bottomright.curvepath"
             case .note: "doc.text"
             case .assistantThread: "sparkles"
             }
@@ -34,7 +31,7 @@ public struct SearchResult: Identifiable, Sendable {
     public let id: UUID
     public let kind: Kind
     public let title: String
-    /// Where this lives — list name, project title, map title.
+    /// Where this lives — list name, project title.
     public let context: String
     /// The line the query actually matched.
     public let matchedText: String
@@ -48,7 +45,7 @@ public struct SearchResult: Identifiable, Sendable {
     }
 }
 
-/// Global search across tasks, projects, map nodes, notes and conversations.
+/// Global search across tasks, projects, notes and conversations.
 @MainActor
 public struct SearchService {
     private let context: ModelContext
@@ -89,20 +86,6 @@ public struct SearchService {
                         kind: .project,
                         title: project.title,
                         context: project.workspace?.name ?? project.status.displayName,
-                        matchedText: matched
-                    )
-                )
-            }
-        }
-
-        for node in fetch(MapNode.self) {
-            if let matched = firstMatch(query, in: [node.title, node.body]) {
-                results.append(
-                    SearchResult(
-                        id: node.id,
-                        kind: .mapNode,
-                        title: node.title,
-                        context: node.map?.title ?? "Map",
                         matchedText: matched
                     )
                 )

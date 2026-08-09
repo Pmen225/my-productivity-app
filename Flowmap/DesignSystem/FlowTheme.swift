@@ -220,6 +220,20 @@ public enum FlowTheme {
     public static func mapRootText(_ scheme: ColorScheme) -> Color {
         scheme == .dark ? Color(hex: 0x1E1913) : Color(hex: 0xF8F4EE)
     }
+
+    /// The focus wheel ruler's major ticks — bronze/tan, fixed across both
+    /// schemes so the scale reads the same regardless of which task's wedge
+    /// it sits on (Task 56: the ruler no longer floods with the task colour).
+    /// Verified legible on dark in `verification/11-focus-dark.png`.
+    public static func rulerTickMajor(_ scheme: ColorScheme) -> Color {
+        Color(hex: 0xB98A5C)
+    }
+
+    /// The ruler's minor and medium ticks — a paler tan than `rulerTickMajor`,
+    /// fixed across both schemes for the same reason.
+    public static func rulerTickMinor(_ scheme: ColorScheme) -> Color {
+        Color(hex: 0xD6C4AC)
+    }
 }
 
 /// Corner radii, 12–40pt by hierarchy.

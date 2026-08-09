@@ -74,10 +74,11 @@ public enum SeedData {
             // layout frames empty canvas.
             settings.accentToken = ColourToken.clay.rawValue
             settings.appearance = demoAppearance
-            // The original Focus design opens on the 2-task bowl. Persisted
+            // The original Focus design opens on the 2-task dial. Persisted
             // zoom state must not make a demo capture reopen on the tiny All
             // overview or force the founder to reconstruct the dial each run.
             settings.wheelVisibility = .two
+            settings.appFont = .system
             settings.touch()
             if let maps = try? context.fetch(FetchDescriptor<MapDocument>()) {
                 for map in maps {
@@ -105,29 +106,13 @@ public enum SeedData {
         )
         context.insert(inbox)
 
-        let map = MapDocument(title: "Weekly Plan", summary: "This week at a glance", workspace: workspace)
-        context.insert(map)
-
-        let root = MapNode(title: "Weekly Plan", colourToken: ColourToken.violet.rawValue, sortOrder: 0, map: map)
-        context.insert(root)
-
         // Each branch is also a project, so the Stats page has real rows to
         // show rather than its "No projects yet" empty state. "Life & Fun"
         // deliberately gets no tasks below — it is what photographs the
         // per-project empty state.
-        var branchNodes: [String: MapNode] = [:]
         var branchProjects: [String: Project] = [:]
         for (index, name) in branches.enumerated() {
             let token = ColourToken.taskTokens[(index + 1) % ColourToken.taskTokens.count]
-            let node = MapNode(
-                title: name,
-                colourToken: token.rawValue,
-                sortOrder: index,
-                map: map,
-                parent: root
-            )
-            context.insert(node)
-            branchNodes[name] = node
 
             let project = Project(
                 title: name,
@@ -162,22 +147,6 @@ public enum SeedData {
                 let subtask = Subtask(title: title, sortOrder: subIndex, task: task)
                 context.insert(subtask)
             }
-
-            // The idea and the task are two views of the same intent, so the demo
-            // ships them already linked.
-            let parent = branchNodes[demo.branch] ?? root
-            let node = MapNode(
-                title: demo.title,
-                iconName: demo.icon,
-                colourToken: demo.colour.rawValue,
-                sortOrder: index,
-                map: map,
-                parent: parent
-            )
-            node.isTask = true
-            node.estimatedMinutes = demo.minutes
-            node.linkedTask = task
-            context.insert(node)
         }
 
         let note = Note(title: "How Flowmap works", iconName: "sparkles", workspace: workspace)
@@ -199,6 +168,7 @@ public enum SeedData {
         settings.accentToken = ColourToken.clay.rawValue
         settings.appearance = demoAppearance
         settings.wheelVisibility = .two
+        settings.appFont = .system
         settings.touch()
         try? context.save()
         return workspace
