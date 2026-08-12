@@ -13,3 +13,13 @@ DerivedData/
 xcuserdata/
 *.xcworkspace/xcuserdata/
 .swiftpm/
+
+# Generated task state
+.taskmaster/tasks/tasks.json
+.taskmaster/state.json
+
+# Large/generated media artefacts
+Artifacts/
+*.mp4
+*.mp3
+Screenshots/**/*.mp4
