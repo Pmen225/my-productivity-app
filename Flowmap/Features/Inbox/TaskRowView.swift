@@ -1,6 +1,71 @@
 import SwiftData
 import SwiftUI
 
+private enum TaskIdentityLevel {
+    case parent
+    case subtask
+
+    var dimension: CGFloat {
+        switch self {
+        case .parent: FlowControlSize.secondary
+        case .subtask: FlowSpacing.xxl
+        }
+    }
+
+    var radius: CGFloat {
+        switch self {
+        case .parent: FlowRadius.small
+        case .subtask: FlowRadius.tile
+        }
+    }
+
+    var font: Font {
+        switch self {
+        case .parent: FlowFont.body.weight(.bold)
+        case .subtask: FlowFont.caption.weight(.semibold)
+        }
+    }
+}
+
+/// A task's identity stays on the leading edge. Subtasks inherit the parent
+/// symbol at a smaller scale so the hierarchy reads without a schema change.
+private struct TaskIdentityBadge: View {
+    @Environment(\.colorScheme) private var scheme
+
+    let symbolName: String
+    let tint: ColourToken
+    let level: TaskIdentityLevel
+
+    var body: some View {
+        Image(systemName: resolvedSymbolName)
+            .font(level.font)
+            .symbolRenderingMode(.hierarchical)
+            .foregroundStyle(tint.onSoft)
+            .frame(width: level.dimension, height: level.dimension)
+            .background(
+                RoundedRectangle(cornerRadius: level.radius, style: .continuous)
+                    .fill(tint.soft)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: level.radius, style: .continuous)
+                    .strokeBorder(FlowTheme.separatorStrong(scheme), lineWidth: 1)
+            )
+            .accessibilityHidden(true)
+    }
+
+    private var resolvedSymbolName: String {
+        symbolName.isEmpty ? "circle" : symbolName
+    }
+}
+
+private struct TaskSubtaskRevealHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 /// One polished task card with direct editing, completion, scheduling, moving,
 /// deletion, and an inline sub-task disclosure when the task has children.
 public struct TaskRowView: View {
@@ -35,10 +100,10 @@ public struct TaskRowView: View {
     /// Not persisted — collapses again next time this row is built, matching
     /// every other per-row disclosure in the app.
     @State private var isSubtasksExpanded = false
-
-    /// Completion target + two gaps + the task icon. Expanded child titles
-    /// align under the parent title rather than under completion or identity.
-    private static let taskContentIndent: CGFloat = 44 + FlowSpacing.m + FlowSpacing.xxl + FlowSpacing.m
+    /// The child content is always measured, then clipped from zero to its
+    /// natural height. This makes the card itself unfold instead of swapping
+    /// one list state for another.
+    @State private var subtaskRevealHeight: CGFloat = 0
 
     private struct MetadataItem: Identifiable {
         let id: String
@@ -97,13 +162,9 @@ public struct TaskRowView: View {
         VStack(alignment: .leading, spacing: 0) {
             parentRow
 
-            if isSubtasksExpanded, hasSubtasks {
-                Divider()
-                    .padding(.leading, hierarchyInset + FlowSpacing.m)
-                subtaskList
-            }
-
             if hasSubtasks {
+                subtaskReveal
+
                 Divider()
                     .padding(.leading, hierarchyInset + FlowSpacing.m)
                 subtaskDisclosureRow
@@ -193,6 +254,7 @@ public struct TaskRowView: View {
         .onChange(of: task.orderedSubtasks.count) { _, count in
             if count == 0 {
                 isSubtasksExpanded = false
+                subtaskRevealHeight = 0
             }
         }
     }
@@ -205,8 +267,8 @@ public struct TaskRowView: View {
 
     private var parentRow: some View {
         HStack(alignment: .top, spacing: FlowSpacing.m) {
-            completeToggle
             editTarget
+            completeToggle
         }
         .padding(.leading, hierarchyInset + FlowSpacing.m)
         .padding(.trailing, FlowSpacing.m)
@@ -227,13 +289,13 @@ public struct TaskRowView: View {
             .accessibilityHint("Opens task editing controls")
         } else {
             taskContent
-                .frame(minHeight: 44, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
         }
     }
 
     private var taskContent: some View {
         HStack(alignment: .top, spacing: FlowSpacing.m) {
-            FlowTaskIconBadge(symbolName: task.iconName, tint: task.colour)
+            TaskIdentityBadge(symbolName: task.iconName, tint: task.colour, level: .parent)
             taskSummary
         }
     }
@@ -289,10 +351,12 @@ public struct TaskRowView: View {
         Button(action: toggleComplete) {
             Image(systemName: task.status == .completed ? "checkmark.circle.fill" : "circle")
                 .font(FlowFont.body)
-                .foregroundStyle(task.colour.base.opacity(task.status == .completed ? 1 : 0.5))
+                .foregroundStyle(task.colour.base.opacity(task.status == .completed ? 1 : 0.62))
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .frame(minWidth: 44, minHeight: 44, alignment: .leading)
+        .frame(width: 44, height: 44, alignment: .trailing)
         .accessibilityLabel(task.status == .completed ? "Reopen task" : "Mark task complete")
         .accessibilityHint(task.status == .completed ? "Marks this task as incomplete" : "Marks this task as complete")
     }
@@ -359,6 +423,36 @@ public struct TaskRowView: View {
 
     // MARK: - Sub-task disclosure
 
+    /// The child content keeps its identity in the hierarchy while the outer
+    /// card animates between zero and its measured height. The footer therefore
+    /// travels with the card instead of jumping between two list states.
+    private var subtaskReveal: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Divider()
+                .padding(.leading, hierarchyInset + FlowSpacing.m)
+            subtaskList
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .background {
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: TaskSubtaskRevealHeightKey.self,
+                    value: proxy.size.height
+                )
+            }
+        }
+        .onPreferenceChange(TaskSubtaskRevealHeightKey.self) { height in
+            guard height > 0 else { return }
+            subtaskRevealHeight = height
+        }
+        .frame(height: isSubtasksExpanded ? subtaskRevealHeight : 0, alignment: .top)
+        .opacity(isSubtasksExpanded ? 1 : 0)
+        .scaleEffect(x: 1, y: isSubtasksExpanded ? 1 : 0.94, anchor: .top)
+        .clipped()
+        .allowsHitTesting(isSubtasksExpanded)
+        .accessibilityHidden(!isSubtasksExpanded)
+    }
+
     /// The entire quiet footer is the disclosure target. Expanded child rows
     /// remain above it inside the same outer task-card boundary.
     private var subtaskDisclosureRow: some View {
@@ -399,7 +493,7 @@ public struct TaskRowView: View {
         if reduceMotion {
             isSubtasksExpanded.toggle()
         } else {
-            withAnimation(FlowMotion.tap) {
+            withAnimation(FlowMotion.expand) {
                 isSubtasksExpanded.toggle()
             }
         }
@@ -408,23 +502,19 @@ public struct TaskRowView: View {
     // MARK: - Sub-task list
 
     private var subtaskList: some View {
-        VStack(alignment: .leading, spacing: FlowSpacing.s) {
+        VStack(alignment: .leading, spacing: FlowSpacing.xs) {
             ForEach(task.orderedSubtasks) { subtask in
                 subtaskRow(subtask)
             }
         }
-        .padding(.leading, hierarchyInset + Self.taskContentIndent)
+        .padding(.leading, hierarchyInset + FlowSpacing.xl)
         .padding(.trailing, FlowSpacing.m)
         .padding(.vertical, FlowSpacing.s)
-        .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
     }
 
     private func subtaskRow(_ subtask: Subtask) -> some View {
         HStack(spacing: FlowSpacing.s) {
-            Circle()
-                .fill(task.colour.base)
-                .frame(width: FlowSpacing.s, height: FlowSpacing.s)
-                .accessibilityHidden(true)
+            TaskIdentityBadge(symbolName: task.iconName, tint: task.colour, level: .subtask)
             Text(subtask.title)
                 .font(FlowFont.caption)
                 .foregroundStyle(
@@ -440,7 +530,7 @@ public struct TaskRowView: View {
             } label: {
                 Image(systemName: subtask.isCompleted ? "checkmark.circle.fill" : "circle")
                     .font(FlowFont.body)
-                    .foregroundStyle(task.colour.base.opacity(subtask.isCompleted ? 1 : 0.5))
+                    .foregroundStyle(task.colour.base.opacity(subtask.isCompleted ? 1 : 0.62))
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
