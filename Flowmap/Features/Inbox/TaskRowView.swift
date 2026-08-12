@@ -1,9 +1,8 @@
 import SwiftData
 import SwiftUI
 
-/// One row on a to-do screen: a completion toggle, title, and trailing badges
-/// that stay consistent everywhere the task appears. Swipe (iOS) and context
-/// menu (both platforms) expose complete, schedule, move and delete.
+/// One polished task card with direct editing, completion, scheduling, moving,
+/// deletion, and an inline sub-task disclosure when the task has children.
 public struct TaskRowView: View {
     public enum HierarchyPosition: Equatable, Sendable {
         case standalone
@@ -13,6 +12,7 @@ public struct TaskRowView: View {
     }
 
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.flow) private var flow
     @Environment(\.modelContext) private var context
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -20,6 +20,7 @@ public struct TaskRowView: View {
     @Query(sort: \Project.sortOrder) private var projects: [Project]
 
     let task: FlowTask
+    private let onEdit: (() -> Void)?
     private let onDeleted: (() -> Void)?
     /// Parent and dependency rows stay as separate native List cells so their
     /// swipe actions keep working, while this presentation joins them into one
@@ -35,9 +36,9 @@ public struct TaskRowView: View {
     /// every other per-row disclosure in the app.
     @State private var isSubtasksExpanded = false
 
-    /// The 44pt `completeToggle` column plus the row's own `HStack` spacing —
-    /// sub-task content indents to line up under the title, not under the toggle.
-    private static let subtaskIndent: CGFloat = 44 + FlowSpacing.m
+    /// Completion target + two gaps + the task icon. Expanded child titles
+    /// align under the parent title rather than under completion or identity.
+    private static let taskContentIndent: CGFloat = 44 + FlowSpacing.m + FlowSpacing.xxl + FlowSpacing.m
 
     private struct MetadataItem: Identifiable {
         let id: String
@@ -48,17 +49,20 @@ public struct TaskRowView: View {
 
     public init(
         task: FlowTask,
+        onEdit: (() -> Void)? = nil,
         onDeleted: (() -> Void)? = nil,
         hierarchyPosition: HierarchyPosition = .standalone,
         hierarchyDepth: Int = 0
     ) {
         self.task = task
+        self.onEdit = onEdit
         self.onDeleted = onDeleted
         self.hierarchyPosition = hierarchyPosition
         self.hierarchyDepth = max(0, hierarchyDepth)
     }
 
     private var isDependency: Bool { hierarchyDepth > 0 }
+    private var hasSubtasks: Bool { !task.orderedSubtasks.isEmpty }
 
     private var cardShape: AnyShape {
         switch hierarchyPosition {
@@ -90,40 +94,26 @@ public struct TaskRowView: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: FlowSpacing.s) {
-            HStack(alignment: .top, spacing: FlowSpacing.m) {
-                completeToggle
-                VStack(alignment: .leading, spacing: FlowSpacing.xxs) {
-                    Text(task.title)
-                        .font(FlowFont.body)
-                        .strikethrough(task.status == .completed)
-                        .foregroundStyle(
-                            task.status == .completed
-                                ? FlowTheme.tertiaryText(scheme)
-                                : FlowTheme.primaryText(scheme)
-                        )
-                        .lineLimit(2)
-                    metadataLine
-                }
-                Spacer(minLength: FlowSpacing.s)
-                DurationChip(minutes: task.estimatedMinutes, tint: task.colour)
+        VStack(alignment: .leading, spacing: 0) {
+            parentRow
+
+            if isSubtasksExpanded, hasSubtasks {
+                Divider()
+                    .padding(.leading, hierarchyInset + FlowSpacing.m)
+                subtaskList
             }
-            // Disclosure row and expanded list are additive: a row with no
-            // sub-tasks renders exactly as before, no dead chevron.
-            if !task.orderedSubtasks.isEmpty {
+
+            if hasSubtasks {
+                Divider()
+                    .padding(.leading, hierarchyInset + FlowSpacing.m)
                 subtaskDisclosureRow
-                if isSubtasksExpanded {
-                    subtaskList
-                }
             }
         }
-        .padding(.leading, CGFloat(hierarchyDepth) * FlowSpacing.l)
-        .padding(.horizontal, FlowSpacing.m)
-        .padding(.vertical, isDependency ? FlowSpacing.s : FlowSpacing.m)
         .background(
             cardShape
                 .fill(isDependency ? FlowTheme.surfaceSunken(scheme) : FlowTheme.surface(scheme))
         )
+        .clipShape(cardShape)
         .overlay {
             cardShape
                 .stroke(FlowTheme.separator(scheme), lineWidth: 1)
@@ -151,6 +141,24 @@ public struct TaskRowView: View {
             .tint(task.status == .completed ? FlowTheme.tertiaryText(scheme) : FlowTheme.accentDeep)
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            if let onEdit {
+                Button(action: onEdit) {
+                    Label("Edit", systemImage: "pencil")
+                }
+                .tint(task.colour.base)
+            }
+            Button {
+                showScheduler = true
+            } label: {
+                Label("Schedule", systemImage: "calendar.badge.clock")
+            }
+            .tint(FlowTheme.accent)
+            Button {
+                showMoveDialog = true
+            } label: {
+                Label("Move", systemImage: "folder")
+            }
+            .tint(FlowTheme.accentDeep)
             // No `role: .destructive`: that role rebuilds the row as the swipe
             // closes, which resets this view's state and silently drops the
             // confirmation card. The tint carries the same meaning.
@@ -160,18 +168,6 @@ public struct TaskRowView: View {
                 Label("Delete", systemImage: "trash")
             }
             .tint(FlowTheme.destructive)
-            Button {
-                showMoveDialog = true
-            } label: {
-                Label("Move", systemImage: "folder")
-            }
-            .tint(FlowTheme.accentDeep)
-            Button {
-                showScheduler = true
-            } label: {
-                Label("Schedule", systemImage: "calendar.badge.clock")
-            }
-            .tint(FlowTheme.accent)
         }
         #endif
         .contextMenu { contextMenuItems }
@@ -194,6 +190,97 @@ public struct TaskRowView: View {
             Button("Cancel", role: .cancel) {}
         }
         .popover(isPresented: $showScheduler) { schedulerPopover }
+        .onChange(of: task.orderedSubtasks.count) { _, count in
+            if count == 0 {
+                isSubtasksExpanded = false
+            }
+        }
+    }
+
+    private var hierarchyInset: CGFloat {
+        CGFloat(hierarchyDepth) * FlowSpacing.l
+    }
+
+    // MARK: - Parent task
+
+    private var parentRow: some View {
+        HStack(alignment: .top, spacing: FlowSpacing.m) {
+            completeToggle
+            editTarget
+        }
+        .padding(.leading, hierarchyInset + FlowSpacing.m)
+        .padding(.trailing, FlowSpacing.m)
+        .padding(.vertical, isDependency ? FlowSpacing.s : FlowSpacing.m)
+    }
+
+    @ViewBuilder
+    private var editTarget: some View {
+        if let onEdit {
+            Button(action: onEdit) {
+                taskContent
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(task.title)
+            .accessibilityValue(taskAccessibilityValue)
+            .accessibilityHint("Opens task editing controls")
+        } else {
+            taskContent
+                .frame(minHeight: 44, alignment: .leading)
+        }
+    }
+
+    private var taskContent: some View {
+        HStack(alignment: .top, spacing: FlowSpacing.m) {
+            FlowTaskIconBadge(symbolName: task.iconName, tint: task.colour)
+            taskSummary
+        }
+    }
+
+    @ViewBuilder
+    private var taskSummary: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: FlowSpacing.s) {
+                titleAndMetadata
+                DurationChip(minutes: task.estimatedMinutes, tint: task.colour)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            HStack(alignment: .top, spacing: FlowSpacing.s) {
+                titleAndMetadata
+                Spacer(minLength: FlowSpacing.s)
+                DurationChip(minutes: task.estimatedMinutes, tint: task.colour)
+            }
+        }
+    }
+
+    private var titleAndMetadata: some View {
+        VStack(alignment: .leading, spacing: FlowSpacing.xxs) {
+            Text(task.title)
+                .font(FlowFont.body)
+                .strikethrough(task.status == .completed)
+                .foregroundStyle(
+                    task.status == .completed
+                        ? FlowTheme.tertiaryText(scheme)
+                        : FlowTheme.primaryText(scheme)
+                )
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            metadataLine
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var taskAccessibilityValue: String {
+        var values = [task.durationAccessibilityLabel]
+        if let progress = task.subtaskProgressLabel {
+            values.append("\(progress) sub-tasks complete")
+        }
+        if task.status == .completed {
+            values.append("completed")
+        }
+        return values.joined(separator: ", ")
     }
 
     // MARK: - Complete toggle
@@ -206,7 +293,8 @@ public struct TaskRowView: View {
         }
         .buttonStyle(.plain)
         .frame(minWidth: 44, minHeight: 44, alignment: .leading)
-        .accessibilityLabel(task.status == .completed ? "Completed" : "Mark complete")
+        .accessibilityLabel(task.status == .completed ? "Reopen task" : "Mark task complete")
+        .accessibilityHint(task.status == .completed ? "Marks this task as incomplete" : "Marks this task as complete")
     }
 
     // MARK: - Metadata line
@@ -230,9 +318,8 @@ public struct TaskRowView: View {
         .truncationMode(.tail)
     }
 
-    /// Keep the row to one calm metadata line. The first two facts are the
-    /// only ones that survive on a compact surface; the detail view remains
-    /// the place for the rest, per the spatial-economy rule.
+    /// Keep the row to one calm metadata line. Sub-task progress lives only in
+    /// the quiet disclosure footer, preventing duplicate competing metadata.
     private var metadataItems: [MetadataItem] {
         let now = flow?.now ?? Date()
         var items: [MetadataItem] = []
@@ -264,55 +351,50 @@ public struct TaskRowView: View {
             let label = ScheduleWording.startLabel(upcoming.startDate, now: now, calendar: .current)
             items.append(MetadataItem(id: "scheduled", text: label, systemImage: "calendar.badge.clock", accessibilityLabel: label))
         }
-        if let label = task.subtaskProgressLabel {
-            items.append(MetadataItem(id: "subtasks", text: label, systemImage: "checklist", accessibilityLabel: label))
-        }
         if let badge = task.liveSegments.first?.badgeText {
             items.append(MetadataItem(id: "carryover", text: badge, systemImage: nil, accessibilityLabel: badge))
         }
         return items
     }
 
-    // MARK: - Sub-task disclosure (collapsed: progress bar + chevron)
+    // MARK: - Sub-task disclosure
 
-    /// Thin progress capsule plus the disclosure chevron — the only new tap
-    /// surface this row gains. The capsule itself carries no gesture, so
-    /// tapping it falls through to whatever the row already does.
+    /// The entire quiet footer is the disclosure target. Expanded child rows
+    /// remain above it inside the same outer task-card boundary.
     private var subtaskDisclosureRow: some View {
-        HStack(spacing: FlowSpacing.s) {
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(FlowTheme.separator(scheme))
-                    Capsule()
-                        .fill(task.colour.base)
-                        .frame(width: proxy.size.width * task.subtaskCompletionFraction)
-                }
-            }
-            .frame(height: FlowSpacing.xs)
-            // Decorative: the "N of M" label already speaks this progress in
-            // `metadataLine`. Hiding it keeps the chevron the row's only
-            // sub-task VoiceOver stop, so its own "Show/Hide" label is heard.
-            .accessibilityHidden(true)
-            chevronButton
-        }
-        .padding(.leading, Self.subtaskIndent)
-    }
-
-    private var chevronButton: some View {
         Button(action: toggleSubtasksExpanded) {
-            Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(FlowTheme.tertiaryText(scheme))
-                .rotationEffect(.degrees(isSubtasksExpanded ? 90 : 0))
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
+            HStack(spacing: FlowSpacing.s) {
+                ProgressView(value: task.subtaskCompletionFraction)
+                    .progressViewStyle(.linear)
+                    .tint(task.colour.base)
+                    .frame(width: FlowSpacing.xxxl)
+                    .accessibilityHidden(true)
+
+                Text(task.subtaskProgressLabel ?? "")
+                    .font(FlowFont.caption)
+                    .monospacedDigit()
+
+                Spacer(minLength: FlowSpacing.s)
+
+                Image(systemName: "chevron.right")
+                    .font(FlowFont.caption.weight(.semibold))
+                    .rotationEffect(.degrees(isSubtasksExpanded && !reduceMotion ? 90 : 0))
+                    .accessibilityHidden(true)
+            }
+            .foregroundStyle(FlowTheme.tertiaryText(scheme))
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .contentShape(Rectangle())
+            .padding(.leading, hierarchyInset + FlowSpacing.m)
+            .padding(.trailing, FlowSpacing.m)
+            .background(FlowTheme.surfaceSunken(scheme))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(isSubtasksExpanded ? "Hide sub-tasks" : "Show sub-tasks")
+        .accessibilityLabel(isSubtasksExpanded ? "Collapse sub-tasks" : "Expand sub-tasks")
+        .accessibilityValue(task.subtaskProgressLabel ?? "")
+        .accessibilityHint(isSubtasksExpanded ? "Hides the sub-task list" : "Shows the sub-task list")
     }
 
-    /// Reduce Motion swaps the rotate for a plain appear/disappear — no
-    /// rotation, no slide, per the spec's accessibility requirement.
+    /// Reduce Motion keeps state changes explicit without rotation or sliding.
     private func toggleSubtasksExpanded() {
         if reduceMotion {
             isSubtasksExpanded.toggle()
@@ -323,7 +405,7 @@ public struct TaskRowView: View {
         }
     }
 
-    // MARK: - Sub-task list (expanded)
+    // MARK: - Sub-task list
 
     private var subtaskList: some View {
         VStack(alignment: .leading, spacing: FlowSpacing.s) {
@@ -331,8 +413,9 @@ public struct TaskRowView: View {
                 subtaskRow(subtask)
             }
         }
-        .padding(.leading, Self.subtaskIndent)
-        .padding(.top, FlowSpacing.xxs)
+        .padding(.leading, hierarchyInset + Self.taskContentIndent)
+        .padding(.trailing, FlowSpacing.m)
+        .padding(.vertical, FlowSpacing.s)
         .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
     }
 
@@ -340,7 +423,7 @@ public struct TaskRowView: View {
         HStack(spacing: FlowSpacing.s) {
             Circle()
                 .fill(task.colour.base)
-                .frame(width: 8, height: 8)
+                .frame(width: FlowSpacing.s, height: FlowSpacing.s)
                 .accessibilityHidden(true)
             Text(subtask.title)
                 .font(FlowFont.caption)
@@ -350,8 +433,6 @@ public struct TaskRowView: View {
                         : FlowTheme.primaryText(scheme)
                 )
                 .strikethrough(subtask.isCompleted)
-                // Titles wrap rather than clip, per spec — Dynamic Type must
-                // never truncate a sub-task's name.
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: FlowSpacing.s)
             Button {
@@ -364,14 +445,22 @@ public struct TaskRowView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("\(subtask.title), \(subtask.isCompleted ? "completed" : "not completed")")
+            .accessibilityLabel(subtask.title)
+            .accessibilityValue(subtask.isCompleted ? "Completed" : "Not completed")
+            .accessibilityHint(subtask.isCompleted ? "Marks this sub-task as incomplete" : "Marks this sub-task as complete")
         }
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
     }
 
     // MARK: - Context menu (both platforms)
 
     @ViewBuilder
     private var contextMenuItems: some View {
+        if let onEdit {
+            Button(action: onEdit) {
+                Label("Edit task", systemImage: "pencil")
+            }
+        }
         Button {
             toggleComplete()
         } label: {

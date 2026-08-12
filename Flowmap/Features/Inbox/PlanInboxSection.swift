@@ -175,6 +175,7 @@ struct PlanInboxSection: View {
         VStack(alignment: .leading, spacing: FlowSpacing.m) {
             TaskRowView(
                 task: task,
+                onEdit: { toggleEditor(for: task) },
                 hierarchyPosition: position,
                 hierarchyDepth: depth
             )
@@ -193,7 +194,6 @@ struct PlanInboxSection: View {
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
         .contentShape(Rectangle())
-        .onTapGesture { toggleEditor(for: task) }
         .accessibilityElement(children: .contain)
         .accessibilityHint(
             depth > 0
@@ -214,13 +214,17 @@ struct PlanInboxSection: View {
         #endif
     }
 
-    /// The mock's in-row editor: rename, re-time, and place — the three things
-    /// worth doing during triage, without leaving the list to do them.
+    /// The mock's in-row editor: identity, rename, re-time, and place — the
+    /// things worth doing during triage without leaving the Plan list.
     private func editor(_ task: FlowTask) -> some View {
         VStack(alignment: .leading, spacing: FlowSpacing.m) {
-            TextField("Task name", text: Binding(get: { task.title }, set: { task.title = $0 }))
-                .font(FlowFont.body)
-                .accessibilityLabel("Rename task")
+            HStack(alignment: .center, spacing: FlowSpacing.m) {
+                FlowTaskIconPicker(selection: iconSelection(for: task), tint: task.colour)
+                TextField("Task name", text: Binding(get: { task.title }, set: { task.title = $0 }))
+                    .font(FlowFont.body)
+                    .frame(minHeight: 44)
+                    .accessibilityLabel("Rename task")
+            }
             // Label above, not beside: the wheel is a full spinning picker
             // now, and a tall control next to a one-line label reads as two
             // competing left edges.
@@ -240,6 +244,17 @@ struct PlanInboxSection: View {
             }
         }
         .padding(.leading, FlowSpacing.xl)
+    }
+
+    private func iconSelection(for task: FlowTask) -> Binding<String> {
+        Binding(
+            get: { task.iconName.isEmpty ? "circle" : task.iconName },
+            set: { symbol in
+                task.iconName = symbol
+                task.touch()
+                try? context.save()
+            }
+        )
     }
 
     private var actions: some View {
@@ -289,9 +304,8 @@ struct PlanInboxSection: View {
 
     /// Sets exactly what `SmartView.today` reads — `isFlaggedForToday`, the
     /// same flag `QuickCapture`'s `flagForTodayIfUndated` already sets at
-    /// creation time. `static`, not `private`, so it is directly
-    /// unit-testable without instantiating the view (see
-    /// `TaskRowView.duplicate`).
+    /// creation time. `static`, not `private`, so it is directly unit-testable
+    /// without instantiating the view (see `TaskRowView.duplicate`).
     static func moveToToday(_ task: FlowTask, in context: ModelContext) {
         task.isFlaggedForToday = true
         try? context.save()

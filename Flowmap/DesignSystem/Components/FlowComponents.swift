@@ -105,6 +105,102 @@ public struct FlowCard<Content: View>: View {
     }
 }
 
+// MARK: - Task identity
+
+/// The same compact task identity treatment is reused in cards and editors.
+/// Repeated list rows stay on the cheaper soft surface; the interactive editor
+/// control adopts Liquid Glass where the current SDK supports it.
+public struct FlowTaskIconBadge: View {
+    @Environment(\.colorScheme) private var scheme
+
+    private let symbolName: String
+    private let tint: ColourToken
+    private let interactive: Bool
+
+    public init(symbolName: String, tint: ColourToken, interactive: Bool = false) {
+        self.symbolName = symbolName.isEmpty ? "circle" : symbolName
+        self.tint = tint
+        self.interactive = interactive
+    }
+
+    @ViewBuilder
+    public var body: some View {
+        if interactive {
+            if #available(iOS 26.0, macOS 26.0, *) {
+                icon
+                    .glassEffect(
+                        .regular.tint(tint.base).interactive(),
+                        in: .rect(cornerRadius: FlowRadius.small)
+                    )
+            } else {
+                fallbackIcon
+            }
+        } else {
+            fallbackIcon
+        }
+    }
+
+    private var icon: some View {
+        Image(systemName: symbolName)
+            .font(FlowFont.caption.weight(.semibold))
+            .foregroundStyle(tint.onSoft)
+            .frame(width: FlowSpacing.xxl, height: FlowSpacing.xxl)
+            .accessibilityHidden(true)
+    }
+
+    private var fallbackIcon: some View {
+        icon
+            .background(
+                RoundedRectangle(cornerRadius: FlowRadius.small, style: .continuous)
+                    .fill(tint.soft)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: FlowRadius.small, style: .continuous)
+                    .strokeBorder(FlowTheme.separator(scheme), lineWidth: 1)
+            )
+    }
+}
+
+/// A native menu limited to Flowmap's curated task symbols. It writes through
+/// the supplied binding, so creation and editing update the visible card live.
+public struct FlowTaskIconPicker: View {
+    @Binding private var selection: String
+    private let tint: ColourToken
+    private let label: String
+
+    public init(
+        selection: Binding<String>,
+        tint: ColourToken,
+        label: String = "Task icon"
+    ) {
+        _selection = selection
+        self.tint = tint
+        self.label = label
+    }
+
+    public var body: some View {
+        Menu {
+            Picker(label, selection: $selection) {
+                ForEach(FlowSymbols.taskSymbols, id: \.self) { symbol in
+                    Label(FlowSymbols.taskSymbolTitle(for: symbol), systemImage: symbol)
+                        .tag(symbol)
+                }
+            }
+            .pickerStyle(.inline)
+        } label: {
+            FlowTaskIconBadge(symbolName: resolvedSelection, tint: tint, interactive: true)
+                .flowHitTarget()
+        }
+        .accessibilityLabel(label)
+        .accessibilityValue(FlowSymbols.taskSymbolTitle(for: resolvedSelection))
+        .accessibilityHint("Choose an icon")
+    }
+
+    private var resolvedSelection: String {
+        selection.isEmpty ? "circle" : selection
+    }
+}
+
 // MARK: - Primary action
 
 /// The single dominant button on a screen. There is never more than one.
@@ -340,4 +436,29 @@ public enum FlowSymbols {
         "list.bullet", "tray", "star", "flag", "bookmark",
         "folder", "archivebox", "briefcase", "person.2", "sparkles",
     ]
+
+    public static func taskSymbolTitle(for symbol: String) -> String {
+        switch symbol {
+        case "book": "Reading"
+        case "figure.run": "Exercise"
+        case "cup.and.saucer": "Break"
+        case "calendar": "Calendar"
+        case "graduationcap": "Study"
+        case "target": "Goal"
+        case "hammer": "Build"
+        case "envelope": "Email"
+        case "phone": "Call"
+        case "cart": "Shopping"
+        case "heart": "Health"
+        case "leaf": "Nature"
+        case "lightbulb": "Idea"
+        case "music.note": "Music"
+        case "paintbrush": "Creative"
+        case "pencil": "Writing"
+        case "wrench.and.screwdriver": "Maintenance"
+        case "airplane": "Travel"
+        case "house": "Home"
+        default: "General"
+        }
+    }
 }

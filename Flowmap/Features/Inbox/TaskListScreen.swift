@@ -184,19 +184,20 @@ public struct TaskListScreen: View {
         }
     }
 
-    @ViewBuilder
     private func row(for task: FlowTask) -> some View {
-        #if os(macOS)
-        TaskRowView(task: task)
+        TaskRowView(task: task, onEdit: { edit(task) })
+            #if os(macOS)
             .tag(task.id)
+            #endif
             .listRowSeparator(.hidden)
             .listRowBackground(Color.clear)
+    }
+
+    private func edit(_ task: FlowTask) {
+        #if os(macOS)
+        macSelection = [task.id]
         #else
-        TaskRowView(task: task)
-            .contentShape(Rectangle())
-            .onTapGesture { selectedTask = task }
-            .listRowSeparator(.hidden)
-            .listRowBackground(Color.clear)
+        selectedTask = task
         #endif
     }
 

@@ -39,7 +39,7 @@ struct TaskRowViewTests {
         #expect(task.subtaskCompletionFraction == 1)
     }
 
-    @Test("Copy carries title, colour, duration and sub-task titles into the same list/project")
+    @Test("Copy carries title, icon, colour, duration and sub-task titles into the same list/project")
     func duplicateCopiesFields() throws {
         let world = try TestWorld()
         let list = TaskList(name: "Personal", iconName: "tray", colourToken: ColourToken.violet.rawValue, sortOrder: 0)
@@ -51,6 +51,7 @@ struct TaskRowViewTests {
             title: "Reading",
             estimatedMinutes: 45,
             colourToken: ColourToken.blue.rawValue,
+            iconName: "book",
             sortOrder: 3,
             list: list,
             project: project
@@ -63,6 +64,7 @@ struct TaskRowViewTests {
         let copy = TaskRowView.duplicate(original, in: world.context)
 
         #expect(copy.title == "Reading")
+        #expect(copy.iconName == "book")
         #expect(copy.colourToken == ColourToken.blue.rawValue)
         #expect(copy.estimatedMinutes == 45)
         #expect(copy.list?.id == list.id)
@@ -88,6 +90,15 @@ struct TaskRowViewTests {
         // The marker guarded by the negative test below: a fresh copy's
         // sub-tasks always start unticked, regardless of the original's state.
         #expect(copy.orderedSubtasks.allSatisfy { $0.isCompleted == false })
+    }
+
+    @Test("Curated task icons have human-readable VoiceOver titles")
+    func taskSymbolsHaveTitles() {
+        #expect(FlowSymbols.taskSymbols.allSatisfy {
+            !FlowSymbols.taskSymbolTitle(for: $0).isEmpty
+        })
+        #expect(FlowSymbols.taskSymbolTitle(for: "book") == "Reading")
+        #expect(FlowSymbols.taskSymbolTitle(for: "circle") == "General")
     }
 
     @Test("Tomorrow's start is midnight the day after, regardless of the time of day passed in")

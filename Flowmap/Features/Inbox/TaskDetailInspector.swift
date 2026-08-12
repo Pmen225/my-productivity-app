@@ -68,11 +68,10 @@ public struct TaskDetailInspector: View {
     public var body: some View {
         Form {
             Section {
-                TextField("Task title", text: $task.title)
-                    .font(FlowFont.sectionTitle)
-                    .focused($titleFieldFocused)
-                    .padding(.vertical, FlowSpacing.s)
-                    .accessibilityLabel("Task title")
+                HStack(alignment: .center, spacing: FlowSpacing.m) {
+                    FlowTaskIconPicker(selection: iconSelection, tint: task.colour)
+                    taskTitleField
+                }
             }
             .listRowBackground(FlowTheme.surface(scheme))
 
@@ -207,6 +206,35 @@ public struct TaskDetailInspector: View {
         .toolbar { creationToolbar }
         .onAppear(perform: insertDraftIfNeeded)
         .onDisappear(perform: resolveDraftOnDismiss)
+    }
+
+    // MARK: - Task identity
+
+    /// Xcode 27's bordered text input participates in the current system
+    /// styling. Earlier SDKs keep the existing unbordered form row.
+    @ViewBuilder
+    private var taskTitleField: some View {
+        #if compiler(>=6.4)
+        if #available(iOS 27.0, macOS 27.0, *) {
+            taskTitleFieldBase
+                .textFieldStyle(.bordered)
+                .textInputBorderShape(.roundedRectangle)
+        } else {
+            taskTitleFieldBase
+                .padding(.vertical, FlowSpacing.s)
+        }
+        #else
+        taskTitleFieldBase
+            .padding(.vertical, FlowSpacing.s)
+        #endif
+    }
+
+    private var taskTitleFieldBase: some View {
+        TextField("Task title", text: $task.title)
+            .font(FlowFont.sectionTitle)
+            .focused($titleFieldFocused)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .accessibilityLabel("Task title")
     }
 
     // MARK: - Worth
@@ -479,6 +507,7 @@ public struct TaskDetailInspector: View {
                     .onSubmit(addSubtask)
                 Button(action: addSubtask) {
                     Image(systemName: "plus.circle.fill")
+                        .flowHitTarget()
                 }
                 .buttonStyle(.plain)
                 .disabled(newSubtaskTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -500,9 +529,16 @@ public struct TaskDetailInspector: View {
                 Text(subtask.title)
                     .strikethrough(subtask.isCompleted)
                     .foregroundStyle(subtask.isCompleted ? .secondary : .primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: FlowSpacing.s)
             }
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(subtask.title)
+        .accessibilityValue(subtask.isCompleted ? "Completed" : "Not completed")
+        .accessibilityHint(subtask.isCompleted ? "Marks this subtask as incomplete" : "Marks this subtask as complete")
     }
 
     // MARK: - Linked map node / note
@@ -556,6 +592,17 @@ public struct TaskDetailInspector: View {
     }
 
     // MARK: - Picker bridges
+
+    private var iconSelection: Binding<String> {
+        Binding(
+            get: { task.iconName.isEmpty ? "circle" : task.iconName },
+            set: { symbol in
+                task.iconName = symbol
+                task.touch()
+                try? context.save()
+            }
+        )
+    }
 
     private var listSelection: Binding<UUID?> {
         Binding(
