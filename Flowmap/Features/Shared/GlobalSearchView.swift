@@ -23,8 +23,20 @@ struct GlobalSearchView: View {
             Divider().overlay(FlowTheme.separator(scheme))
             resultList
         }
+        #if os(macOS)
+        // Sizes the ⌘K panel. On iPhone a 420pt floor is WIDER than the
+        // 402pt screen, which squeezed the field's own padding to nothing
+        // and pushed the magnifier hard against the sheet's rounded corner.
         .frame(minWidth: 420, minHeight: 360)
+        #endif
         .background(FlowTheme.background(scheme))
+        #if os(iOS)
+        // The only sheet in the app presented with stock chrome — it read as
+        // a grey system panel next to every other cream surface.
+        .presentationBackground(FlowTheme.background(scheme))
+        .presentationDragIndicator(.visible)
+        .presentationCornerRadius(FlowRadius.large)
+        #endif
         .onAppear { isFieldFocused = true }
         .onDisappear { searchTask?.cancel() }
     }

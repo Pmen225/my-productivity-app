@@ -10,7 +10,18 @@ struct FlowmapApp: App {
     @State private var notificationRouter = NotificationRouter()
 
     init() {
-        let container = ModelContainerFactory.makeAppContainer()
+        // Harness journeys need a deterministic empty workspace without
+        // deleting a developer's simulator data. The explicit launch flag
+        // swaps only that test process onto the existing in-memory test
+        // container; ordinary, screenshot, demo and production launches keep
+        // the real CloudKit-backed store.
+        let container: ModelContainer
+        if ProcessInfo.processInfo.arguments.contains("-flowmapHarnessClean"),
+           let inMemory = try? ModelContainerFactory.makeInMemoryContainer() {
+            container = inMemory
+        } else {
+            container = ModelContainerFactory.makeAppContainer()
+        }
         self.container = container
         _environment = State(initialValue: AppEnvironment(context: container.mainContext))
     }
@@ -20,16 +31,28 @@ struct FlowmapApp: App {
             RootView()
                 // Identity keyed to the font choice: the type tokens are
                 // statics, not observed state, so a Settings switch lands
-                // everywhere at once by rebuilding the shell.
-                .id(environment.settings.appFontRaw)
+                // everywhere at once by rebuilding the shell. Also keyed to
+                // the theme, since `FlowTheme.palette` is a static too.
+                .id("\(environment.settings.appFontRaw)|\(environment.settings.themeRaw)")
                 .environment(\.flow, environment)
                 .preferredColorScheme(environment.colourScheme)
                 .tint(environment.settings.accent.base)
+                .onAppear {
+                    FlowTheme.palette = FlowPalette.named(environment.settings.themeRaw)
+                }
+                .onChange(of: environment.settings.themeRaw) { _, newValue in
+                    FlowTheme.palette = FlowPalette.named(newValue)
+                }
                 .task {
                     UNUserNotificationCenter.current().delegate = notificationRouter
                     // Screenshot and demo runs seed themselves so the app is
                     // photographed with real content rather than empty states.
-                    if ProcessInfo.processInfo.arguments.contains("-flowmapSeedRolloverReview") {
+                    if ProcessInfo.processInfo.arguments.contains("-flowmapHarnessHierarchy") {
+                        SeedData.loadTaskHierarchyHarness(
+                            into: container.mainContext,
+                            settings: environment.settings
+                        )
+                    } else if ProcessInfo.processInfo.arguments.contains("-flowmapSeedRolloverReview") {
                         SeedData.loadRolloverReviewDemo(into: container.mainContext, settings: environment.settings)
                     } else if ProcessInfo.processInfo.arguments.contains("-flowmapSeedDemo") {
                         SeedData.load(into: container.mainContext, settings: environment.settings)

@@ -13,6 +13,12 @@ import CoreGraphics
 /// single-L corner radius from `roundedElbowPath` (`CanvasView.swift` :1791).
 /// Task 63 pass 3.
 public enum MapConnectorGeometry {
+    /// MindNode's connector stroke weight (Task 63 pass 3 restyle: measured
+    /// ~4pt against the reference, up from the clone's thinner default).
+    /// Read by `MapCanvasView.drawConnector` — the single stroke call for
+    /// every connector, in both layout orientations.
+    public static let lineWidth: CGFloat = 4
+
     /// How far inside a non-root node's own left edge its rail sits.
     /// Ported from `NodeChromeAnchor.railInset` (`CanvasView.swift` :787-790)
     /// — not to be confused with `MapLayout`'s `levelGap`/`indent` (16/30),
@@ -30,6 +36,20 @@ public enum MapConnectorGeometry {
     /// How far inside a depth >= 2 child's side edge a connector's end point
     /// sits. Ported from `branchEnd` (`CanvasView.swift` :832-840).
     public static let sideEntryInset: CGFloat = 10
+
+    /// Where a left-to-right connector leaves the selected node's external
+    /// branch port. Starting at the port, instead of the pill edge, prevents
+    /// the coloured stroke from peeking around the circular disclosure control.
+    public static func horizontalStart(
+        parentCenter: CGPoint,
+        parentSize: CGSize,
+        branchPortOffset: CGFloat
+    ) -> CGPoint {
+        CGPoint(
+            x: parentCenter.x + parentSize.width / 2 + branchPortOffset,
+            y: parentCenter.y
+        )
+    }
 
     /// A node's vertical rail x-coordinate: the root rails from its own
     /// centre; every other node rails `railInset` inside its own left edge.

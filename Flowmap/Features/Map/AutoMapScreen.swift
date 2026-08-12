@@ -16,6 +16,7 @@ struct AutoMapScreen: View {
     @Query private var tasks: [FlowTask]
 
     let scope: TodayScope
+    let includesBacklog: Bool
 
     /// False when this is the Map pane of `MapTodayScreen`, which owns the
     /// nav bar's centre for its own `Map | Today` toggle.
@@ -23,10 +24,13 @@ struct AutoMapScreen: View {
 
     @State private var viewModel: MapViewModel?
     @State private var lastKey: RebuildKey?
+    @AppStorage("autoMapLayoutOrientation") private var savedLayoutOrientationRaw =
+        MapLayoutOrientation.leftToRight.rawValue
 
-    init(scope: TodayScope, showsScreenTitle: Bool = true) {
+    init(scope: TodayScope, showsScreenTitle: Bool = true, includesBacklog: Bool = false) {
         self.scope = scope
         self.showsScreenTitle = showsScreenTitle
+        self.includesBacklog = includesBacklog
     }
 
     private var now: Date { flow?.now ?? Date() }
@@ -39,10 +43,13 @@ struct AutoMapScreen: View {
                 emptyState
             }
         }
-        .navigationTitle(scope.paneTitle)
         .modifier(OptionalMapScreenTitle(title: scope.paneTitle, isEnabled: showsScreenTitle))
         .onAppear { rebuildIfNeeded() }
         .onChange(of: rebuildKey) { _, _ in rebuildIfNeeded() }
+        .onChange(of: viewModel?.layoutOrientation) { _, orientation in
+            guard let orientation else { return }
+            savedLayoutOrientationRaw = orientation.rawValue
+        }
     }
 
     // MARK: - Rebuild (R4: never store, rebuild on change via a cheap fingerprint)
@@ -64,9 +71,11 @@ struct AutoMapScreen: View {
                 task.title,
                 task.colourToken,
                 task.project?.id.uuidString ?? "",
+                task.parentTask?.id.uuidString ?? "",
                 task.statusRaw,
             ]
             parts += task.liveSegments.map { "\($0.id)|\($0.startDate.timeIntervalSince1970)" }
+            parts += task.orderedChildTasks.map { "child|\($0.id)|\($0.sortOrder)" }
             parts += task.orderedSubtasks.map { "\($0.id)|\($0.title)|\($0.isCompleted)" }
             return parts
         }
@@ -78,11 +87,25 @@ struct AutoMapScreen: View {
         guard key != lastKey else { return }
         lastKey = key
 
-        guard let root = AutoMapBuilder.build(scope: scope, reference: now, tasks: tasks) else {
+        // The automatic map is transient, but the person's chosen way of
+        // reading it is not. Creating or editing a task rebuilds the tree;
+        // carry the active orientation into the replacement document so an
+        // org chart never snaps back to a horizontal map mid-authoring.
+        let activeOrientation = viewModel?.layoutOrientation
+            ?? MapLayoutOrientation(rawValue: savedLayoutOrientationRaw)
+            ?? .leftToRight
+
+        guard let root = AutoMapBuilder.build(
+            scope: scope,
+            reference: now,
+            tasks: tasks,
+            includesBacklog: includesBacklog
+        ) else {
             viewModel = nil
             return
         }
         let document = MapDocument(title: scope.paneTitle)
+        document.layoutOrientation = activeOrientation
         document.nodes = root.subtreeNodes
         viewModel = MapViewModel(map: document, context: context)
     }
@@ -93,14 +116,18 @@ struct AutoMapScreen: View {
         VStack(spacing: FlowSpacing.l) {
             FlowEmptyState(
                 symbol: "point.topleft.down.to.point.bottomright.curvepath",
-                title: "Nothing planned yet.",
-                message: "Tasks appear here once your day is planned."
+                title: includesBacklog ? "No tasks yet." : "Nothing planned yet.",
+                message: includesBacklog
+                    ? "Tap + to add a task, then grow it into a branch."
+                    : "Tasks appear here once your day is planned."
             )
-            SecondaryActionButton("Plan your day", systemImage: "square.stack") {
-                NotificationCenter.default.post(
-                    name: .flowmapOpenDeepLink,
-                    object: DeepLinkRequest(destination: .inbox)
-                )
+            if !includesBacklog {
+                SecondaryActionButton("Plan your day", systemImage: "square.stack") {
+                    NotificationCenter.default.post(
+                        name: .flowmapOpenDeepLink,
+                        object: DeepLinkRequest(destination: .inbox)
+                    )
+                }
             }
         }
         .padding(FlowSpacing.screen)
@@ -115,13 +142,11 @@ private struct OptionalMapScreenTitle: ViewModifier {
 
     func body(content: Content) -> some View {
         if isEnabled {
-            content.flowScreenTitle(title)
-        } else {
-            #if os(iOS)
-            content.navigationBarTitleDisplayMode(.inline)
-            #else
             content
-            #endif
+                .navigationTitle(title)
+                .flowScreenTitle(title)
+        } else {
+            content
         }
     }
 }

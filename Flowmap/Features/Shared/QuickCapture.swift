@@ -161,6 +161,24 @@ struct QuickCaptureView: View {
     @Query(sort: \Project.sortOrder) private var projects: [Project]
     @Query(sort: \Initiative.sortOrder) private var initiatives: [Initiative]
 
+    /// Preselects the project chip — set by callers that already know which
+    /// project the new task belongs to (e.g. a project's own task list).
+    var initialProjectID: UUID?
+    /// Preselects a due date — set by callers anchored to a specific day
+    /// (e.g. Calendar's quick-add), so that context is not lost when they
+    /// route through this shared sheet instead of their own form.
+    var initialDueDate: Date?
+    /// Files the new task straight onto a user list — set by that list's own
+    /// screen so the task lands where it was created, not in the Inbox.
+    var initialListID: UUID?
+    /// Creates the new task as a real child of an existing `FlowTask`. Map
+    /// uses this route, so node authoring and ordinary capture never diverge.
+    var initialParentTaskID: UUID?
+    /// Mirrors the old Today quick-add's behaviour: an undated task created
+    /// from the Today list is flagged onto today rather than left in the
+    /// Inbox, as long as today's plan isn't already sealed.
+    var flagForTodayIfUndated: Bool = false
+
     @State private var kind: FlowCreateKind = .task
     @State private var title = ""
     @State private var minutes = 30
@@ -172,6 +190,9 @@ struct QuickCaptureView: View {
     @State private var subtaskTitles: [String] = []
     @State private var note = ""
     @State private var initiativeID: UUID?
+    /// The creation draft lives HERE, not in `TaskDetailInspector` — `@State`
+    /// survives the body re-evaluations that re-init the inspector struct.
+    @State private var draftTask = TaskDraft.makeTask(estimatedMinutes: 30)
 
     private var projectOptions: [FlowCreateChipOption] {
         projects.map { FlowCreateChipOption(id: $0.id, title: $0.title, colour: $0.colour) }
@@ -182,25 +203,59 @@ struct QuickCaptureView: View {
     }
 
     var body: some View {
-        FlowCreateSheet(
-            kind: $kind,
-            title: $title,
-            minutes: $minutes,
-            projectID: $projectID,
-            hasDue: $hasDue,
-            dueDate: $dueDate,
-            preferredPeriod: $preferredPeriod,
-            recurrence: $recurrence,
-            subtaskTitles: $subtaskTitles,
-            note: $note,
-            initiativeID: $initiativeID,
-            projects: projectOptions,
-            initiatives: initiativeOptions,
-            showsDurationAndProject: kind == .task,
-            onClose: { dismiss() },
-            onCreate: capture
+        // One-task-card spec (2026-08-10): a task now opens the fused
+        // `TaskDetailInspector` card, never this sheet's own design — the
+        // founder rejected having two differently designed task-creation
+        // surfaces. Project and Initiative are a different model each and
+        // keep `FlowCreateSheet` unchanged. `kind` stays shared so switching
+        // kind from either surface's own header menu re-routes here.
+        Group {
+            if kind == .task {
+                NavigationStack {
+                    TaskDetailInspector(draftTask: draftTask, draftSeed: draftSeed, kindSelection: $kind)
+                }
+            } else {
+                FlowCreateSheet(
+                    kind: $kind,
+                    title: $title,
+                    minutes: $minutes,
+                    projectID: $projectID,
+                    hasDue: $hasDue,
+                    dueDate: $dueDate,
+                    preferredPeriod: $preferredPeriod,
+                    recurrence: $recurrence,
+                    subtaskTitles: $subtaskTitles,
+                    note: $note,
+                    initiativeID: $initiativeID,
+                    projects: projectOptions,
+                    initiatives: initiativeOptions,
+                    showsDurationAndProject: kind == .task,
+                    onClose: { dismiss() },
+                    onCreate: capture
+                )
+            }
+        }
+        .onAppear {
+            minutes = flow?.settings.defaultTaskMinutes ?? 30
+            if let initialProjectID { projectID = initialProjectID }
+            if let initialDueDate {
+                hasDue = true
+                dueDate = initialDueDate
+            }
+        }
+    }
+
+    /// The task card's seed — the same context `capture()`'s `.task` branch
+    /// used to apply directly (project/list/due date/"flag for today"), now
+    /// handed to `TaskDetailInspector` since it owns the insert.
+    private var draftSeed: TaskDraft.Seed {
+        TaskDraft.Seed(
+            projectID: initialProjectID,
+            listID: initialListID,
+            parentTaskID: initialParentTaskID,
+            dueDate: initialDueDate,
+            flagForTodayIfUndated: flagForTodayIfUndated
         )
-        .onAppear { minutes = flow?.settings.defaultTaskMinutes ?? 30 }
     }
 
     /// One kind, one entity: a task, a project, or the goal those hang off.
@@ -214,29 +269,10 @@ struct QuickCaptureView: View {
 
         switch kind {
         case .task:
-            let project = projects.first { $0.id == projectID }
-            let due = flow?.scheduling().dueDateForNewTask(
-                hasDue ? dueDate : nil,
-                now: flow?.now ?? Date()
-            )
-            let task = FlowTask(
-                title: trimmed,
-                status: .inbox,
-                estimatedMinutes: minutes,
-                dueDate: due,
-                project: project
-            )
-            task.preferredPeriod = preferredPeriod
-            task.recurrence = recurrence
-            context.insert(task)
-            attachSubtasks(to: task)
-            attachNote(to: task)
-            // The mock says "Task added — Inbox + map"; nothing here puts it on
-            // the map, so the pill claims only what actually happened. A future
-            // due date routes the task into Upcoming instead of the Inbox
-            // (SmartView.upcoming matches dueDate >= tomorrow), so the HUD
-            // says where it actually went.
-            flow?.moments.show(.hud("Task added — \(destination(for: due))"))
+            // Unreachable: `kind == .task` renders the fused
+            // `TaskDetailInspector`, never this sheet — the task draft
+            // lifecycle lives in `TaskDraft`.
+            return
         case .project:
             let project = Project(title: trimmed, sortOrder: projects.count)
             project.initiative = initiatives.first { $0.id == initiativeID }
@@ -257,34 +293,5 @@ struct QuickCaptureView: View {
         preferredPeriod = .anytime
         recurrence = .none
         dismiss()
-    }
-
-    /// Where a task with `due` actually lands, mirroring `SmartView`'s own
-    /// day-boundary logic (dueDate >= tomorrow is Upcoming; anything before
-    /// that, including today, is Today) so the HUD never claims a screen the
-    /// task will not actually appear on.
-    private func destination(for due: Date?) -> String {
-        guard let due else { return "Inbox" }
-        let calendar = Calendar.current
-        let now = flow?.now ?? Date()
-        let dayEnd = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now)) ?? now
-        return due >= dayEnd ? "Upcoming" : "Today"
-    }
-
-    private func attachSubtasks(to task: FlowTask) {
-        for (index, subtaskTitle) in subtaskTitles.enumerated() {
-            context.insert(Subtask(title: subtaskTitle, sortOrder: index, task: task))
-        }
-    }
-
-    /// The sheet's note is one paragraph, so it becomes a `Note` with a single
-    /// block — the same shape the notes screen writes, rather than a second
-    /// way of storing text on a task.
-    private func attachNote(to task: FlowTask) {
-        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        let attached = Note(title: task.title, task: task)
-        context.insert(attached)
-        context.insert(NoteBlock(type: .paragraph, text: trimmed, note: attached))
     }
 }

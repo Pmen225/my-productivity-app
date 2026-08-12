@@ -124,6 +124,13 @@ public enum SeedData {
             branchProjects[name] = project
         }
 
+        // One seeded initiative, so the Plan page's Initiatives section has a
+        // real row to photograph instead of its empty state.
+        let initiative = Initiative(title: "Autumn reset", summary: "Steadier weeks: focus, health, and momentum.", workspace: workspace)
+        context.insert(initiative)
+        branchProjects["Focus Goals"]?.initiative = initiative
+        branchProjects["Personal Wellbeing"]?.initiative = initiative
+
         for (index, demo) in demoTasks.enumerated() {
             let task = FlowTask(
                 title: demo.title,
@@ -208,6 +215,45 @@ public enum SeedData {
         settings.sealedPlanDay = sourceDay
         settings.lastRolloverReviewedDay = nil
         settings.appearance = .light
+        settings.touch()
+        try? context.save()
+    }
+
+    /// A minimal, in-memory hierarchy used by the focused UI screenshot test.
+    /// Keeping this separate from the full demo seed makes the visual contract
+    /// deterministic without changing the founder-facing demo workspace.
+    @MainActor
+    public static func loadTaskHierarchyHarness(
+        into context: ModelContext,
+        settings: AppSettings
+    ) {
+        let parent = FlowTask(
+            title: "Project A",
+            status: .inbox,
+            estimatedMinutes: 30,
+            colourToken: ColourToken.violet.rawValue,
+            sortOrder: 0
+        )
+        let dependency = FlowTask(
+            title: "Subtask B",
+            status: .inbox,
+            estimatedMinutes: 30,
+            colourToken: ColourToken.violet.rawValue,
+            sortOrder: 0
+        )
+        let independent = FlowTask(
+            title: "Root C",
+            status: .inbox,
+            estimatedMinutes: 30,
+            colourToken: ColourToken.violet.rawValue,
+            sortOrder: 1
+        )
+
+        context.insert(parent)
+        context.insert(dependency)
+        context.insert(independent)
+        _ = dependency.assignParent(parent)
+        settings.appearance = .dark
         settings.touch()
         try? context.save()
     }

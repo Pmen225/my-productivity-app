@@ -1,5 +1,50 @@
 import SwiftUI
 
+/// Pure viewport maths shared by the live gesture and its regression tests.
+/// Keeping this outside the view prevents the pinch anchor from drifting when
+/// the gesture implementation changes.
+enum MapViewportGeometry {
+    static func clampedZoom(_ zoom: CGFloat, minimum: CGFloat, maximum: CGFloat) -> CGFloat {
+        min(max(zoom, minimum), maximum)
+    }
+
+    /// Returns the pan offset that keeps the content point under `anchor`
+    /// under that same finger while zoom changes.
+    static func anchoredPanOffset(
+        currentPan: CGSize,
+        currentZoom: CGFloat,
+        nextZoom: CGFloat,
+        anchor: CGPoint
+    ) -> CGSize {
+        guard currentZoom > 0 else { return currentPan }
+        let ratio = nextZoom / currentZoom
+        return CGSize(
+            width: anchor.x - (anchor.x - currentPan.width) * ratio,
+            height: anchor.y - (anchor.y - currentPan.height) * ratio
+        )
+    }
+
+    static func screenFrame(
+        contentCentre: CGPoint,
+        contentSize: CGSize,
+        zoom: CGFloat,
+        pan: CGSize,
+        minimumHitSize: CGFloat = 44
+    ) -> CGRect {
+        let width = max(contentSize.width * zoom, minimumHitSize)
+        let height = max(contentSize.height * zoom, minimumHitSize)
+        let centre = CGPoint(
+            x: contentCentre.x * zoom + pan.width,
+            y: contentCentre.y * zoom + pan.height
+        )
+        return CGRect(x: centre.x - width / 2, y: centre.y - height / 2, width: width, height: height)
+    }
+
+    static func shouldBeginCanvasPan(at location: CGPoint, nodeFrames: [CGRect]) -> Bool {
+        !nodeFrames.contains { $0.contains(location) }
+    }
+}
+
 /// The infinite-feeling, zoomable, pannable canvas.
 ///
 /// Nodes and connectors are drawn as siblings inside one container that
@@ -17,8 +62,29 @@ struct MapCanvasView: View {
     @State private var hasFitted = false
     /// Once the user pans or zooms by hand, automatic re-fitting stops.
     @State private var userAdjustedCanvas = false
-    @GestureState private var pinchDelta: CGFloat = 1
+    private struct PinchAdjustment {
+        var scale: CGFloat = 1
+        var pan: CGSize = .zero
+    }
+
+    @GestureState private var pinchAdjustment = PinchAdjustment()
     @GestureState private var panDelta: CGSize = .zero
+    @Namespace private var layoutSelection
+    /// Founder: "I should be able to hold a task in Maps and edit it from
+    /// there." Set from the context menu's "Edit task" item — the menu
+    /// itself already opens on a long-press, so no separate gesture is
+    /// needed. Hosted on this view's own body, not a nested one: a `.sheet`
+    /// attached inside a `Section`-rooted view never presents (see
+    /// `PlanInboxSection`'s prior bug), and this canvas's body root is a
+    /// plain `GeometryReader`, so it is safe here.
+    @State private var taskSheetRoute: TaskSheetRoute?
+
+    private struct TaskSheetRoute: Identifiable {
+        enum Mode: Equatable { case edit, createChild }
+        let task: FlowTask
+        let mode: Mode
+        var id: String { "\(task.id.uuidString)-\(mode == .edit ? "edit" : "child")" }
+    }
 
     private var metrics: MapLayout.Metrics { .shared }
     private let margin: CGFloat = 160
@@ -31,41 +97,44 @@ struct MapCanvasView: View {
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .topLeading) {
-                MapPalette.canvas(scheme)
+                FlowTheme.background(scheme)
                     .contentShape(Rectangle())
-                    .gesture(panGesture)
 
                 canvasContent
-                    .scaleEffect(viewModel.zoom * pinchDelta, anchor: .topLeading)
+                    .scaleEffect(viewModel.zoom * pinchAdjustment.scale, anchor: .topLeading)
                     .offset(
-                        x: viewModel.panOffset.width + panDelta.width,
-                        y: viewModel.panOffset.height + panDelta.height
+                        x: viewModel.panOffset.width + panDelta.width + pinchAdjustment.pan.width,
+                        y: viewModel.panOffset.height + panDelta.height + pinchAdjustment.pan.height
                     )
             }
+            // The map content is intentionally wider/taller than the phone.
+            // Keep chrome aligned to the viewport, not to that infinite-feeling
+            // content frame, or the layout control lands hundreds of points
+            // offscreen at the canvas's trailing edge.
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+            // Host panning on the viewport itself. The content layer fills a
+            // much larger frame than the phone, so a gesture attached only to
+            // the background never receives drags over that layer's empty
+            // space. Simultaneous recognition preserves node taps and menus;
+            // the 10pt threshold below keeps ordinary taps out of the drag.
+            .simultaneousGesture(panGesture)
             .simultaneousGesture(pinchGesture)
             // Ahead of the pan gesture in the chain, so a quick double tap is
             // read as a reset rather than two aborted drags.
             .simultaneousGesture(TapGesture(count: 2).onEnded { resetViewport() })
             .onAppear {
                 viewModel.viewportSize = proxy.size
-                // A map that has never been positioned opens fitted, rather than
-                // with the tree running off the edge of the canvas.
-                //
-                // Deferred by one turn of the runloop: at `onAppear` the child
-                // relationships have not always been faulted in, so fitting
-                // immediately would frame the root node alone.
-                guard !hasFitted, viewModel.map.canvasOffsetX == 0, viewModel.map.canvasOffsetY == 0
-                else { return }
-                hasFitted = true
-                Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(120))
-                    viewModel.fitToMap(viewportSize: proxy.size)
-                    // Second pass after SwiftData has had time to fault in the
-                    // whole tree — the first fit often sees root + branches only.
-                    try? await Task.sleep(for: .milliseconds(600))
-                    guard !userAdjustedCanvas else { return }
-                    viewModel.fitToMap(viewportSize: proxy.size)
-                }
+                scheduleAutomaticFit(viewportSize: proxy.size)
+            }
+            // AutoMapScreen replaces its transient MapViewModel whenever the
+            // task hierarchy changes. Keep this view's sheet route alive, but
+            // reset the fit state for the new tree; keying the whole canvas by
+            // map id dismisses an in-flight child-task sheet as soon as its
+            // blank draft enters SwiftData.
+            .onChange(of: viewModel.map.id) { _, _ in
+                hasFitted = false
+                userAdjustedCanvas = false
+                scheduleAutomaticFit(viewportSize: proxy.size)
             }
             .onChange(of: proxy.size) { _, newValue in viewModel.viewportSize = newValue }
             // SwiftData faults child relationships in lazily, so the node set
@@ -79,8 +148,45 @@ struct MapCanvasView: View {
                 if viewModel.map.nodeCount == 0 { emptyState }
             }
             .overlay(alignment: .top) { if viewModel.isSearchPresented { searchBar } }
+            .overlay(alignment: .topTrailing) {
+                mapLayoutControl
+                    .padding(.top, FlowSpacing.s)
+                    .padding(.trailing, FlowSpacing.screen)
+            }
         }
         .clipped()
+        .sheet(item: $taskSheetRoute) { route in
+            switch route.mode {
+            case .edit:
+                NavigationStack { TaskDetailInspector(task: route.task) }
+            case .createChild:
+                QuickCaptureView(
+                    initialProjectID: route.task.project?.id,
+                    initialListID: route.task.list?.id,
+                    initialParentTaskID: route.task.id
+                )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(FlowRadius.large)
+            }
+        }
+    }
+
+    /// A map that has never been positioned opens fitted, rather than with
+    /// the tree running off the edge of the canvas. Deferred twice because
+    /// SwiftData can fault child relationships in after the first layout.
+    private func scheduleAutomaticFit(viewportSize: CGSize) {
+        guard !hasFitted,
+              viewModel.map.canvasOffsetX == 0,
+              viewModel.map.canvasOffsetY == 0 else { return }
+        hasFitted = true
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(120))
+            viewModel.fitToMap(viewportSize: viewportSize)
+            try? await Task.sleep(for: .milliseconds(600))
+            guard !userAdjustedCanvas else { return }
+            viewModel.fitToMap(viewportSize: viewportSize)
+        }
     }
 
     // MARK: - Merged positions
@@ -144,16 +250,17 @@ struct MapCanvasView: View {
                         parentDepth: parent.depth,
                         childDepth: node.depth,
                         orientation: orientation,
-                        // The CHILD's own branch colour, not the parent's —
-                        // each branch reads as one coloured thread from its
-                        // pill back to its parent, matching MindNode.
-                        colour: MapPalette.branchColour(rootChildIndex: node.rootChildIndex),
+                        // The connector is the same semantic colour as its
+                        // child task/project, so Plan, wheel and map never
+                        // disagree about what colour a piece of work owns.
+                        colour: node.colour.base.opacity(0.68),
                         dimmed: isDimmed(node) || isDimmed(parent),
                         in: context
                     )
                 }
             }
             .frame(width: size.width, height: size.height, alignment: .topLeading)
+            .allowsHitTesting(false)
 
             ForEach(viewModel.visibleNodes, id: \.id) { node in
                 let raw = positions[node.id] ?? .zero
@@ -188,7 +295,11 @@ struct MapCanvasView: View {
         let path: Path
         switch orientation {
         case .leftToRight:
-            let origin = CGPoint(x: start.x + startSize.width / 2, y: start.y)
+            let origin = MapConnectorGeometry.horizontalStart(
+                parentCenter: start,
+                parentSize: startSize,
+                branchPortOffset: metrics.accessoryAllowance / 2
+            )
             let destination = CGPoint(x: end.x - endSize.width / 2, y: end.y)
             path = Self.elbowPath(from: origin, to: destination, horizontal: true, endsHorizontally: false)
         case .topDown:
@@ -206,7 +317,9 @@ struct MapCanvasView: View {
         context.stroke(
             path,
             with: .color(colour.opacity(dimmed ? 0.12 : 1)),
-            style: StrokeStyle(lineWidth: 6, lineCap: .round)
+            // Butt caps stop the 4pt stroke extending beyond its measured
+            // node ports; the rounded geometry still supplies soft elbows.
+            style: StrokeStyle(lineWidth: MapConnectorGeometry.lineWidth, lineCap: .butt)
         )
     }
 
@@ -289,13 +402,14 @@ struct MapCanvasView: View {
         MapNodeView(
             node: node,
             size: size,
-            rootChildIndex: node.rootChildIndex,
+            orientation: viewModel.layoutOrientation,
             isSelected: viewModel.selectedNodeID == node.id,
             isDimmed: isDimmed(node),
             isCompact: viewModel.isCompact,
             isSearchMatch: viewModel.searchMatchIDs.contains(node.id),
-            onSelect: { viewModel.selectedNodeID = node.id },
-            onToggleCollapse: { viewModel.toggleCollapse(node) }
+            onSelect: { select(node) },
+            onToggleCollapse: { toggleCollapse(node) },
+            onAddChild: addChildAction(for: node)
         )
         .position(point)
         .contextMenu { contextMenu(for: node) }
@@ -316,12 +430,36 @@ struct MapCanvasView: View {
 
     // MARK: - Gestures
 
+    private var nodeHitFrames: [CGRect] {
+        let positions = positionMap
+        let sizes = sizeMap
+        let shift = originShift
+        return viewModel.visibleNodes.compactMap { node in
+            guard let point = positions[node.id], let size = sizes[node.id] else { return nil }
+            return MapViewportGeometry.screenFrame(
+                contentCentre: CGPoint(x: point.x + shift.x, y: point.y + shift.y),
+                contentSize: size,
+                zoom: viewModel.zoom,
+                pan: viewModel.panOffset
+            )
+        }
+    }
+
+    private func canBeginCanvasPan(at location: CGPoint) -> Bool {
+        MapViewportGeometry.shouldBeginCanvasPan(at: location, nodeFrames: nodeHitFrames)
+    }
+
     private var panGesture: some Gesture {
-        DragGesture(minimumDistance: 2)
+        // Four points tracks a deliberate background drag promptly. A drag
+        // beginning on any node is rejected, so slightly moving while tapping
+        // a label never pulls the entire map away.
+        DragGesture(minimumDistance: 4)
             .updating($panDelta) { value, state, _ in
+                guard canBeginCanvasPan(at: value.startLocation) else { return }
                 state = value.translation
             }
             .onEnded { value in
+                guard canBeginCanvasPan(at: value.startLocation) else { return }
                 userAdjustedCanvas = true
                 viewModel.panOffset.width += value.translation.width
                 viewModel.panOffset.height += value.translation.height
@@ -330,20 +468,59 @@ struct MapCanvasView: View {
     }
 
     private var pinchGesture: some Gesture {
-        MagnificationGesture()
-            .updating($pinchDelta) { value, state, _ in state = value }
+        MagnifyGesture()
+            .updating($pinchAdjustment) { value, state, _ in
+                let nextZoom = MapViewportGeometry.clampedZoom(
+                    viewModel.zoom * value.magnification,
+                    minimum: Self.minimumZoom,
+                    maximum: Self.maximumZoom
+                )
+                let anchor = CGPoint(
+                    x: value.startAnchor.x * viewModel.viewportSize.width,
+                    y: value.startAnchor.y * viewModel.viewportSize.height
+                )
+                let nextPan = MapViewportGeometry.anchoredPanOffset(
+                    currentPan: viewModel.panOffset,
+                    currentZoom: viewModel.zoom,
+                    nextZoom: nextZoom,
+                    anchor: anchor
+                )
+                state.scale = nextZoom / viewModel.zoom
+                state.pan = CGSize(
+                    width: nextPan.width - viewModel.panOffset.width,
+                    height: nextPan.height - viewModel.panOffset.height
+                )
+            }
             .onEnded { value in
                 userAdjustedCanvas = true
-                viewModel.zoom = min(max(viewModel.zoom * value, Self.minimumZoom), Self.maximumZoom)
+                let nextZoom = MapViewportGeometry.clampedZoom(
+                    viewModel.zoom * value.magnification,
+                    minimum: Self.minimumZoom,
+                    maximum: Self.maximumZoom
+                )
+                let anchor = CGPoint(
+                    x: value.startAnchor.x * viewModel.viewportSize.width,
+                    y: value.startAnchor.y * viewModel.viewportSize.height
+                )
+                viewModel.panOffset = MapViewportGeometry.anchoredPanOffset(
+                    currentPan: viewModel.panOffset,
+                    currentZoom: viewModel.zoom,
+                    nextZoom: nextZoom,
+                    anchor: anchor
+                )
+                viewModel.zoom = nextZoom
                 viewModel.persistCanvasState()
             }
     }
 
-    /// The mock's clamp (`707-723`). The app had 0.25–3, which let the tree
-    /// shrink past legibility at the bottom and stopped short of the mock's
-    /// close-in reading at the top.
-    static let minimumZoom: CGFloat = 0.5
-    static let maximumZoom: CGFloat = 3.5
+    /// Widened 2026-08-10 — founder: "allow freee zoom till certain extent in
+    /// map". 0.5–3.5 (itself widened from the mock's `707-723` 0.25–3) still
+    /// read as capped under a real pinch; 0.35–6.0 gives the gesture room
+    /// while keeping both ends bounded — text stays legible at the top,
+    /// pills stay hittable (44pt rule applies to rendered size) at the
+    /// bottom. Read by both clamp sites below; do not add a third copy.
+    static let minimumZoom: CGFloat = 0.35
+    static let maximumZoom: CGFloat = 6.0
 
     /// Double-tap anywhere on the canvas puts pan and zoom back where they
     /// started — the way out of being lost that the mock gives, and the
@@ -356,12 +533,52 @@ struct MapCanvasView: View {
         viewModel.fitToMap(viewportSize: viewModel.viewportSize)
     }
 
+    private func select(_ node: MapNode) {
+        guard viewModel.selectedNodeID != node.id else { return }
+        viewModel.selectedNodeID = node.id
+        if flow?.settings.focusHapticsEnabled ?? false { FlowHaptic.light.play() }
+    }
+
+    private func toggleCollapse(_ node: MapNode) {
+        let update = {
+            viewModel.toggleCollapse(node)
+            viewModel.fitToMap(viewportSize: viewModel.viewportSize)
+        }
+        if reduceMotion {
+            update()
+        } else {
+            withAnimation(FlowMotion.expand) { update() }
+        }
+        if flow?.settings.focusHapticsEnabled ?? false { FlowHaptic.light.play() }
+    }
+
+    private func addChildAction(for node: MapNode) -> (() -> Void)? {
+        guard let task = node.displayTask,
+              task.hierarchyDepth < FlowTask.maximumHierarchyLevels - 1 else { return nil }
+        return { taskSheetRoute = TaskSheetRoute(task: task, mode: .createChild) }
+    }
+
     // MARK: - Context menu
 
-    /// Collapse-toggle and Focus Branch are the only node actions the
-    /// read-only auto map offers (R1–R7: no authoring).
+    /// Collapse-toggle and Focus Branch were the only node actions while the
+    /// auto map stayed read-only (R1–R7: no authoring). Reversed 2026-08-10 —
+    /// founder: "I should be able to hold a task in Maps and edit it from
+    /// there" — so a node backed by a real task also gets "Edit task",
+    /// opening the same `TaskDetailInspector` every other screen uses
+    /// (`editingTask` above). Still no node CREATION or deletion from here;
+    /// only editing an existing linked task.
     @ViewBuilder
     private func contextMenu(for node: MapNode) -> some View {
+        if let task = node.displayTask {
+            Button("Edit task", systemImage: "pencil") {
+                taskSheetRoute = TaskSheetRoute(task: task, mode: .edit)
+            }
+            if task.hierarchyDepth < FlowTask.maximumHierarchyLevels - 1 {
+                Button("New child task", systemImage: "plus") {
+                    taskSheetRoute = TaskSheetRoute(task: task, mode: .createChild)
+                }
+            }
+        }
         if node.hasChildren {
             Button(
                 node.isCollapsed ? "Expand branch" : "Collapse branch",
@@ -390,6 +607,112 @@ struct MapCanvasView: View {
     private func zoom(by delta: CGFloat) {
         viewModel.zoom = min(max(viewModel.zoom + delta, Self.minimumZoom), Self.maximumZoom)
         viewModel.persistCanvasState()
+    }
+
+    @ViewBuilder
+    private var mapLayoutControl: some View {
+        #if os(iOS)
+        if #available(iOS 26.0, *) {
+            liquidGlassLayoutControl
+        } else {
+            fallbackLayoutControl
+        }
+        #else
+        fallbackLayoutControl
+        #endif
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
+    private var liquidGlassLayoutControl: some View {
+        GlassEffectContainer(spacing: 2) {
+            HStack(spacing: 0) {
+                ForEach(MapLayoutOrientation.allCases, id: \.rawValue) { orientation in
+                    let isSelected = viewModel.layoutOrientation == orientation
+                    Button { selectLayout(orientation) } label: {
+                        Image(systemName: orientation.symbolName)
+                            .font(.system(size: 18, weight: .medium))
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(isSelected ? FlowTheme.accent : FlowTheme.secondaryText(scheme))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(LayoutPressStyle())
+                    .background {
+                        if isSelected {
+                            Circle()
+                                .fill(FlowTheme.accent.opacity(scheme == .dark ? 0.12 : 0.06))
+                                .glassEffect(
+                                    .regular.tint(FlowTheme.accent.opacity(scheme == .dark ? 0.22 : 0.13)).interactive(),
+                                    in: Circle()
+                                )
+                                .glassEffectID("map-layout-selection", in: layoutSelection)
+                                .matchedGeometryEffect(id: "map-layout-selection-position", in: layoutSelection)
+                        }
+                    }
+                    .accessibilityIdentifier(orientation.accessibilityIdentifier)
+                    .accessibilityLabel(orientation.displayName)
+                    .accessibilityHint("Changes the map layout")
+                    .accessibilityValue(isSelected ? "Selected" : "")
+                    .accessibilityAddTraits(isSelected ? .isSelected : [])
+                }
+            }
+            .padding(4)
+            .glassEffect(.clear.interactive(), in: Capsule(style: .continuous))
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private var fallbackLayoutControl: some View {
+        HStack(spacing: 0) {
+            ForEach(MapLayoutOrientation.allCases, id: \.rawValue) { orientation in
+                let isSelected = viewModel.layoutOrientation == orientation
+                Button { selectLayout(orientation) } label: {
+                    Image(systemName: orientation.symbolName)
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(isSelected ? FlowTheme.accent : FlowTheme.secondaryText(scheme))
+                        .frame(width: 44, height: 44)
+                        .background(isSelected ? FlowTheme.accent.opacity(0.10) : .clear, in: Circle())
+                        .contentShape(Circle())
+                }
+                .buttonStyle(LayoutPressStyle())
+                .accessibilityIdentifier(orientation.accessibilityIdentifier)
+                .accessibilityLabel(orientation.displayName)
+                .accessibilityHint("Changes the map layout")
+                .accessibilityValue(isSelected ? "Selected" : "")
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            }
+        }
+        .padding(4)
+        .background(.thinMaterial, in: Capsule(style: .continuous))
+        .overlay(Capsule(style: .continuous).stroke(FlowTheme.glassBorder(scheme), lineWidth: 1))
+        .shadow(color: FlowTheme.shadow(scheme), radius: 8, y: 3)
+        .accessibilityElement(children: .contain)
+    }
+
+    private func selectLayout(_ orientation: MapLayoutOrientation) {
+        guard viewModel.layoutOrientation != orientation else { return }
+        userAdjustedCanvas = false
+        let update = {
+            viewModel.layoutOrientation = orientation
+            viewModel.fitToMap(viewportSize: viewModel.viewportSize)
+        }
+        if reduceMotion {
+            update()
+        } else {
+            withAnimation(FlowMotion.travel) { update() }
+        }
+        if flow?.settings.focusHapticsEnabled ?? false { FlowHaptic.light.play() }
+    }
+
+    private struct LayoutPressStyle: ButtonStyle {
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .opacity(configuration.isPressed ? 0.70 : 1)
+                .scaleEffect(configuration.isPressed && !reduceMotion ? 0.94 : 1)
+                .animation(reduceMotion ? nil : FlowMotion.tap, value: configuration.isPressed)
+        }
     }
 
     // MARK: - Search bar

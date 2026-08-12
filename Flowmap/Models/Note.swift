@@ -7,6 +7,7 @@ public final class Note {
     public var id: UUID = UUID()
     public var title: String = ""
     public var iconName: String = "doc.text"
+    public var colourToken: String = ColourToken.blue.rawValue
     public var isFavourite: Bool = false
     public var isArchived: Bool = false
     public var isTrashed: Bool = false
@@ -39,6 +40,8 @@ public final class Note {
     }
 
     public func touch(_ date: Date = Date()) { updatedAt = date }
+
+    public var colour: ColourToken { ColourToken.token(colourToken) }
 
     public var orderedBlocks: [NoteBlock] {
         (blocks ?? []).sorted { $0.sortOrder < $1.sortOrder }

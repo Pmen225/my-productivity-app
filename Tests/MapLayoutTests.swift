@@ -58,30 +58,46 @@ struct MapLayoutTests {
         #expect(abs(rootWidthUnderWiderChildPadding - baseRootWidth) < 0.0001)
     }
 
-    @Test("Metrics.shared's default padding matches EditableNodeLabel :203-217: root 30x20pt, others 26x17pt")
-    func defaultMetricsMatchSpecValues() {
+    @Test("Metrics.shared keeps compact MindNode labels and an external 58pt branch target")
+    func defaultMetricsMatchCompactMapSystem() {
         let metrics = MapLayout.Metrics.shared
-        #expect(metrics.rootHorizontalPadding == 30)
-        #expect(metrics.horizontalPadding == 26)
-        #expect(metrics.rootVerticalPadding == 20)
-        #expect(metrics.verticalPadding == 17)
+        #expect(metrics.minPillWidth == 72)
+        #expect(metrics.nodeHeight == 44)
+        #expect(metrics.compactNodeHeight == 44)
+        #expect(metrics.rootHorizontalPadding == 16)
+        #expect(metrics.horizontalPadding == 12)
+        #expect(metrics.rootVerticalPadding == 12)
+        #expect(metrics.verticalPadding == 8)
+        #expect(metrics.accessoryAllowance == 58)
+        #expect(metrics.inlineAccessoryAllowance == 29)
     }
 
     // MARK: - Title font sizes (Task 63 MindNode restyle, item 3 — Layout.swift :148-174)
 
-    @Test("titleFontSize matches the clone's NodeTextSizeStyle: standard 25/20, compact 21/17")
-    func titleFontSizeMatchesClone() {
-        #expect(MapLayout.titleFontSize(isRoot: true, isCompact: false) == 25)
-        #expect(MapLayout.titleFontSize(isRoot: false, isCompact: false) == 20)
-        #expect(MapLayout.titleFontSize(isRoot: true, isCompact: true) == 21)
-        #expect(MapLayout.titleFontSize(isRoot: false, isCompact: true) == 17)
+    @Test("titleFontSize matches the shared compact FlowFont map tokens")
+    func titleFontSizeMatchesDesignSystem() {
+        #expect(MapLayout.titleFontSize(isRoot: true, isCompact: false) == 13)
+        #expect(MapLayout.titleFontSize(isRoot: false, isCompact: false) == 13)
+        #expect(MapLayout.titleFontSize(isRoot: true, isCompact: true) == 13)
+        #expect(MapLayout.titleFontSize(isRoot: false, isCompact: true) == 11)
+    }
+
+    @Test("a branch affordance never widens its label pill")
+    func branchControlDoesNotWasteLabelWidth() {
+        let leaf = MapNode(title: "Compact")
+        let branch = MapNode(title: "Compact")
+        _ = MapNode(title: "Child", parent: branch)
+
+        let leafWidth = MapLayout.pillSize(for: leaf, isCompact: false).width
+        let branchWidth = MapLayout.pillSize(for: branch, isCompact: false).width
+        #expect(branchWidth == leafWidth)
     }
 
     // MARK: - Top-down tree layout (Task 63 pass 2 — MindNode vertical
     // orientation, ported from `MindMapLayoutEngine.layoutNodes`,
     // MindNodeClone/Sources/MindNodeClone/Layout.swift :377-513, :720-736)
 
-    @Test("topDown: root sits top-centre — above every depth-1 child, x centred on the depth-1 row's span")
+    @Test("topDown: root sits top-centre above the two-column depth-1 flow")
     func topDownRootSitsTopCentre() throws {
         let root = MapNode(title: "Root", sortOrder: 0)
         let branchA = MapNode(title: "Branch A", sortOrder: 0, parent: root)
@@ -98,15 +114,14 @@ struct MapLayoutTests {
         #expect(rootPos.y < bPos.y)
         #expect(rootPos.y < cPos.y)
 
-        let aWidth = MapLayout.pillSize(for: branchA, isCompact: false).width
-        let cWidth = MapLayout.pillSize(for: branchC, isCompact: false).width
-        let rowMinX = aPos.x - aWidth / 2
-        let rowMaxX = cPos.x + cWidth / 2
-        #expect(abs(rootPos.x - (rowMinX + rowMaxX) / 2) < 0.0001)
+        let positionsWithoutRoot = positions.filter { $0.key != root.id }
+        let sizes = MapLayout.sizes(for: root.visibleSubtreeNodes, isCompact: false)
+        let childBounds = MapLayout.bounds(of: positionsWithoutRoot, sizes: sizes)
+        #expect(abs(rootPos.x - childBounds.midX) < 0.0001)
     }
 
-    @Test("topDown: depth-1 children share one row beneath root, ordered left to right by index")
-    func topDownDepthOneChildrenShareRowOrderedByIndex() throws {
+    @Test("topDown: depth-1 children use at most two columns and continue downward")
+    func topDownDepthOneChildrenFlowDownTwoColumns() throws {
         let root = MapNode(title: "Root", sortOrder: 0)
         let branchA = MapNode(title: "Branch A", sortOrder: 0, parent: root)
         let branchB = MapNode(title: "Branch B", sortOrder: 1, parent: root)
@@ -118,9 +133,23 @@ struct MapLayoutTests {
         let cPos = try #require(positions[branchC.id])
 
         #expect(aPos.y == bPos.y)
-        #expect(bPos.y == cPos.y)
         #expect(aPos.x < bPos.x)
-        #expect(bPos.x < cPos.x)
+        #expect(cPos.x == aPos.x)
+        #expect(cPos.y > aPos.y)
+
+        let metrics = MapLayout.Metrics.shared
+        let aWidth = MapLayout.pillSize(for: branchA, isCompact: false, metrics: metrics).width
+        let bWidth = MapLayout.pillSize(for: branchB, isCompact: false, metrics: metrics).width
+        let edgeGap = (bPos.x - bWidth / 2) - (aPos.x + aWidth / 2)
+        #expect(abs(edgeGap - metrics.siblingGap) < 0.0001)
+    }
+
+    @Test("automatic fit floor keeps the shared branch control at 44pt")
+    func automaticFitFloorKeepsBranchControlHittable() {
+        let metrics = MapLayout.Metrics.shared
+        let zoom = MapLayout.minimumInteractiveFitZoom(metrics: metrics)
+
+        #expect(abs(metrics.accessoryAllowance * zoom - 44) < 0.0001)
     }
 
     @Test("topDown: a stacked child's left edge sits its parent's left edge + indent (30), consecutive siblings clear by verticalGap (16)")

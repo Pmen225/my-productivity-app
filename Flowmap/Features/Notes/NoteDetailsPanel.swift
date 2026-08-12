@@ -16,6 +16,12 @@ struct NoteDetailsPanel: View {
     var body: some View {
         Form {
             Section {
+                FlowColourPicker(selection: colourBinding)
+            } header: {
+                FlowEyebrow("Colour")
+            }
+
+            Section {
                 Picker("Project", selection: projectBinding) {
                     Text("None").tag(Optional<Project>.none)
                     ForEach(allProjects) { project in
@@ -61,6 +67,10 @@ struct NoteDetailsPanel: View {
     }
 
     // MARK: - Bindings
+
+    private var colourBinding: Binding<ColourToken> {
+        Binding(get: { note.colour }, set: { note.colourToken = $0.rawValue; note.touch(); try? context.save() })
+    }
 
     private var projectBinding: Binding<Project?> {
         Binding(get: { note.project }, set: { note.project = $0; note.touch(); try? context.save() })

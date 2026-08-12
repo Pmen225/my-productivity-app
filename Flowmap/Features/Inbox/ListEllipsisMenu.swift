@@ -13,17 +13,23 @@ public struct ListEllipsisMenu: View {
     private let onSelectGrouping: (GroupingMode) -> Void
     private let onCreateList: () -> Void
     private let onEditLists: () -> Void
+    private let filterPriority: TaskPriority?
+    private let onSelectFilter: (TaskPriority?) -> Void
 
     public init(
         currentGrouping: GroupingMode,
         onSelectGrouping: @escaping (GroupingMode) -> Void,
         onCreateList: @escaping () -> Void,
-        onEditLists: @escaping () -> Void
+        onEditLists: @escaping () -> Void,
+        filterPriority: TaskPriority?,
+        onSelectFilter: @escaping (TaskPriority?) -> Void
     ) {
         self.currentGrouping = currentGrouping
         self.onSelectGrouping = onSelectGrouping
         self.onCreateList = onCreateList
         self.onEditLists = onEditLists
+        self.filterPriority = filterPriority
+        self.onSelectFilter = onSelectFilter
     }
 
     public var body: some View {
@@ -35,6 +41,24 @@ public struct ListEllipsisMenu: View {
                 Label("Edit lists", systemImage: "pencil")
             }
             Divider()
+            // Founder ruling 2026-08-10: the separate filter button next to
+            // this menu read as clutter — one toolbar button, filter folded in.
+            Menu {
+                Button {
+                    onSelectFilter(nil)
+                } label: {
+                    Label("All priorities", systemImage: filterPriority == nil ? "checkmark" : "line.3.horizontal.decrease")
+                }
+                ForEach(TaskPriority.allCases, id: \.self) { priority in
+                    Button {
+                        onSelectFilter(priority)
+                    } label: {
+                        Label(priority.displayName, systemImage: filterPriority == priority ? "checkmark" : priority.symbolName)
+                    }
+                }
+            } label: {
+                Label("Filter by priority", systemImage: "line.3.horizontal.decrease")
+            }
             Menu {
                 groupingChoice(.priority)
                 groupingChoice(.manual)
@@ -42,10 +66,13 @@ public struct ListEllipsisMenu: View {
                 Label("Grouping options", systemImage: "arrow.up.arrow.down")
             }
         } label: {
-            Image(systemName: "ellipsis.circle")
+            // The filled variant restates an active filter on screen — the
+            // old standalone button's signal survives the merge.
+            Image(systemName: filterPriority == nil ? "ellipsis.circle" : "ellipsis.circle.fill")
                 .foregroundStyle(FlowTheme.primaryText(scheme))
         }
         .accessibilityLabel("List options")
+        .accessibilityValue(filterPriority.map { "Filtered to \($0.displayName)" } ?? "")
     }
 
     @ViewBuilder

@@ -69,7 +69,7 @@ struct TimelineBlockView: View {
                 // "Break · 15M" line, never an icon standing in for a title.
                 Text("\(block.title) · \(DurationFormatter.compact(minutes: block.minutes))")
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .foregroundStyle(FlowTheme.primaryText(scheme))
+                    .foregroundStyle(foreground)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
@@ -85,7 +85,7 @@ struct TimelineBlockView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .strokeBorder(block.isExternal ? FlowTheme.separator(scheme) : .clear, lineWidth: 1)
+                .strokeBorder(blockBorder, lineWidth: 1)
         )
         .opacity(block.isExternal ? 0.85 : (isDone ? 0.55 : 1))
         .accessibilityElement(children: .ignore)
@@ -95,15 +95,21 @@ struct TimelineBlockView: View {
     private var detailContent: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: FlowSpacing.xs) {
+                Image(systemName: block.iconName)
+                    .font(.system(size: 14, weight: .semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(foreground)
+                    .accessibilityHidden(true)
+
                 Text(block.title)
                     .font(FlowFont.caption.weight(.semibold))
-                    .foregroundStyle(FlowTheme.primaryText(scheme))
+                    .foregroundStyle(foreground)
                     .lineLimit(1)
 
                 if block.isLocked {
                     Image(systemName: "lock.fill")
                         .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(FlowTheme.secondaryText(scheme))
+                        .foregroundStyle(foreground.opacity(0.72))
                 }
 
                 if isActive {
@@ -117,7 +123,7 @@ struct TimelineBlockView: View {
             if tier == .full, let badge = block.badgeText {
                 Text(badge)
                     .font(.system(size: 10, design: .rounded))
-                    .foregroundStyle(FlowTheme.secondaryText(scheme))
+                    .foregroundStyle(foreground.opacity(0.72))
                     .lineLimit(1)
             }
         }
@@ -131,13 +137,13 @@ struct TimelineBlockView: View {
             Text("CAL")
                 .font(.system(size: 10, weight: .bold, design: .rounded))
                 .kerning(0.8)
-                .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                .foregroundStyle(foreground.opacity(0.68))
         } else {
             Text(
                 "\(DurationFormatter.time(block.start)) · \(DurationFormatter.compact(minutes: block.minutes))"
             )
             .font(.system(size: 11, design: .rounded).monospacedDigit())
-            .foregroundStyle(FlowTheme.secondaryText(scheme))
+            .foregroundStyle(foreground.opacity(0.72))
             .lineLimit(1)
         }
     }
@@ -151,5 +157,11 @@ struct TimelineBlockView: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 1)
             .background(Capsule().fill(FlowTheme.raisedHighlight(scheme)))
+    }
+
+    private var blockBorder: Color {
+        if block.isExternal { return FlowTheme.separator(scheme) }
+        guard let token = block.colourToken else { return .clear }
+        return token.base.opacity(isActive ? 0.34 : 0.18)
     }
 }

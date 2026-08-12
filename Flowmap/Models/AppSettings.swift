@@ -9,6 +9,9 @@ public final class AppSettings {
 
     // Appearance
     public var appearanceRaw: String = AppearanceMode.system.rawValue
+    /// The named theme the app is painted in. Raw string per the repo's
+    /// enum-persistence convention, defaulted so older CloudKit records stay valid.
+    public var themeRaw: String = FlowPalette.default.id
     public var accentToken: String = ColourToken.clay.rawValue
     /// Which typeface the app renders in. Defaults to the system face; the
     /// founder can switch to iA Writer in Settings → General.

@@ -5,6 +5,13 @@ import SwiftUI
 /// that stay consistent everywhere the task appears. Swipe (iOS) and context
 /// menu (both platforms) expose complete, schedule, move and delete.
 public struct TaskRowView: View {
+    public enum HierarchyPosition: Equatable, Sendable {
+        case standalone
+        case groupRoot
+        case groupMiddle
+        case groupEnd
+    }
+
     @Environment(\.colorScheme) private var scheme
     @Environment(\.flow) private var flow
     @Environment(\.modelContext) private var context
@@ -14,6 +21,11 @@ public struct TaskRowView: View {
 
     let task: FlowTask
     private let onDeleted: (() -> Void)?
+    /// Parent and dependency rows stay as separate native List cells so their
+    /// swipe actions keep working, while this presentation joins them into one
+    /// calm visual stack instead of a wall of equal standalone cards.
+    private let hierarchyPosition: HierarchyPosition
+    private let hierarchyDepth: Int
 
     @State private var showDeleteConfirm = false
     @State private var showScheduler = false
@@ -34,9 +46,47 @@ public struct TaskRowView: View {
         let accessibilityLabel: String?
     }
 
-    public init(task: FlowTask, onDeleted: (() -> Void)? = nil) {
+    public init(
+        task: FlowTask,
+        onDeleted: (() -> Void)? = nil,
+        hierarchyPosition: HierarchyPosition = .standalone,
+        hierarchyDepth: Int = 0
+    ) {
         self.task = task
         self.onDeleted = onDeleted
+        self.hierarchyPosition = hierarchyPosition
+        self.hierarchyDepth = max(0, hierarchyDepth)
+    }
+
+    private var isDependency: Bool { hierarchyDepth > 0 }
+
+    private var cardShape: AnyShape {
+        switch hierarchyPosition {
+        case .standalone:
+            AnyShape(RoundedRectangle(cornerRadius: FlowRadius.medium, style: .continuous))
+        case .groupRoot:
+            AnyShape(UnevenRoundedRectangle(
+                cornerRadii: RectangleCornerRadii(
+                    topLeading: FlowRadius.medium,
+                    bottomLeading: 0,
+                    bottomTrailing: 0,
+                    topTrailing: FlowRadius.medium
+                ),
+                style: .continuous
+            ))
+        case .groupMiddle:
+            AnyShape(Rectangle())
+        case .groupEnd:
+            AnyShape(UnevenRoundedRectangle(
+                cornerRadii: RectangleCornerRadii(
+                    topLeading: 0,
+                    bottomLeading: FlowRadius.medium,
+                    bottomTrailing: FlowRadius.medium,
+                    topTrailing: 0
+                ),
+                style: .continuous
+            ))
+        }
     }
 
     public var body: some View {
@@ -67,15 +117,26 @@ public struct TaskRowView: View {
                 }
             }
         }
-        .padding(FlowSpacing.m)
+        .padding(.leading, CGFloat(hierarchyDepth) * FlowSpacing.l)
+        .padding(.horizontal, FlowSpacing.m)
+        .padding(.vertical, isDependency ? FlowSpacing.s : FlowSpacing.m)
         .background(
-            RoundedRectangle(cornerRadius: FlowRadius.medium, style: .continuous)
-                .fill(FlowTheme.surface(scheme))
+            cardShape
+                .fill(isDependency ? FlowTheme.surfaceSunken(scheme) : FlowTheme.surface(scheme))
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: FlowRadius.medium, style: .continuous)
-                .strokeBorder(FlowTheme.separator(scheme), lineWidth: 1)
-        )
+        .overlay {
+            cardShape
+                .stroke(FlowTheme.separator(scheme), lineWidth: 1)
+        }
+        .overlay(alignment: .leading) {
+            if isDependency {
+                Capsule()
+                    .fill(task.colour.base.opacity(0.65))
+                    .frame(width: FlowSpacing.xxs)
+                    .padding(.leading, FlowSpacing.xs)
+                    .padding(.vertical, FlowSpacing.s)
+            }
+        }
         .contentShape(Rectangle())
         #if os(iOS)
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
@@ -175,6 +236,14 @@ public struct TaskRowView: View {
     private var metadataItems: [MetadataItem] {
         let now = flow?.now ?? Date()
         var items: [MetadataItem] = []
+        if let parent = task.parentTask {
+            items.append(MetadataItem(
+                id: "parent",
+                text: parent.title,
+                systemImage: "arrow.turn.down.right",
+                accessibilityLabel: "Child of \(parent.title)"
+            ))
+        }
         if task.priority != .none {
             items.append(MetadataItem(
                 id: "priority",
@@ -248,7 +317,7 @@ public struct TaskRowView: View {
         if reduceMotion {
             isSubtasksExpanded.toggle()
         } else {
-            withAnimation(.snappy) {
+            withAnimation(FlowMotion.tap) {
                 isSubtasksExpanded.toggle()
             }
         }
@@ -366,7 +435,7 @@ public struct TaskRowView: View {
     // MARK: - Actions
 
     private func toggleComplete() {
-        withAnimation(.snappy) {
+        withAnimation(FlowMotion.tap) {
             if task.status == .completed {
                 task.reopen()
             } else {
@@ -482,7 +551,8 @@ public struct TaskRowView: View {
             project: task.project,
             workspace: task.workspace
         )
-        context.insert(copy)
+        _ = TaskCreationService.insert(copy, parent: task.parentTask, in: context)
+        copy.colourToken = task.colourToken
         for subtask in task.orderedSubtasks {
             context.insert(Subtask(
                 title: subtask.title,
@@ -504,10 +574,20 @@ public struct TaskRowView: View {
     }
 
     private func deleteTask() {
-        withAnimation(.snappy) {
+        let childCount = task.orderedChildTasks.count
+        let title = task.title
+        withAnimation(FlowMotion.tap) {
             context.delete(task)
             try? context.save()
             onDeleted?()
+        }
+        if childCount > 0 {
+            flow?.moments.show(.notif(
+                title: "\(title) deleted",
+                subtitle: childCount == 1
+                    ? "Its child task moved to the top level."
+                    : "Its \(childCount) child tasks moved to the top level."
+            ))
         }
     }
 }

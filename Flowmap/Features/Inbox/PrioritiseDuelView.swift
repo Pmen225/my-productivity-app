@@ -32,53 +32,40 @@ struct PrioritiseDuelView: View {
     }
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Query(sort: [SortDescriptor(\FlowTask.sortOrder), SortDescriptor(\FlowTask.createdAt)])
-    private var allTasks: [FlowTask]
-
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private let initialTodayTasks: [FlowTask]
+
+    private enum FeedbackEvent: Equatable {
+        case idle
+        case choice(Int)
+        case completed
+    }
 
     @State private var currentPairIndex = 0
     @State private var picks: [UUID] = []
-    @State private var scope: DuelScope = .today
-    @State private var selectedDate = Date()
-    @State private var draftDate = Date()
-    @State private var showingDatePicker = false
     /// The current pair gets a new identity after every pick, so SwiftUI can
     /// give the decision a brief, directional hand-off without adding a
     /// second interaction or delaying the next choice.
     /// Rows already shown in the reveal — grows one at a time on a timer to
     /// produce the staggered reveal, or all at once under Reduce Motion.
     @State private var revealedIDs: Set<UUID> = []
+    /// Visible resolution state. A chosen card stays vivid and leaves left;
+    /// the unchosen card drops away. The next pair enters from the right.
+    @State private var selectedWinnerID: UUID?
+    @State private var isExitingPair = false
+    @State private var pairEntranceX: CGFloat = 0
+    @State private var isResolving = false
+    @State private var feedbackEvent = FeedbackEvent.idle
 
     init(tasks: [FlowTask]) {
         self.initialTodayTasks = tasks
     }
 
-    private enum DuelScope: String, CaseIterable, Identifiable {
-        case today
-        case allTasks
-        case chosenDay
-
-        var id: String { rawValue }
-
-        var title: String {
-            switch self {
-            case .today: "Today"
-            case .allTasks: "All tasks"
-            case .chosenDay: "Chosen day"
-            }
-        }
-    }
-
     private var scopedTasks: [FlowTask] {
-        switch scope {
-        case .today:
-            return initialTodayTasks
-        case .allTasks:
-            return allTasks.filter { $0.status != .cancelled }
-        case .chosenDay:
-            return Self.tasks(for: allTasks, on: selectedDate)
-        }
+        // One round stays intentionally small. Four tasks produce six quick
+        // comparisons; sending an entire busy day through nC2 duels turned a
+        // useful game into dozens of taps.
+        Array(initialTodayTasks.prefix(4))
     }
 
     /// A chosen day matches open work due or scheduled on that day. The
@@ -122,34 +109,18 @@ struct PrioritiseDuelView: View {
                     }
                 }
                 .background(FlowTheme.background(scheme).ignoresSafeArea())
-        }
-        .presentationCornerRadius(FlowRadius.large)
-        .sheet(isPresented: $showingDatePicker) {
-            NavigationStack {
-                DatePicker("Choose duel day", selection: $draftDate, displayedComponents: .date)
-                    .datePickerStyle(.graphical)
-                    .padding(FlowSpacing.screen)
-                    .navigationTitle("Duel day")
-                    #if os(iOS)
-                    .navigationBarTitleDisplayMode(.inline)
-                    #endif
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Cancel") { showingDatePicker = false }
-                        }
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") {
-                                selectedDate = draftDate
-                                scope = .chosenDay
-                                resetDuel()
-                                showingDatePicker = false
-                            }
-                        }
+                .sensoryFeedback(trigger: feedbackEvent) { _, event in
+                    guard flow?.settings.focusHapticsEnabled ?? false else { return nil }
+                    switch event {
+                    case .choice:
+                        return .impact(weight: .light, intensity: 0.8)
+                    case .completed:
+                        return .success
+                    case .idle:
+                        return nil
                     }
-            }
-            .presentationDetents([.medium])
+                }
         }
-        .onChange(of: scope) { _, _ in resetDuel() }
     }
 
     @ViewBuilder
@@ -188,19 +159,14 @@ struct PrioritiseDuelView: View {
                 Text(Self.duelCounter(index: currentPairIndex, total: pairs.count))
                     .font(FlowFont.caption)
                     .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                    .contentTransition(.numericText())
                     .accessibilityLabel("Duel \(currentPairIndex + 1) of \(pairs.count)")
-                scopeMenu
             }
 
             if let first = tasksByID[pair.first], let second = tasksByID[pair.second] {
                 duelArena(first: first, second: second)
                     .id(currentPairIndex)
-                    .transition(
-                        .asymmetric(
-                            insertion: .move(edge: .trailing).combined(with: .opacity),
-                            removal: .scale(scale: 0.96).combined(with: .opacity)
-                        )
-                    )
+                    .offset(x: pairEntranceX)
             }
 
             Spacer()
@@ -212,75 +178,106 @@ struct PrioritiseDuelView: View {
     /// between them. The marker makes the comparison relationship visible
     /// without adding explanatory copy to either card.
     private func duelArena(first: FlowTask, second: FlowTask) -> some View {
-        ZStack {
-            VStack(spacing: FlowSpacing.xl) {
-                choiceButton(for: first, against: second)
-                choiceButton(for: second, against: first)
-            }
+        VStack(spacing: FlowSpacing.m) {
+            choiceButton(for: first, against: second)
 
-            Text("VS")
-                .font(FlowFont.durationChip)
-                .foregroundStyle(FlowTheme.primaryText(scheme))
-                .padding(FlowSpacing.s)
-                .background(FlowTheme.background(scheme), in: Circle())
-                .overlay {
-                    Circle().strokeBorder(FlowTheme.separatorStrong(scheme), lineWidth: 1)
-                }
+            Text("or")
+                .font(FlowFont.caption)
+                .foregroundStyle(FlowTheme.tertiaryText(scheme))
                 .accessibilityHidden(true)
+
+            choiceButton(for: second, against: first)
         }
     }
 
     private func choiceButton(for task: FlowTask, against other: FlowTask) -> some View {
-        Button {
+        let isWinner = selectedWinnerID == task.id
+        let isLoser = selectedWinnerID != nil && !isWinner
+        return Button {
             pick(task)
         } label: {
-            FlowCard(padding: FlowSpacing.l) {
-                HStack(spacing: FlowSpacing.m) {
+            HStack(spacing: FlowSpacing.m) {
+                Circle()
+                    .strokeBorder(isLoser ? task.colour.base : task.colour.onSoft, lineWidth: 2)
+                    .frame(width: 22, height: 22)
+                VStack(alignment: .leading, spacing: FlowSpacing.xs) {
                     Image(systemName: task.iconName)
-                        .font(FlowFont.sectionTitle)
-                        .foregroundStyle(task.colour.onSoft)
-                        .frame(width: FlowControlSize.secondary, height: FlowControlSize.secondary)
-                        .background(Circle().fill(task.colour.soft))
+                        .symbolEffect(.wiggle.byLayer, options: .nonRepeating, value: isWinner)
+                        .symbolEffectsRemoved(reduceMotion)
                     Text(task.title)
                         .font(FlowFont.cardTitle)
-                        .foregroundStyle(FlowTheme.primaryText(scheme))
+                        .foregroundStyle(isLoser ? task.colour.base : task.colour.onSoft)
                         .lineLimit(2)
-                    Spacer(minLength: FlowSpacing.s)
-                    DurationChip(minutes: task.estimatedMinutes, tint: task.colour)
                 }
-                .overlay(alignment: .leading) {
-                    Capsule()
-                        .fill(task.colour.base)
-                        .frame(width: FlowSpacing.xs)
-                        .padding(.vertical, FlowSpacing.s)
-                }
+                Spacer(minLength: FlowSpacing.s)
+                DurationChip(minutes: task.estimatedMinutes, tint: task.colour)
+            }
+            .padding(FlowSpacing.l)
+            .frame(maxWidth: .infinity, minHeight: 112)
+            .background(
+                RoundedRectangle(cornerRadius: FlowRadius.large, style: .continuous)
+                    .fill(isLoser ? FlowTheme.surfaceWell(scheme) : task.colour.soft)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: FlowRadius.large, style: .continuous)
+                    .strokeBorder(isLoser ? task.colour.base : FlowTheme.raisedHighlight(scheme), lineWidth: isLoser ? 2 : 1)
             }
         }
         .buttonStyle(.plain)
         .flowHitTarget()
+        .disabled(isResolving)
+        .offset(
+            x: isExitingPair && isWinner ? -520 : 0,
+            y: isExitingPair && isLoser ? 620 : 0
+        )
+        .rotationEffect(.degrees(isExitingPair && isLoser ? 8 : 0))
+        .opacity(isLoser ? 0.48 : 1)
         .accessibilityLabel("Put \(task.title) ahead of \(other.title)")
     }
 
     private func pick(_ winner: FlowTask) {
-        pickHaptic()
+        guard !isResolving else { return }
+        isResolving = true
         picks.append(winner.id)
-        if reduceMotion {
-            currentPairIndex += 1
-        } else {
-            withAnimation(.snappy(duration: 0.28, extraBounce: 0.04)) {
-                currentPairIndex += 1
+        feedbackEvent = .choice(picks.count)
+        selectedWinnerID = winner.id
+        resolveCurrentPair()
+    }
+
+    private func resolveCurrentPair() {
+        guard !reduceMotion else {
+            advancePair()
+            return
+        }
+        // Hold the selected state for one beat before the cards leave. This
+        // gives the symbol and colour response time to register, then keeps
+        // the directional exit short enough that the next decision is ready.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.30) {
+            withAnimation(.easeIn(duration: 0.34)) {
+                isExitingPair = true
             }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.66) {
+            advancePair()
         }
     }
 
-    /// A pick is a discrete positive decision, so it gets one short optional
-    /// impact. The visual hand-off remains the primary feedback and still
-    /// works when haptics are disabled or unavailable.
-    private func pickHaptic() {
-        #if os(iOS)
-        guard flow?.settings.focusHapticsEnabled ?? false else { return }
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        #endif
+    private func advancePair() {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            currentPairIndex += 1
+            selectedWinnerID = nil
+            isExitingPair = false
+            pairEntranceX = reduceMotion || currentPairIndex >= pairs.count ? 0 : 520
+            isResolving = false
+        }
+        guard !reduceMotion, currentPairIndex < pairs.count else { return }
+        DispatchQueue.main.async {
+            withAnimation(.easeOut(duration: 0.34)) {
+                pairEntranceX = 0
+            }
+        }
     }
 
     // MARK: - Reveal stage
@@ -289,12 +286,11 @@ struct PrioritiseDuelView: View {
         VStack(spacing: FlowSpacing.l) {
             VStack(spacing: FlowSpacing.s) {
                 FlowEyebrow("Your order", tint: FlowTheme.accent)
-                Text("Decision made.")
+                completionTitle
                     .font(FlowFont.sectionTitle)
                     .foregroundStyle(FlowTheme.primaryText(scheme))
-                scopeMenu
             }
-            .padding(.top, FlowSpacing.m)
+            .padding(.top, FlowSpacing.xxxl)
 
             ScrollView {
                 VStack(spacing: FlowSpacing.s) {
@@ -307,23 +303,90 @@ struct PrioritiseDuelView: View {
                 .padding(.horizontal, FlowSpacing.screen)
             }
 
-            VStack(spacing: FlowSpacing.s) {
-                if scope == .today {
-                    PrimaryActionButton("Plan today in this order", systemImage: "checkmark.circle") {
-                        applyOrder(andPlan: true)
-                    }
-                    .accessibilityLabel("Plan today in this order")
-                    .accessibilityHint("Reorders today's tasks to this ranking and re-plans today, moving anything already scheduled")
-                }
-                SecondaryActionButton("Keep order, plan later") {
-                    applyOrder(andPlan: false)
-                }
-                .accessibilityHint("Reorders today's tasks to this ranking without scheduling anything")
-            }
+            resultActions
             .padding(.horizontal, FlowSpacing.screen)
             .padding(.bottom, FlowSpacing.l)
         }
         .onAppear(perform: startReveal)
+    }
+
+    @ViewBuilder
+    private var completionTitle: some View {
+        if #available(iOS 26.0, macOS 26.0, *) {
+            HStack(spacing: FlowSpacing.s) {
+                Image(systemName: "checkmark.seal.fill")
+                    .symbolEffect(.bounce, options: .nonRepeating, value: feedbackEvent)
+                    .symbolEffectsRemoved(reduceMotion)
+                Text("Decision made.")
+            }
+        } else {
+            Label("Decision made.", systemImage: "checkmark.seal.fill")
+        }
+    }
+
+    /// Both exits are one coherent choice set, so they keep the same physical
+    /// size. Native style — not a larger footprint — marks the planning action
+    /// as primary. Accessibility sizes stack the same controls without changing
+    /// their hierarchy or shortening their labels.
+    @ViewBuilder
+    private var resultActions: some View {
+        if #available(iOS 26.0, macOS 26.0, *) {
+            GlassEffectContainer(spacing: FlowSpacing.s) {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(spacing: FlowSpacing.s) {
+                        planTodayButton.buttonStyle(.glassProminent)
+                        keepOrderButton.buttonStyle(.glass)
+                    }
+                } else {
+                    HStack(spacing: FlowSpacing.s) {
+                        planTodayButton.buttonStyle(.glassProminent)
+                        keepOrderButton.buttonStyle(.glass)
+                    }
+                }
+            }
+            .tint(FlowTheme.accentFill)
+        } else {
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(spacing: FlowSpacing.s) {
+                        planTodayButton.buttonStyle(.borderedProminent)
+                        keepOrderButton.buttonStyle(.bordered)
+                    }
+                } else {
+                    HStack(spacing: FlowSpacing.s) {
+                        planTodayButton.buttonStyle(.borderedProminent)
+                        keepOrderButton.buttonStyle(.bordered)
+                    }
+                }
+            }
+            .buttonBorderShape(.capsule)
+            .tint(FlowTheme.accentFill)
+        }
+    }
+
+    private var planTodayButton: some View {
+        Button {
+            applyOrder(andPlan: true)
+        } label: {
+            resultActionLabel("Plan today", systemImage: "calendar.badge.checkmark")
+        }
+        .accessibilityHint("Reorders these tasks and plans today, moving anything already scheduled")
+    }
+
+    private var keepOrderButton: some View {
+        Button {
+            applyOrder(andPlan: false)
+        } label: {
+            resultActionLabel("Keep order", systemImage: "list.number")
+        }
+        .accessibilityHint("Reorders these tasks without scheduling anything")
+    }
+
+    private func resultActionLabel(_ title: String, systemImage: String) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(FlowFont.secondary)
+            .lineLimit(1)
+            .frame(maxWidth: .infinity)
     }
 
     private func rankedRow(_ task: FlowTask, rank: Int) -> some View {
@@ -370,52 +433,30 @@ struct PrioritiseDuelView: View {
         guard revealedIDs.isEmpty else { return }
         guard !reduceMotion else {
             revealedIDs = Set(ranked.map(\.id))
+            feedbackEvent = .completed
             return
         }
         for (index, task) in ranked.enumerated() {
             DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.13) {
-                withAnimation(.easeOut(duration: 0.25)) {
+                withAnimation(FlowMotion.fade) {
                     _ = revealedIDs.insert(task.id)
+                }
+                if index == ranked.count - 1 {
+                    feedbackEvent = .completed
                 }
             }
         }
-    }
-
-    private var scopeMenu: some View {
-        Menu {
-            Button {
-                scope = .today
-            } label: {
-                Label("Today", systemImage: scope == .today ? "checkmark" : "circle")
-            }
-            Button {
-                scope = .allTasks
-            } label: {
-                Label("All tasks", systemImage: scope == .allTasks ? "checkmark" : "circle")
-            }
-            Button {
-                draftDate = selectedDate
-                showingDatePicker = true
-            } label: {
-                Label(
-                    scope == .chosenDay
-                        ? selectedDate.formatted(date: .abbreviated, time: .omitted)
-                        : "Choose a day…",
-                    systemImage: scope == .chosenDay ? "checkmark" : "calendar"
-                )
-            }
-        } label: {
-            Label("Scope: \(scope.title)", systemImage: "slider.horizontal.3")
-                .font(FlowFont.caption)
-        }
-        .menuStyle(.borderlessButton)
-        .accessibilityLabel("Duel scope: \(scope.title)")
     }
 
     private func resetDuel() {
         currentPairIndex = 0
         picks = []
         revealedIDs = []
+        selectedWinnerID = nil
+        isExitingPair = false
+        pairEntranceX = 0
+        isResolving = false
+        feedbackEvent = .idle
     }
 
     // MARK: - Exits

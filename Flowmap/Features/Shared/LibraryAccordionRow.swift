@@ -29,16 +29,13 @@ struct LibraryAccordionRow<Content: View>: View {
     }
 
     /// Matches the mockup's row (`libBodyEl:947-955`) inside the native control.
+    ///
+    /// No tinted tile behind the glyph (founder, verbatim: "i dont like filled
+    /// in icons app s giving special needs vibes"). The larger shared glyph
+    /// carries the category colour directly, matching Browse and Lists.
     private var header: some View {
         HStack(spacing: FlowSpacing.m) {
-            ZStack {
-                RoundedRectangle(cornerRadius: FlowRadius.tile, style: .continuous)
-                    .fill(token.soft)
-                Image(systemName: symbol)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(token.onSoft)
-            }
-            .frame(width: 27, height: 27)
+            FlowNavigationGlyph(systemImage: symbol, token: token)
 
             Text(title)
                 .font(FlowFont.body.weight(.semibold))
@@ -56,7 +53,7 @@ struct LibraryAccordionRow<Content: View>: View {
             // triangle convention (points along the leading edge closed, down
             // when open).
             Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 12, weight: .regular))
                 .foregroundStyle(FlowTheme.tertiaryText(scheme))
                 .rotationEffect(.degrees(isExpanded ? 90 : 0))
         }
@@ -88,7 +85,7 @@ struct FlowAccordionStyle: DisclosureGroupStyle {
                 if reduceMotion {
                     configuration.isExpanded.toggle()
                 } else {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                    withAnimation(FlowMotion.expand) {
                         configuration.isExpanded.toggle()
                     }
                 }

@@ -10,15 +10,22 @@ public enum MapLayoutOrientation: String, CaseIterable, Sendable {
 
     public var displayName: String {
         switch self {
-        case .leftToRight: "Left to right"
-        case .topDown: "Top down (org chart)"
+        case .leftToRight: "Horizontal map"
+        case .topDown: "Top-down org chart"
         }
     }
 
     public var symbolName: String {
         switch self {
-        case .leftToRight: "arrow.right"
-        case .topDown: "arrow.down"
+        case .leftToRight: "point.topleft.down.to.point.bottomright.curvepath"
+        case .topDown: "rectangle.3.group"
+        }
+    }
+
+    public var accessibilityIdentifier: String {
+        switch self {
+        case .leftToRight: "map-layout-horizontal"
+        case .topDown: "map-layout-org-chart"
         }
     }
 }
@@ -34,7 +41,7 @@ public final class MapDocument {
     public var canvasOffsetX: Double = 0
     public var canvasOffsetY: Double = 0
     public var canvasZoom: Double = 1
-    public var layoutOrientationRaw: String = MapLayoutOrientation.topDown.rawValue
+    public var layoutOrientationRaw: String = MapLayoutOrientation.leftToRight.rawValue
     public var createdAt: Date = Date()
     public var updatedAt: Date = Date()
 
@@ -49,7 +56,7 @@ public final class MapDocument {
     /// Which way the canvas fans the tree out. Chosen from the map's "⋯"
     /// layout menu; every node's position is recomputed from this on change.
     public var layoutOrientation: MapLayoutOrientation {
-        get { MapLayoutOrientation(rawValue: layoutOrientationRaw) ?? .topDown }
+        get { MapLayoutOrientation(rawValue: layoutOrientationRaw) ?? .leftToRight }
         set { layoutOrientationRaw = newValue.rawValue; touch() }
     }
 

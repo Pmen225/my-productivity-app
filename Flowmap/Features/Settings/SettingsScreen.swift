@@ -23,6 +23,9 @@ struct SettingsScreen: View {
                 }
             }
         }
+        #if os(iOS)
+        .safeAreaPadding(.bottom, FlowSpacing.floatingControlsInset)
+        #endif
         .navigationTitle("Settings")
         .flowScreenTitle("Settings")
     }
@@ -57,6 +60,9 @@ private struct SettingsSectionScreen<Content: View>: View {
             }
             .padding(FlowSpacing.screen)
         }
+        #if os(iOS)
+        .safeAreaPadding(.bottom, FlowSpacing.floatingControlsInset)
+        #endif
         .background(FlowTheme.background(scheme).ignoresSafeArea())
         .navigationTitle(title)
         .flowScreenTitle(title)

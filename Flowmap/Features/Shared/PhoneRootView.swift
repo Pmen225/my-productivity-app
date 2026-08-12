@@ -2,8 +2,8 @@
 import SwiftData
 import SwiftUI
 
-/// The iPhone shell: a real, native tab bar with exactly five destinations —
-/// Plan, Focus, Map + Today, Calendar, Settings — restyled with `FlowTheme`.
+/// The iPhone shell: a real, native tab bar with three destinations —
+/// Plan, Focus, Settings — restyled with `FlowTheme`.
 ///
 /// Decision 1b (2026-07-29) reverses the `≡` glass menu subtask 37 built.
 /// That menu still switched tabs through a hidden 7-tag `TabView`, and iOS
@@ -12,6 +12,12 @@ import SwiftUI
 /// on Stats/Settings. Capping this `TabView` at exactly 5 tags and letting it
 /// draw its own chrome (instead of hiding it behind a custom overlay) avoids
 /// the bug and gives a genuinely native tab bar, not a web-style hamburger.
+///
+/// Decision 40/41 (2026-08-10) drop this to three tags: Map and Calendar
+/// left the bar. Map + Today folded into Plan as its own segment (the Map
+/// tab is gone); Calendar is now a button on Plan's own nav bar instead of
+/// a tab. Founder, verbatim and angry: "TODAY should [come] FROM MAPS, only
+/// ONE TODAY... Map tab should be gone, content inside moved to plan tab."
 struct PhoneRootView: View {
     @Environment(\.flow) private var flow
     @Environment(\.colorScheme) private var scheme
@@ -19,8 +25,12 @@ struct PhoneRootView: View {
 
     @Query private var allTasks: [FlowTask]
 
-    // The mockup's launch screen is Focus (`00-initial.png`).
-    @State private var tab: DeepLink = .focus
+    // The mockup's launch screen is Focus (`00-initial.png`). The focused
+    // hierarchy harness opens Plan directly so screenshot evidence does not
+    // depend on iOS 26 tab-hit-test timing; production still always opens Focus.
+    @State private var tab: DeepLink = ProcessInfo.processInfo.arguments.contains("-flowmapHarnessHierarchy")
+        ? .library
+        : .focus
     @State private var showingAssistant = false
     @State private var showingAssistantDock = false
     @State private var showingSearch = false
@@ -45,8 +55,7 @@ struct PhoneRootView: View {
                 NavigationStack {
                     LibraryView(pushStats: $pushStats, onSearchResult: navigate(to:))
                 }
-                .contentMargins(.bottom, FlowSpacing.floatingControlsInset, for: .scrollContent)
-                .tabItem { Label("Plan", systemImage: "square.stack") }
+                .tabItem { Label("Plan", systemImage: "list.bullet") }
                 .tag(DeepLink.library)
                 .badge(inboxCount > 0 ? "\(inboxCount)" : nil)
 
@@ -57,53 +66,39 @@ struct PhoneRootView: View {
                 .tag(DeepLink.focus)
 
                 NavigationStack {
-                    MapTodayScreen()
-                }
-                .contentMargins(.bottom, FlowSpacing.floatingControlsInset, for: .scrollContent)
-                .tabItem {
-                    Label("Map", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
-                }
-                .tag(DeepLink.map)
-
-                NavigationStack {
-                    CalendarRootView()
-                }
-                // No inset here: Calendar's only scroll views sit inside a
-                // paging `TabView`, which this modifier does not reach. They
-                // reserve the same room themselves.
-                .tabItem { Label("Calendar", systemImage: "calendar") }
-                .tag(DeepLink.calendar)
-
-                NavigationStack {
                     SettingsScreen()
                 }
-                // Settings has its own long scroll. Reserve space for the
-                // native tab bar and the shell's floating capture/assistant
-                // orb so the last controls remain readable and tappable.
-                .contentMargins(.bottom, FlowSpacing.floatingControlsInset, for: .scrollContent)
-                .tabItem { Label("Settings", systemImage: "gearshape") }
+                // iOS substitutes a symbol's `.fill` variant in a tab item when
+                // one exists. `list.bullet` and `timer` have none, so they stay
+                // hairline while `gearshape` was swapped for `gearshape.fill`
+                // and read far heavier than its neighbours. `slider.horizontal.3`
+                // has no filled variant, so all three strokes now match.
+                .tabItem { Label("Settings", systemImage: "slider.horizontal.3") }
                 .tag(DeepLink.settings)
             }
-            // The system bar now actually renders — restyled, not hidden.
-            // The `.ultraThinMaterial` matches the base layer `.flowGlass()`
-            // uses everywhere else in the chrome (see `GlassBackground` in
-            // `FlowSurfaces.swift`); the accent tint matches `FlowTabBar`'s
-            // restored-but-unused styling in `FlowChrome.swift`.
+            // The bar carries Flowmap only through its tint. Its background is
+            // the system's own — pinning `.ultraThinMaterial` visible fought
+            // the platform's adaptive bar material, which the HIG reserves to
+            // itself ("bars are an overlay layer, never custom chrome"), and
+            // froze the bar opaque where it should thin over scrolling
+            // content. Task 102.
             .tint(FlowTheme.accent)
-            .toolbarBackground(.ultraThinMaterial, for: .tabBar)
-            .toolbarBackground(.visible, for: .tabBar)
-        }
-        // Focus fills the space above the tab bar with its own card, so the
-        // floating controls would sit on top of it. The Assistant and quick
-        // capture stay one tap away from every other destination.
-        .overlay(alignment: .bottomTrailing) {
-            if tab != .focus {
-                captureAssistantOrb
-                .padding(.trailing, FlowSpacing.screen)
-                // Clears the now-visible native tab bar rather than a
-                // floating one, so the orb sits above its safe area.
-                .padding(.bottom, FlowSpacing.xxxl)
+            .background {
+                if #available(iOS 26.0, *) {
+                    // The detached capture control owns the trailing lane. Move
+                    // only UIKit's native tab-bar surface left so the bottom
+                    // reads as one horizontal group: [tabs] [capture]. The
+                    // TabView content and its safe-area layout stay untouched.
+                    NativeTabBarHorizontalShift(distance: FlowSpacing.xl)
+                        .frame(width: 0, height: 0)
+                }
             }
+        }
+        // One capture control in one stable place on every destination.
+        // Focus-created tasks must use the same TaskDraft path as Plan and
+        // Map; hiding this control there made that journey impossible.
+        .overlay(alignment: .bottomTrailing) {
+            positionedCaptureAssistantOrb
         }
         .overlay { FlowMomentOverlay() }
         .sheet(isPresented: $showingAssistant) {
@@ -128,8 +123,12 @@ struct PhoneRootView: View {
         }
         .sheet(isPresented: $showingCapture) {
             QuickCaptureView()
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.hidden)
+                // Task composition needs the full canvas: the medium detent
+                // opened behind the keyboard and cropped the worth control on
+                // first contact. Keep the native sheet and its dismissal cue,
+                // but start at the compose-sized detent used by Mail/Messages.
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
                 .presentationCornerRadius(FlowRadius.large)
         }
         // Today: sheet, not full-screen cover — matches the ambient idiom
@@ -142,6 +141,13 @@ struct PhoneRootView: View {
         .sheet(item: rolloverReviewBinding) { _ in
             RolloverReviewView()
         }
+        // Decision 40/41: `.map`/`.calendar` are no longer tabs on iPhone, but
+        // nothing in the app posts those destinations as a deep link today
+        // (grepped every `DeepLinkRequest(destination:` call site), so the
+        // `default` branch below staying a no-op-on-phone is dead code, not a
+        // live gap. `.today` keeps its existing sheet path rather than
+        // threading a `PlanSegment` binding down through `LibraryView` —
+        // both render the identical `TodayView`, so behaviour is preserved.
         .onReceive(NotificationCenter.default.publisher(for: .flowmapOpenDeepLink)) { notification in
             guard let request = notification.object as? DeepLinkRequest else { return }
             switch request.destination {
@@ -166,12 +172,34 @@ struct PhoneRootView: View {
             background: FlowTheme.accentFill,
             foreground: .white,
             shadowColor: FlowTheme.accentShadow,
+            shellStroke: FlowTheme.separator(scheme),
+            // Tiimo's branded face is approximately 70% of the detached
+            // circle. Keep the outer shell equal to the tab pill while the
+            // accent face stays inside it as a distinct Liquid Glass plate.
+            faceScale: 0.70,
+            iconScale: 0.32,
             accessibilityLabel: "New task, project or initiative",
-            badgeSystemImage: "sparkles",
             assistantAction: { showingAssistantDock = true },
             hapticsEnabled: flow?.settings.focusHapticsEnabled ?? false
         ) {
             showingCapture = true
+        }
+    }
+
+    @ViewBuilder
+    private var positionedCaptureAssistantOrb: some View {
+        if #available(iOS 26.0, *) {
+            captureAssistantOrb
+                // Match the floating bar's visual height and baseline while
+                // leaving the outer glass shell fully visible at the edge.
+                .padding(.trailing, FlowSpacing.xl)
+                .padding(.bottom, FlowSpacing.s)
+                .offset(y: FlowSpacing.bottomControlBaselineOffset)
+        } else {
+            // The legacy full-width bar has no detached trailing slot.
+            captureAssistantOrb
+                .padding(.trailing, FlowSpacing.screen)
+                .padding(.bottom, FlowSpacing.floatingControlsInset)
         }
     }
 
@@ -203,6 +231,92 @@ struct PhoneRootView: View {
     }
 }
 
+/// Applies a visual-only translation to SwiftUI's underlying native tab bar.
+/// Keeping the adjustment on `UITabBar` preserves native tab selection,
+/// badges, accessibility, Liquid Glass, and the content's full-width layout.
+@available(iOS 26.0, *)
+private struct NativeTabBarHorizontalShift: UIViewRepresentable {
+    let distance: CGFloat
+
+    func makeUIView(context: Context) -> ProbeView {
+        ProbeView(distance: distance)
+    }
+
+    func updateUIView(_ view: ProbeView, context: Context) {
+        view.distance = distance
+        view.applyShift()
+    }
+
+    static func dismantleUIView(_ view: ProbeView, coordinator: Void) {
+        view.resetShift()
+    }
+
+    final class ProbeView: UIView {
+        var distance: CGFloat
+
+        init(distance: CGFloat) {
+            self.distance = distance
+            super.init(frame: .zero)
+            isUserInteractionEnabled = false
+            isHidden = true
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            DispatchQueue.main.async { [weak self] in
+                self?.applyShift()
+            }
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            applyShift()
+        }
+
+        func applyShift() {
+            guard let tabBar = resolvedTabBarController()?.tabBar else { return }
+            tabBar.transform = .identity
+            let shift = CGAffineTransform(
+                translationX: -distance,
+                y: 0
+            )
+            tabBar.subviews.forEach { $0.transform = shift }
+        }
+
+        func resetShift() {
+            guard let tabBar = resolvedTabBarController()?.tabBar else { return }
+            tabBar.transform = .identity
+            tabBar.subviews.forEach { $0.transform = .identity }
+        }
+
+        private func resolvedTabBarController() -> UITabBarController? {
+            guard let root = window?.rootViewController else { return nil }
+            return findTabBarController(in: root)
+        }
+
+        private func findTabBarController(in controller: UIViewController) -> UITabBarController? {
+            if let tabBarController = controller as? UITabBarController {
+                return tabBarController
+            }
+            if let presented = controller.presentedViewController,
+               let match = findTabBarController(in: presented) {
+                return match
+            }
+            for child in controller.children {
+                if let match = findTabBarController(in: child) {
+                    return match
+                }
+            }
+            return nil
+        }
+    }
+}
+
 /// Everything that does not earn its own tab.
 struct LibraryView: View {
     @Environment(\.colorScheme) private var scheme
@@ -212,6 +326,7 @@ struct LibraryView: View {
     @Query(sort: \TaskList.sortOrder) private var lists: [TaskList]
     @Query private var allTasks: [FlowTask]
     @Query(sort: \Project.sortOrder) private var projects: [Project]
+    @Query(sort: \Initiative.sortOrder) private var initiatives: [Initiative]
     // Same sort `NotesListView` uses, so "note preview row order" cannot
     // drift between the two places notes are listed.
     @Query(sort: \Note.updatedAt, order: .reverse) private var allNotes: [Note]
@@ -226,6 +341,13 @@ struct LibraryView: View {
     let onSearchResult: (SearchResult) -> Void
 
     @State private var showingSearch = false
+    /// The Plan tab's fixed top-level page (decision 40). Replaces the old
+    /// task-page chips and the "Smart task views" menu.
+    @State private var planSegment: PlanSegment = .inbox
+    @Namespace private var planSegmentSelection
+    /// Decision 41: Calendar is a Plan nav-bar button, not a tab — pushes the
+    /// same root the old Calendar tab used, on Plan's own NavigationStack.
+    @State private var pushCalendar = false
     /// The task tapped inside an unfolded TASKS row. A sheet, not a push into
     /// Focus — decision 10 already answered this exact question for the
     /// Today pane, and one screen cannot mean two things by the same tap.
@@ -241,11 +363,6 @@ struct LibraryView: View {
     @State private var attachmentPickerNote: Note?
     /// Which BUILD and REVIEW accordions are open, keyed by a stable id per row.
     @State private var expandedRows: Set<String> = []
-    @State private var taskPage: TaskPage = Self.initialTaskPage
-    /// Inbox remains the capture-first Plan surface. User lists are opened as
-    /// a separate paged surface so smart views never become swipe pages.
-    @State private var showingListCarousel = false
-    @State private var selectedListID: UUID?
     /// The prioritise duel and plan-preview sheets `PlanInboxSection`'s
     /// buttons trigger, hosted HERE rather than inside `PlanInboxSection`
     /// itself: `PlanInboxSection` is only one `Section` among several inside
@@ -257,17 +374,41 @@ struct LibraryView: View {
     @State private var showingDuel = false
     @State private var showingPlanPreview = false
     @State private var planProposal: PlanProposal?
-    /// "New list" and swipe-to-delete for the LISTS section, hosted here for
-    /// the same reason as `showingDuel`/`showingPlanPreview` above: a
-    /// `.sheet`/`.confirmationDialog` attached to a `Section` nested in this
-    /// screen's own `List` never presents.
-    @State private var showCreateList = false
-    @State private var pendingListDelete: TaskList?
     @State private var pendingProjectDelete: Project?
+    /// Drives the project push explicitly. The accordion cannot use
+    /// `NavigationLink(value:)`: its expanded rows all share ONE `List` cell,
+    /// and every link in that cell activates together — one tap on any project
+    /// pushed all five and stranded the user in the last one.
+    @State private var selectedProject: Project?
+    @State private var editingInitiative: Initiative?
+
+    /// The Plan tab's three fixed top-level pages (decision 40, 2026-08-10).
+    /// Replaces the old task-page chips and "Smart task views" menu, which
+    /// the founder called "so tiny to touch... very claustrophobic". One
+    /// Today (folds Map + Today's old Today pane into Plan), one Map, Inbox
+    /// unchanged. No menu, no paging — all three always on screen at once.
+    enum PlanSegment: String, CaseIterable, Identifiable {
+        case today, inbox, map
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .today: "Today"
+            case .inbox: "Inbox"
+            case .map: "Map"
+            }
+        }
+    }
 
     /// Ordered peers in the Plan tab's task surface. Inbox is deliberately
     /// page zero because it is the capture-to-triage entry point; completed is
     /// last because it is history, not the next action.
+    ///
+    /// Retained purely for `taskPageContent`/`smartTaskPages`/
+    /// `taskPageSelection` below, which `Tests/LibraryAccordionTests.swift`
+    /// covers directly and Slice 2's Browse rows reuse — the pager UI that
+    /// used to switch over this enum is gone (decision 40).
     enum TaskPage: String, CaseIterable, Identifiable {
         case inbox, today, upcoming, anytime, allTasks, completed
 
@@ -317,12 +458,22 @@ struct LibraryView: View {
     }
 
     var body: some View {
-        planSurface
-            .background(FlowTheme.background(scheme).ignoresSafeArea())
+        VStack(spacing: 0) {
+            planSegmentControl
+            planSurface
+        }
+        .background(FlowTheme.background(scheme).ignoresSafeArea())
             // Named for the tab that reaches it (decision 1b), not for the type —
             // a screen titled "Library" under a tab labelled "Plan" reads as two
             // different places.
             .flowScreenTitle("Plan")
+            #if os(iOS)
+            // Switching from the scrolling Inbox to the geometry-backed Map
+            // can inherit a collapsed/transparent navigation-bar state from
+            // SwiftUI. Plan always owns this bar, so restate its visibility
+            // at the owning screen instead of letting a child surface decide.
+            .toolbar(.visible, for: .navigationBar)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showingSearch = true } label: { Image(systemName: "magnifyingglass") }
@@ -332,11 +483,21 @@ struct LibraryView: View {
                     Button { pushStats = true } label: { Image(systemName: "chart.bar") }
                         .accessibilityLabel("Stats")
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { pushCalendar = true } label: { Image(systemName: "calendar") }
+                        .accessibilityLabel("Calendar")
+                }
             }
             .navigationDestination(isPresented: $pushStats) {
                 ProgressScreen()
             }
+            .navigationDestination(isPresented: $pushCalendar) {
+                CalendarRootView()
+            }
             .navigationDestination(for: Project.self) { project in
+                ProjectDetailView(project: project)
+            }
+            .navigationDestination(item: $selectedProject) { project in
                 ProjectDetailView(project: project)
             }
             .sheet(isPresented: $showingSearch) {
@@ -358,7 +519,7 @@ struct LibraryView: View {
             }
             // Hosted here, not on `PlanInboxSection`'s `Section`. A `.sheet`
             // attached to a `Section` nested inside this `List` never presents.
-            .sheet(isPresented: $showingDuel) {
+            .fullScreenCover(isPresented: $showingDuel) {
                 PrioritiseDuelView(tasks: SmartView.today.matches(allTasks, now: flow?.now ?? Date()))
             }
             .sheet(isPresented: $showingPlanPreview) {
@@ -369,126 +530,160 @@ struct LibraryView: View {
                     onReplanWholeDay: replanWholeDay
                 )
             }
-            .sheet(isPresented: $showCreateList) {
-                CreateListSheet()
-            }
-            .confirmationDialog(
-                "Delete this list?",
-                isPresented: Binding(get: { pendingListDelete != nil }, set: { if !$0 { pendingListDelete = nil } }),
-                titleVisibility: .visible
-            ) {
-                Button("Delete List", role: .destructive) {
-                    if let list = pendingListDelete {
-                        context.delete(list)
-                        try? context.save()
-                    }
-                    pendingListDelete = nil
-                }
-                Button("Cancel", role: .cancel) { pendingListDelete = nil }
-            } message: {
-                Text("Tasks inside stay in Flowmap and move to Inbox.")
-            }
             .flowDeleteConfirmation(
                 isPresented: projectDeleteBinding,
                 itemTitle: pendingProjectDelete?.title ?? "",
                 hasChildren: !(pendingProjectDelete?.tasks ?? []).isEmpty,
                 onDelete: deletePendingProject
             )
+            .sheet(item: $editingInitiative) { InitiativeEditSheet(initiative: $0) }
     }
 
+    /// One fixed 3-way control replaces the old task-page chips and the
+    /// "Smart task views" menu (decision 40). iOS 26 gets the platform's
+    /// interactive Liquid Glass control material; older supported systems
+    /// retain the native segmented picker. In both versions the destinations
+    /// stay in one place, remain text-only per the HIG, and expose a full
+    /// 44-point target.
+    @ViewBuilder
+    private var planSegmentControl: some View {
+        Group {
+            if #available(iOS 26.0, *) {
+                liquidGlassPlanSegmentControl
+            } else {
+                Picker("Plan page", selection: $planSegment) {
+                    ForEach(PlanSegment.allCases) { segment in
+                        Text(segment.title).tag(segment)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(minHeight: 44)
+            }
+        }
+        .padding(.horizontal, FlowSpacing.screen)
+        .padding(.top, FlowSpacing.s)
+        .padding(.bottom, FlowSpacing.xs)
+        .sensoryFeedback(.selection, trigger: planSegment)
+    }
+
+    @available(iOS 26.0, *)
+    private var liquidGlassPlanSegmentControl: some View {
+        GlassEffectContainer(spacing: FlowSpacing.xs) {
+            HStack(spacing: 0) {
+                ForEach(PlanSegment.allCases) { segment in
+                    let isSelected = planSegment == segment
+
+                    Button {
+                        selectPlanSegment(segment)
+                    } label: {
+                        Text(segment.title)
+                            .font(FlowFont.body.weight(isSelected ? .semibold : .medium))
+                            .foregroundStyle(
+                                isSelected
+                                    ? FlowTheme.accent
+                                    : FlowTheme.secondaryText(scheme)
+                            )
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(PlanSegmentPressStyle())
+                    .background {
+                        if isSelected {
+                            Capsule(style: .continuous)
+                                .fill(FlowTheme.accent.opacity(scheme == .dark ? 0.10 : 0.05))
+                                .glassEffect(
+                                    .regular
+                                        .tint(FlowTheme.accent.opacity(scheme == .dark ? 0.20 : 0.12))
+                                        .interactive(),
+                                    in: Capsule(style: .continuous)
+                                )
+                                .glassEffectID("plan-selection", in: planSegmentSelection)
+                                .matchedGeometryEffect(
+                                    id: "plan-selection-position",
+                                    in: planSegmentSelection
+                                )
+                        }
+                    }
+                    .accessibilityIdentifier("plan-segment-\(segment.rawValue)")
+                    .accessibilityLabel(segment.title)
+                    .accessibilityHint("Shows the \(segment.title.lowercased()) view")
+                    .accessibilityValue(isSelected ? "Selected" : "")
+                    .accessibilityAddTraits(isSelected ? .isSelected : [])
+                }
+            }
+            .padding(FlowSpacing.xs)
+            .glassEffect(.clear.interactive(), in: Capsule(style: .continuous))
+        }
+        .frame(minHeight: 52)
+    }
+
+    private func selectPlanSegment(_ segment: PlanSegment) {
+        guard planSegment != segment else { return }
+        if reduceMotion {
+            planSegment = segment
+        } else {
+            withAnimation(FlowMotion.tap) {
+                planSegment = segment
+            }
+        }
+    }
+
+    private struct PlanSegmentPressStyle: ButtonStyle {
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .opacity(configuration.isPressed ? 0.72 : 1)
+                .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+                .animation(reduceMotion ? nil : FlowMotion.tap, value: configuration.isPressed)
+        }
+    }
+
+    /// Only the active segment is ever in the hierarchy — a `ZStack` with
+    /// `if`/`else`, not `Group { switch }`, which has silently broken tab
+    /// switching elsewhere in this app when paired with a `.toolbar`.
     @ViewBuilder
     private var planSurface: some View {
-        if showingListCarousel {
-            listCarousel
-        } else {
-            smartViewSurface
-        }
-    }
-
-    @ViewBuilder
-    private var smartViewSurface: some View {
-        #if os(macOS)
-        planList(for: taskPage)
-        #else
-        planList(for: taskPage)
-        #endif
-    }
-
-    /// The only horizontal paging in Plan. Each page owns the vertical list
-    /// supplied by `TaskListScreen`; smart views are selected from the Menu
-    /// above instead of competing for the swipe gesture.
-    @ViewBuilder
-    private var listCarousel: some View {
-        if lists.isEmpty {
-            List {
-                Section {
-                    listTitleStrip
-                    emptyRow("No lists yet. Create one to start a focused list.")
-                    Button { showCreateList = true } label: {
-                        Label("New list", systemImage: "plus")
-                    }
-                    .tint(FlowTheme.accent)
-                }
-                .listRowBackground(FlowTheme.surface(scheme))
-            }
-            .scrollContentBackground(.hidden)
-        } else {
-            VStack(spacing: 0) {
-                listTitleStrip
-                #if os(macOS)
-                if let list = selectedList {
-                    TaskListScreen(source: .userList(list))
-                }
-                #else
-                TabView(selection: selectedListBinding) {
-                    ForEach(lists) { list in
-                        TaskListScreen(source: .userList(list))
-                            .tag(list.id)
-                            .accessibilityIdentifier("user-list-page-\(list.id.uuidString)")
-                    }
-                }
-                .tabViewStyle(.page(indexDisplayMode: .never))
-                #endif
+        ZStack {
+            if planSegment == .today {
+                TodayView()
+            } else if planSegment == .inbox {
+                planList(for: .inbox)
+            } else {
+                AutoMapScreen(scope: .day, showsScreenTitle: false, includesBacklog: true)
             }
         }
-    }
-
-    private var selectedList: TaskList? {
-        guard let selectedListID else { return lists.first }
-        return lists.first(where: { $0.id == selectedListID }) ?? lists.first
-    }
-
-    private var selectedListBinding: Binding<UUID> {
-        Binding(
-            get: { selectedList?.id ?? UUID() },
-            set: { id in
-                if reduceMotion {
-                    selectedListID = id
-                } else {
-                    withAnimation(.snappy(duration: 0.24)) { selectedListID = id }
-                }
-            }
-        )
+        // A `List` claims the height on its own; the map's empty state does
+        // not, and without this the whole `VStack` shrank to its content and
+        // centred — dragging the segment control down off the header line.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func planList(for page: TaskPage) -> some View {
         List {
-            Section {
-                taskPageTitleStrip
-            }
-            .listRowBackground(Color.clear)
-
             directListRoute
 
             taskPageSection(page)
 
             Section(header: sectionHeader("BUILD")) {
                 projectsAccordion
+                initiativesAccordion
                 notesAccordion
             }
             .listRowBackground(FlowTheme.surface(scheme))
 
+            browseSection
         }
+        // Closes the dead vertical gaps between Personal, Inbox, and BUILD
+        // (fix 2, board task 138) — the default `List` section spacing on
+        // grouped style read as blank cream between cards. `.compact` is the
+        // built-in preset for exactly this, not a new spacing constant.
+        .listSectionSpacing(.compact)
+        // This must live on the actual List. Applying an inset to the
+        // surrounding NavigationStack is accepted but reserves no List space.
+        // Safe-area padding shrinks the visible viewport, so a trailing count
+        // can never sit behind the fixed capture control even mid-scroll.
+        .safeAreaPadding(.bottom, FlowSpacing.floatingControlsInset)
         .scrollContentBackground(.hidden)
     }
 
@@ -509,45 +704,8 @@ struct LibraryView: View {
 
     // MARK: - TASKS pages
 
-    /// Smart views are one native Menu. Inbox is deliberately a separate
-    /// 44pt capture button; it remains the default surface without becoming a
-    /// sixth menu item. Lists has its own title strip and page-style pager.
-    private var taskPageTitleStrip: some View {
-        HStack(spacing: FlowSpacing.m) {
-            Button {
-                showingListCarousel = false
-                selectTaskPage(.inbox)
-            } label: {
-                Text("Inbox")
-                    .font(taskPage == .inbox ? FlowFont.cardTitle : FlowFont.body)
-                    .foregroundStyle(taskPage == .inbox ? FlowTheme.primaryText(scheme) : FlowTheme.tertiaryText(scheme))
-                    .frame(minHeight: 44)
-            }
-            .accessibilityLabel("Task page: Inbox")
-            .accessibilityHint("Opens the capture and triage page")
-
-            smartTaskMenu
-
-            Spacer(minLength: FlowSpacing.s)
-
-            Button {
-                showingListCarousel = true
-                if selectedListID == nil { selectedListID = lists.first?.id }
-            } label: {
-                Label("Lists", systemImage: "list.bullet")
-                    .labelStyle(.titleAndIcon)
-                    .font(FlowFont.body.weight(.semibold))
-                    .foregroundStyle(FlowTheme.primaryText(scheme))
-                    .frame(minHeight: 44)
-            }
-            .accessibilityLabel("Lists")
-            .accessibilityHint("Opens your lists and lets you swipe between them")
-
-        }
-    }
-
-    /// Keep one direct list route for existing workflows while the complete
-    /// user-list set remains owned by the carousel. Hosting this as a native
+    /// Keep one direct list route for existing workflows (decision 40's
+    /// "Lists strip", unchanged on the Inbox segment). Hosting this as a native
     /// List row (rather than a clipped title-strip link) preserves its 44pt
     /// hit target and existing navigation/options flow.
     @ViewBuilder
@@ -563,124 +721,6 @@ struct LibraryView: View {
                 .accessibilityHint("Opens this list")
             }
             .listRowBackground(FlowTheme.surface(scheme))
-        }
-    }
-
-    /// Quiet adjacent-name strip for the user-list pager. The Menu is the
-    /// direct-selection and VoiceOver path; the title buttons are a discoverable
-    /// visual hint that the content below is horizontally paged.
-    private var listTitleStrip: some View {
-        HStack(spacing: FlowSpacing.s) {
-            Button {
-                showingListCarousel = false
-                selectTaskPage(.inbox)
-            } label: {
-                Text("Inbox")
-                    .font(FlowFont.body)
-                    .foregroundStyle(FlowTheme.tertiaryText(scheme))
-                    .frame(minHeight: 44)
-            }
-            .accessibilityLabel("Task page: Inbox")
-            smartTaskMenu
-
-            Menu {
-                ForEach(lists) { list in
-                    Button {
-                        selectList(list)
-                    } label: {
-                        Label(list.name, systemImage: list.id == selectedList?.id ? "checkmark" : list.iconName)
-                    }
-                    .accessibilityIdentifier("user-list-choice-\(list.id.uuidString)")
-                }
-                Divider()
-                Button { showCreateList = true } label: {
-                    Label("New list", systemImage: "plus")
-                }
-                if let list = selectedList {
-                    Button(role: .destructive) {
-                        pendingListDelete = list
-                    } label: {
-                        Label("Delete \(list.name)", systemImage: "trash")
-                    }
-                }
-            } label: {
-                Image(systemName: "list.bullet")
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .accessibilityLabel("Choose list")
-            .accessibilityHint("Shows every user-created list")
-
-            ScrollViewReader { proxy in
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: FlowSpacing.m) {
-                        ForEach(lists) { list in
-                            Button {
-                                selectList(list)
-                            } label: {
-                                Text(list.name)
-                                    .font(list.id == selectedList?.id ? FlowFont.screenTitleCompact : FlowFont.cardTitle)
-                                    .foregroundStyle(list.id == selectedList?.id ? FlowTheme.primaryText(scheme) : FlowTheme.tertiaryText(scheme))
-                                    .lineLimit(1)
-                                    .frame(minHeight: 52)
-                            }
-                            .id(list.id)
-                            .accessibilityLabel("List: \(list.name)")
-                            .accessibilityValue(list.id == selectedList?.id ? "Selected" : "")
-                        }
-                    }
-                    .padding(.horizontal, FlowSpacing.xs)
-                }
-                .onChange(of: selectedList?.id) { _, id in
-                    guard let id else { return }
-                    withAnimation(reduceMotion ? nil : .snappy(duration: 0.24)) {
-                        proxy.scrollTo(id, anchor: .center)
-                    }
-                }
-            }
-        }
-        .padding(.horizontal, FlowSpacing.m)
-        .background(FlowTheme.background(scheme))
-    }
-
-    /// Shared smart-view menu, intentionally present in both Inbox/smart mode
-    /// and Lists mode so direct selection never depends on the current pager.
-    private var smartTaskMenu: some View {
-        Menu {
-            ForEach(Self.smartTaskPages) { candidate in
-                Button {
-                    showingListCarousel = false
-                    selectTaskPage(candidate)
-                } label: {
-                    if candidate == taskPage {
-                        Label(candidate.title, systemImage: "checkmark")
-                    } else {
-                        Text(candidate.title)
-                    }
-                }
-                .accessibilityIdentifier("smart-task-page-\(candidate.rawValue)")
-            }
-        } label: {
-            HStack(spacing: FlowSpacing.xs) {
-                Text(taskPage == .inbox ? "Views" : taskPage.title)
-                    .font(FlowFont.cardTitle)
-                    .foregroundStyle(FlowTheme.primaryText(scheme))
-                Image(systemName: "chevron.down")
-                    .font(FlowFont.caption.weight(.semibold))
-                    .foregroundStyle(FlowTheme.tertiaryText(scheme))
-            }
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
-        }
-        .accessibilityLabel("Smart task views")
-        .accessibilityHint("Shows Today, Upcoming, Anytime, All tasks and Completed")
-    }
-
-    private func selectList(_ list: TaskList) {
-        if reduceMotion {
-            selectedListID = list.id
-        } else {
-            withAnimation(.snappy(duration: 0.24)) { selectedListID = list.id }
         }
     }
 
@@ -712,15 +752,48 @@ struct LibraryView: View {
         }
     }
 
-    private func selectTaskPage(_ page: TaskPage) {
-        let next = Self.taskPageSelection(from: taskPage, choosing: page)
-        guard next != taskPage else { return }
-        if reduceMotion {
-            taskPage = next
-        } else {
-            withAnimation(.snappy(duration: 0.24)) {
-                taskPage = next
+    // MARK: - Browse (decision 40, Slice 2)
+
+    /// Replaces the dead "Smart task views" menu: one large row per smart
+    /// view, always visible, no menu to open first. Today is excluded — it
+    /// is its own Plan segment now, not a Browse destination. Reuses
+    /// `TaskListScreen`'s existing smart-view rendering; no new matching
+    /// logic here.
+    static let browsePages: [TaskPage] = [.upcoming, .anytime, .allTasks, .completed]
+
+    private var browseSection: some View {
+        Section(header: CompactSectionHeader(title: "Browse")) {
+            ForEach(Self.browsePages) { page in
+                browseRow(page)
             }
+        }
+        .listRowBackground(FlowTheme.surface(scheme))
+    }
+
+    @ViewBuilder
+    private func browseRow(_ page: TaskPage) -> some View {
+        if let view = page.smartView {
+            let count = Self.taskPageContent(for: view, in: allTasks, now: flow?.now ?? Date()).count
+            NavigationLink {
+                TaskListScreen(source: .smartView(view))
+            } label: {
+                HStack(spacing: FlowSpacing.m) {
+                    FlowNavigationGlyph(systemImage: view.symbolName, token: view.colour)
+
+                    Text(page.title)
+                        .font(FlowFont.body.weight(.semibold))
+                        .foregroundStyle(FlowTheme.primaryText(scheme))
+
+                    Spacer(minLength: FlowSpacing.s)
+
+                    Text("\(count)")
+                        .font(FlowFont.caption.weight(.semibold))
+                        .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                }
+                .padding(.vertical, FlowSpacing.xs)
+                .frame(minHeight: 44)
+            }
+            .accessibilityLabel("\(page.title), \(count)")
         }
     }
 
@@ -740,9 +813,13 @@ struct LibraryView: View {
                 emptyRow("No projects yet. Branches of your map can become projects.")
             } else {
                 ForEach(projects) { project in
-                    NavigationLink(value: project) {
+                    Button {
+                        selectedProject = project
+                    } label: {
                         ProjectRow(project: project)
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(.isButton)
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
                     #if os(iOS)
@@ -755,6 +832,47 @@ struct LibraryView: View {
                         .tint(FlowTheme.destructive)
                     }
                     #endif
+                }
+            }
+        }
+    }
+
+    private var initiativesAccordion: some View {
+        LibraryAccordionRow(
+            title: "Initiatives",
+            symbol: "scope",
+            token: .violet,
+            count: initiatives.count,
+            isExpanded: expansionBinding(for: "initiatives")
+        ) {
+            if initiatives.isEmpty {
+                emptyRow("No initiatives yet. Group projects under one to see them here.")
+            } else {
+                ForEach(initiatives) { initiative in
+                    Button {
+                        editingInitiative = initiative
+                    } label: {
+                        HStack(spacing: FlowSpacing.m) {
+                            // An initiative's colour is user-chosen identity, so
+                            // it stays on the glyph — but no filled tile behind
+                            // it (fix 1, board task 138). `.base`, not `.onSoft`:
+                            // `onSoft` is white for several tokens and is only
+                            // legible sitting on that token's own tinted fill.
+                            Image(systemName: initiative.iconName)
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundStyle(initiative.colour.base)
+                                .frame(width: 36, height: 36)
+
+                            Text(initiative.title)
+                                .font(FlowFont.cardTitle)
+                                .foregroundStyle(FlowTheme.primaryText(scheme))
+
+                            Spacer(minLength: FlowSpacing.s)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
                 }
             }
         }
@@ -906,14 +1024,11 @@ struct LibraryView: View {
     /// Still used by the LISTS section's plain `NavigationLink` rows.
     private func libraryLabel(_ title: String, symbol: String, token: ColourToken) -> some View {
         HStack(spacing: FlowSpacing.m) {
-            ZStack {
-                RoundedRectangle(cornerRadius: FlowRadius.tile, style: .continuous)
-                    .fill(token.soft)
-                    .frame(width: 32, height: 32)
-                Image(systemName: symbol)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(token.onSoft)
-            }
+            // A user list's colour is its identity, so it stays on the glyph —
+            // no filled tile behind it (fix 1, board task 138). `.base`, not
+            // `.onSoft`: `onSoft` is white for several tokens and is only
+            // legible sitting on that token's own tinted fill.
+            FlowNavigationGlyph(systemImage: symbol, token: token)
             Text(title)
                 .font(FlowFont.body.weight(.semibold))
                 .foregroundStyle(FlowTheme.primaryText(scheme))

@@ -44,6 +44,9 @@ struct FocusScreen: View {
     /// from wherever it already was rather than jumping to zero.
     @State private var dragBaseOffset: Double = 0
     @State private var isDragging = false
+    /// Reduce Motion keeps the dial physically still. The same drag instead
+    /// chooses a queued title to crossfade into the fixed centre readout.
+    @State private var reducedMotionPreviewIndex: Int?
     /// The dial's drawn radius, recorded when it is laid out. The drag maps
     /// finger travel to degrees against it, and a tab that is off screen has
     /// no radius to map against.
@@ -70,7 +73,11 @@ struct FocusScreen: View {
                     wheelLayer(in: proxy.size)
                     cardLayer(in: proxy.size)
                 } else {
+                    // The `.bottom` alignment belongs to the wheel and the card
+                    // that rises from it. An empty state has no such anchor and
+                    // inherits it, sitting on the floor under a bare screen.
                     emptyLayer
+                        .frame(maxHeight: .infinity, alignment: .center)
                 }
 
                 if let hud = visibilityHUD {
@@ -89,8 +96,19 @@ struct FocusScreen: View {
         }
         .onAppear {
             isOnScreen = true
+            // Founder ruling 2026-08-10: the screen must never sleep while
+            // Focus is showing — a dimming phone mid-session breaks the
+            // commitment device. Scoped to this tab; restored on leave.
+            #if os(iOS)
+            UIApplication.shared.isIdleTimerDisabled = true
+            #endif
         }
-        .onDisappear { isOnScreen = false }
+        .onDisappear {
+            isOnScreen = false
+            #if os(iOS)
+            UIApplication.shared.isIdleTimerDisabled = false
+            #endif
+        }
         // Changing the style in Settings while a session runs must land on the
         // new style's rest state, not on half of the old one's gesture.
         .onChange(of: zoomStyle) { _, _ in
@@ -99,6 +117,7 @@ struct FocusScreen: View {
             dialScale = 1
             previewOffset = 0
             isDragging = false
+            reducedMotionPreviewIndex = nil
         }
         // Four detents, no more. Each is a discrete event the eye can already
         // see happening, which is what stops the wheel from buzzing at the
@@ -286,6 +305,7 @@ struct FocusScreen: View {
     /// the time rather than firing as the queue re-plans underneath it.
     private var previewIndex: Int? {
         guard isOnScreen, isDragging else { return nil }
+        if reduceMotion { return reducedMotionPreviewIndex }
         return FocusWheelGeometry.carouselIndexAtPointer(
             zoom: zoom,
             durations: wheelItems.map(\.minutes),
@@ -325,7 +345,12 @@ struct FocusScreen: View {
         )
 
         return VStack(spacing: FlowSpacing.m) {
-            titleBar
+            // Balances the trailing spacer below so any leftover height above
+            // the reserved card area splits evenly, keeping the dial
+            // optically centred instead of pinned to the top with all the
+            // air collecting under it (board 140).
+            Spacer(minLength: 0)
+
             Text("Pinch to zoom")
                 .font(.system(size: 16, weight: .regular, design: .rounded))
                 .foregroundStyle(FlowTheme.tertiaryText(scheme))
@@ -333,7 +358,7 @@ struct FocusScreen: View {
                 .accessibilityHidden(true)
                 .task {
                     try? await Task.sleep(for: .seconds(3.5))
-                    withAnimation(.easeOut(duration: 0.6)) {
+                    withAnimation(FlowMotion.fade) {
                         hintVisible = false
                     }
                 }
@@ -347,6 +372,7 @@ struct FocusScreen: View {
                     zoom: zoom,
                     isZooming: liveZoom != nil || liveMagnify != nil,
                     previewOffset: previewOffset,
+                    reducedMotionPreviewIndex: reducedMotionPreviewIndex,
                     magnification: magnification,
                     reformScale: dialScale
                 )
@@ -393,74 +419,6 @@ struct FocusScreen: View {
         .simultaneousGesture(timeTravelGesture)
         #endif
     }
-
-    /// The reference's top row is deliberately quiet: one stable menu button
-    /// and one appearance control, with the dial's zoom control below it.
-    private var titleBar: some View {
-        HStack {
-            #if !os(macOS)
-            optionsButton
-            Spacer()
-            cornerButton(systemImage: appearanceSymbol, label: "Change appearance, currently \(flow?.settings.appearance.displayName ?? "System")") {
-                cycleAppearance()
-            }
-            #endif
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    #if !os(macOS)
-    private var optionsButton: some View {
-        Button { showingDurationPicker = true } label: {
-            Image(systemName: "line.3.horizontal")
-                .font(.system(size: 20, weight: .regular))
-                .foregroundStyle(FlowTheme.secondaryText(scheme))
-                .frame(width: 58, height: 58)
-                .background(Circle().fill(FlowTheme.surface(scheme)))
-                .overlay(Circle().strokeBorder(FlowTheme.separator(scheme), lineWidth: 1))
-                .shadow(color: FlowTheme.shadow(scheme), radius: 10, y: 5)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Open focus options")
-        .accessibilityValue(visibility.announcement)
-        .accessibilityHint("Choose a focus duration")
-    }
-
-    private var appearanceSymbol: String {
-        switch flow?.settings.appearance ?? .system {
-        case .system: "circle.lefthalf.filled"
-        case .light: "sun.max"
-        case .dark: "moon"
-        }
-    }
-
-    /// Cycles the existing appearance setting rather than adding a new one —
-    /// the mock's corner button gets a home, no new behaviour is invented.
-    private func cycleAppearance() {
-        guard let flow else { return }
-        let modes = AppearanceMode.allCases
-        let index = modes.firstIndex(of: flow.settings.appearance) ?? 0
-        flow.settings.appearance = modes[(index + 1) % modes.count]
-        try? context.save()
-    }
-
-    /// The mock draws these small; the tap target is grown to 44pt around
-    /// the artwork instead of scaling the artwork up.
-    private func cornerButton(systemImage: String, label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(FlowTheme.primaryText(scheme))
-                .frame(width: 34, height: 34)
-                .background(Circle().fill(FlowTheme.surface(scheme)))
-                .overlay(Circle().strokeBorder(FlowTheme.separatorStrong(scheme), lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-        .frame(minWidth: 44, minHeight: 44)
-        .contentShape(Rectangle())
-        .accessibilityLabel(label)
-    }
-    #endif
 
     /// Task 58 (founder ruling 2026-08-08, option B): iPhone pins the slim
     /// `FocusNowBar` at the bottom, tapped to open `FocusQueueSheet`. macOS
@@ -568,7 +526,7 @@ struct FocusScreen: View {
     private var countdownSlot: some View {
         if isTimerHidden {
             Button {
-                withAnimation(.easeOut(duration: 0.2)) { isTimerHidden = false }
+                withAnimation(FlowMotion.fade) { isTimerHidden = false }
             } label: {
                 Image(systemName: "clock")
                     .font(.system(size: 16, weight: .semibold))
@@ -585,7 +543,7 @@ struct FocusScreen: View {
             .accessibilityLabel("Show timer")
         } else {
             Button {
-                withAnimation(.easeOut(duration: 0.2)) { isTimerHidden = true }
+                withAnimation(FlowMotion.fade) { isTimerHidden = true }
             } label: {
                 Text(countdownDisplayText)
                     .font(.system(size: session == nil ? 24 : 38, weight: .bold, design: .rounded))
@@ -721,12 +679,17 @@ struct FocusScreen: View {
     /// could not see how it reached the wheel (Task 61). Pure so the
     /// boundary is covered without a store.
     enum EmptyStateKind: Equatable {
+        case firstRun
         case planPrompt(inboxCount: Int)
         case dayDone
     }
 
-    static func emptyState(inboxCount: Int) -> EmptyStateKind {
-        inboxCount > 0 ? .planPrompt(inboxCount: inboxCount) : .dayDone
+    /// An empty store is not a finished day. Without the `totalCount` guard the
+    /// first screen a new user ever saw congratulated them on completing a plan
+    /// they had never made.
+    static func emptyState(inboxCount: Int, totalCount: Int) -> EmptyStateKind {
+        if totalCount == 0 { return .firstRun }
+        return inboxCount > 0 ? .planPrompt(inboxCount: inboxCount) : .dayDone
     }
 
     /// The app does the counting — cognitive profile: state restated on
@@ -741,10 +704,31 @@ struct FocusScreen: View {
 
     @ViewBuilder
     private var emptyLayer: some View {
-        switch Self.emptyState(inboxCount: inboxCount) {
+        switch Self.emptyState(inboxCount: inboxCount, totalCount: allTasks.count) {
+        case .firstRun: firstRunState
         case .planPrompt(let count): planPrompt(count)
         case .dayDone: completionState
         }
+    }
+
+    /// The only screen with nothing behind it, so it names the one thing to do
+    /// and routes to the Inbox — the same path the plan prompt uses.
+    private var firstRunState: some View {
+        VStack(spacing: FlowSpacing.l) {
+            FlowEmptyState(
+                symbol: "tray",
+                title: "Nothing here yet",
+                message: "Capture what's on your mind, then plan it onto the wheel."
+            )
+            PrimaryActionButton("Add your first task", systemImage: "plus") {
+                NotificationCenter.default.post(
+                    name: .flowmapOpenDeepLink,
+                    object: DeepLinkRequest(destination: .inbox)
+                )
+            }
+            .frame(maxWidth: 320)
+        }
+        .padding(FlowSpacing.screen)
     }
 
     /// Signposting only — wheel-philosophy: the wheel takes no walk-ins, so
@@ -903,10 +887,10 @@ struct FocusScreen: View {
     /// The one brief readout both zoom styles use, so a settle is confirmed the
     /// same way whichever the pinch is driving.
     private func announce(_ text: String) {
-        withAnimation(.easeOut(duration: 0.2)) { visibilityHUD = text }
+        withAnimation(FlowMotion.fade) { visibilityHUD = text }
         Task {
             try? await Task.sleep(for: .seconds(1.4))
-            withAnimation(.easeIn(duration: 0.25)) { visibilityHUD = nil }
+            withAnimation(FlowMotion.fade) { visibilityHUD = nil }
         }
     }
 
@@ -980,20 +964,17 @@ struct FocusScreen: View {
                 liveZoom = nil
                 // The level settles and the swell lets go together, with the
                 // same gentleness the time-travel drag springs back at.
-                withAnimation(
-                    reduceMotion
-                        ? .easeOut(duration: 0.2)
-                        : .spring(response: 0.4, dampingFraction: 0.86)
-                ) {
+                withAnimation(reduceMotion ? FlowMotion.fade : FlowMotion.travel) {
                     dialScale = 1
                 }
                 setVisibility(settled)
             }
     }
 
-    /// Drag the band to look ahead. The ring turns with the finger and springs
-    /// back on release: nothing is committed, so a peek at what is coming can
-    /// never be mistaken for a change to the plan.
+    /// Drag the band to look ahead. The ring turns with the finger and follows
+    /// its release velocity into one critically damped return: nothing is
+    /// committed, so a peek can never be mistaken for a plan change. Reduce
+    /// Motion keeps the ring still and crossfades the previewed title instead.
     ///
     /// It lives on the dial, far from every screen edge, so it cannot fight the
     /// back swipe, the tab bar or the home indicator (HIG: never compete with a
@@ -1010,7 +991,7 @@ struct FocusScreen: View {
                     isDragging = true
                     dragBaseOffset = previewOffset
                 }
-                previewOffset = FocusWheelGeometry.clampDragPreview(
+                let nextOffset = FocusWheelGeometry.clampDragPreview(
                     dragBaseOffset + FocusWheelGeometry.dragPreviewOffset(
                         translationWidth: value.translation.width,
                         // Against the ring as DRAWN: under the close-up the
@@ -1022,17 +1003,37 @@ struct FocusScreen: View {
                     durations: wheelItems.map(\.minutes),
                     elapsed: progress
                 )
+                if reduceMotion {
+                    reducedMotionPreviewIndex = FocusWheelGeometry.carouselIndexAtPointer(
+                        zoom: zoom,
+                        durations: wheelItems.map(\.minutes),
+                        elapsed: progress,
+                        offset: nextOffset
+                    )
+                } else {
+                    // Direct manipulation stays exactly under the finger;
+                    // easing begins only after release.
+                    previewOffset = nextOffset
+                }
             }
-            .onEnded { _ in
+            .onEnded { value in
                 isDragging = false
-                // Gentle by default; Reduce Motion gets a short easeOut with no
-                // overshoot, since a spring's bounce is exactly what it asks to
-                // be spared.
-                withAnimation(
-                    reduceMotion
-                        ? .easeOut(duration: 0.2)
-                        : .spring(response: 0.45, dampingFraction: 0.85)
-                ) {
+                if reduceMotion {
+                    withAnimation(FlowMotion.fade) {
+                        reducedMotionPreviewIndex = nil
+                    }
+                    return
+                }
+
+                let angularVelocity = FocusWheelGeometry.dragPreviewOffset(
+                    translationWidth: value.velocity.width,
+                    radius: FocusWheelGeometry.magnifiedRadius(dialRadius, factor: magnification)
+                )
+                let springVelocity = FocusWheelGeometry.wheelSettleInitialVelocity(
+                    currentOffset: previewOffset,
+                    angularVelocity: angularVelocity
+                )
+                withAnimation(FlowMotion.wheelSettle(initialVelocity: springVelocity)) {
                     previewOffset = 0
                 }
             }

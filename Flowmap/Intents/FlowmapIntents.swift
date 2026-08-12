@@ -41,8 +41,7 @@ struct AddTaskIntent: AppIntent {
             status: .inbox,
             estimatedMinutes: minutes > 0 ? minutes : settings.defaultTaskMinutes
         )
-        context.insert(task)
-        try context.save()
+        _ = TaskCreationService.insert(task, in: context)
 
         return .result(
             dialog: IntentDialog(

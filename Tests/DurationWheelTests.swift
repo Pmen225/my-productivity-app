@@ -9,28 +9,32 @@ import Testing
 struct DurationWheelTests {
     private var options: [Int] { FlowDurationWheel.defaultOptions }
 
-    @Test("The mockup's eight options, in order")
-    func mockupOptions() {
-        #expect(options == [15, 20, 25, 30, 45, 60, 90, 120])
+    @Test("Five-minute steps from 5M to 2H")
+    func fiveMinuteSteps() {
+        #expect(options.first == 5)
+        #expect(options.last == 120)
+        #expect(options.count == 24)
+        #expect(options == options.sorted())
     }
 
     @Test("Stepping moves one option at a time")
     func stepsOne() {
-        #expect(FlowDurationWheel.stepped(from: 30, by: 1, in: options) == 45)
+        #expect(FlowDurationWheel.stepped(from: 30, by: 1, in: options) == 35)
         #expect(FlowDurationWheel.stepped(from: 30, by: -1, in: options) == 25)
     }
 
     @Test("Stepping clamps at both ends")
     func clamps() {
-        #expect(FlowDurationWheel.stepped(from: 15, by: -1, in: options) == 15)
+        #expect(FlowDurationWheel.stepped(from: 5, by: -1, in: options) == 5)
         #expect(FlowDurationWheel.stepped(from: 120, by: 1, in: options) == 120)
     }
 
     @Test("A value outside the options snaps to the nearest one")
     func snapsToNearest() {
-        // 35 sits between 30 and 45, closer to 30, so stepping up lands on 45.
-        #expect(FlowDurationWheel.stepped(from: 35, by: 1, in: options) == 45)
-        #expect(FlowDurationWheel.stepped(from: 35, by: 0, in: options) == 30)
+        // A task saved at 32 matches no row, so the wheel would open on
+        // nothing; 32 is nearer 30 than 35, so it settles on 30.
+        #expect(FlowDurationWheel.stepped(from: 32, by: 0, in: options) == 30)
+        #expect(FlowDurationWheel.stepped(from: 32, by: 1, in: options) == 35)
     }
 
     @Test("An empty option set leaves the value alone")

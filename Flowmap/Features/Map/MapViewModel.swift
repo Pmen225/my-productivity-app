@@ -206,7 +206,12 @@ public final class MapViewModel {
         let padding: CGFloat = 80
         let scaleX = (viewportSize.width - padding) / box.width
         let scaleY = (viewportSize.height - padding) / box.height
-        zoom = min(max(min(scaleX, scaleY), 0.25), 1.5)
+        // The fitted view must still be an interactive view, not a thumbnail.
+        // Derive the floor from the shared branch-control measurement so the
+        // rendered control lands at exactly Apple's 44pt minimum rather than
+        // relying on a slightly-too-large magic zoom that clips phone maps.
+        let minimumInteractiveZoom = MapLayout.minimumInteractiveFitZoom(metrics: metrics)
+        zoom = min(max(min(scaleX, scaleY), minimumInteractiveZoom), 1.5)
         panOffset = CGSize(
             width: viewportSize.width / 2 - (margin + box.width / 2) * zoom,
             height: viewportSize.height / 2 - (margin + box.height / 2) * zoom

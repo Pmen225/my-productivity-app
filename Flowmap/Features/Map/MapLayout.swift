@@ -42,9 +42,14 @@ public enum MapLayout {
         public var rootVerticalPadding: CGFloat
         /// Vertical padding inside every other pill, each side.
         public var verticalPadding: CGFloat
-        /// Width reserved per inline accessory (collapse affordance, icon,
-        /// completion mark) when one is present and the canvas isn't compact.
+        /// Touch target reserved for the external branch affordance. It never
+        /// contributes to the label pill's width: MindNode keeps branch
+        /// mechanics outside the text container so the hierarchy stays dense.
         public var accessoryAllowance: CGFloat
+        /// Width occupied by a 21pt inline symbol plus its 8pt HStack gap.
+        /// Keeping this separate from the 58pt collapse control prevents
+        /// ordinary task icons from making every node needlessly wide.
+        public var inlineAccessoryAllowance: CGFloat
         /// Width reserved for the duration chip on a task leaf.
         public var chipAllowance: CGFloat
         /// The map layout rule's literal clearance: how far a leaf column
@@ -59,18 +64,19 @@ public enum MapLayout {
         public var badgeAllowance: CGFloat
 
         public init(
-            minPillWidth: CGFloat = 96,
-            nodeHeight: CGFloat = 40,
-            compactNodeHeight: CGFloat = 32,
-            rootHorizontalPadding: CGFloat = 30,
-            horizontalPadding: CGFloat = 26,
-            rootVerticalPadding: CGFloat = 20,
-            verticalPadding: CGFloat = 17,
-            accessoryAllowance: CGFloat = 20,
-            chipAllowance: CGFloat = 44,
+            minPillWidth: CGFloat = 72,
+            nodeHeight: CGFloat = 44,
+            compactNodeHeight: CGFloat = 44,
+            rootHorizontalPadding: CGFloat = FlowSpacing.l,
+            horizontalPadding: CGFloat = FlowSpacing.m,
+            rootVerticalPadding: CGFloat = FlowSpacing.m,
+            verticalPadding: CGFloat = FlowSpacing.s,
+            accessoryAllowance: CGFloat = 58,
+            inlineAccessoryAllowance: CGFloat = 29,
+            chipAllowance: CGFloat = 36,
             levelGap: CGFloat = FlowSpacing.l,
             siblingGap: CGFloat = FlowSpacing.l,
-            badgeAllowance: CGFloat = 20
+            badgeAllowance: CGFloat = 30
         ) {
             self.minPillWidth = minPillWidth
             self.nodeHeight = nodeHeight
@@ -80,6 +86,7 @@ public enum MapLayout {
             self.rootVerticalPadding = rootVerticalPadding
             self.verticalPadding = verticalPadding
             self.accessoryAllowance = accessoryAllowance
+            self.inlineAccessoryAllowance = inlineAccessoryAllowance
             self.chipAllowance = chipAllowance
             self.levelGap = levelGap
             self.siblingGap = siblingGap
@@ -115,35 +122,35 @@ public enum MapLayout {
         min(height * 0.28, 16)
     }
 
+    /// Lowest automatic fit scale that keeps the branch affordance at
+    /// Apple's 44pt minimum touch size. Manual pinch zoom may go further;
+    /// this floor is specifically for the view the app presents unaided.
+    public static func minimumInteractiveFitZoom(metrics: Metrics = .shared) -> CGFloat {
+        44 / metrics.accessoryAllowance
+    }
+
     /// The size one node's pill actually draws at — width measured from its
     /// own title, never a fixed column width. `MapNodeView` and the layout
     /// maths both call this, so a pill can never be sized differently than
     /// it is spaced.
     public static func pillSize(for node: MapNode, isCompact: Bool, metrics: Metrics = .shared) -> CGSize {
         let text = node.title.isEmpty ? "Untitled" : node.title
-        // Root is semibold, every other node is bold, at the clone's own
-        // `NodeTextSizeStyle` sizes (Layout.swift:148-174) — flat across
-        // branch, leaf task and plain idea alike, no per-kind variant.
-        // Mirrors `MapNodeView.titleFont` exactly, or the measured width and
-        // the rendered pill drift apart.
+        // Mirrors the shared `FlowFont` map tokens exactly. The former
+        // 20–25pt override bypassed the design system and turned every label
+        // into a card, which is why a small tree overflowed an iPhone.
         let fontSize = titleFontSize(isRoot: node.isRoot, isCompact: isCompact)
         let bold = true
         var width = textWidth(text, fontSize: fontSize, bold: bold)
             + metrics.horizontalPadding(forRoot: node.isRoot) * 2
 
         if !isCompact {
-            if node.hasChildren { width += metrics.accessoryAllowance }
-            if !node.iconName.isEmpty { width += metrics.accessoryAllowance }
-            if node.isCompleted { width += metrics.accessoryAllowance }
+            if !node.iconName.isEmpty { width += metrics.inlineAccessoryAllowance }
+            if node.isCompleted { width += metrics.inlineAccessoryAllowance }
             if node.isTask { width += metrics.chipAllowance }
         }
 
-        // Height grows with the title's real font metrics plus vertical
-        // padding, the same way width already grows with measured text —
-        // MindNode's own pills are taller now that the title reads at 20/25pt
-        // instead of 12/13pt (Task 63 MindNode restyle, item 4). The old
-        // fixed constants stay on as a floor only, for an empty/placeholder
-        // title.
+        // Height grows with the real font metrics and never drops below the
+        // 44pt interactive floor.
         let measuredHeight = textHeight(fontSize: fontSize, bold: bold)
             + metrics.verticalPadding(forRoot: node.isRoot) * 2
         let heightFloor = isCompact ? metrics.compactNodeHeight : metrics.nodeHeight
@@ -151,18 +158,13 @@ public enum MapLayout {
         return CGSize(width: max(ceil(width), metrics.minPillWidth), height: ceil(height))
     }
 
-    /// Root is semibold, every other node is bold, at the clone's own
-    /// `NodeTextSizeStyle` sizes (Layout.swift:148-174, quoted verbatim):
-    /// standard 25pt root / 20pt children at normal zoom, compact 21pt root /
-    /// 17pt children once the canvas is zoomed out. `pillSize` and
-    /// `MapNodeView.titleFont` both call this, so the measured pill and the
-    /// rendered title can never disagree on size.
+    /// Exact fixed sizes owned by `FlowFont.mapRootTitle`,
+    /// `mapNodeTitle`, and `mapNodeTitleCompact`.
     public static func titleFontSize(isRoot: Bool, isCompact: Bool) -> CGFloat {
         switch (isRoot, isCompact) {
-        case (true, false): 25
-        case (true, true): 21
-        case (false, false): 20
-        case (false, true): 17
+        case (true, _): 13
+        case (false, false): 13
+        case (false, true): 11
         }
     }
 
@@ -285,19 +287,10 @@ public enum MapLayout {
     }
 
     /// MindNode's real vertical tree shape: the root sits at the TOP, its
-    /// direct children fan out horizontally in one row beneath it — the
-    /// mock's "Top down (org chart)" orientation — and every generation
-    /// below that stacks straight DOWN from its own parent, left-aligned
-    /// with an indent just right of the parent's own left edge, never
-    /// spread sideways. Ported from the shipping clone
-    /// (`MindMapLayoutEngine.layoutNodes`, MindNodeClone/Sources/
-    /// MindNodeClone/Layout.swift :377-513): a stacked child's left edge is
-    /// its parent's own left edge + `indent` (30), consecutive stacked
-    /// siblings clear each other by `verticalGap` (16), and the first
-    /// stacked child's top sits at its parent's bottom + `firstChildGap`
-    /// (26). The root's own children reuse the clone's sibling-spacing
-    /// formula (`rowSpacing`, :720-736): `max(62, 92 - 8 * depth)`, +26 at
-    /// depth 0 for vertical orientation.
+    /// direct children flow into at most two downward columns beneath it, and
+    /// every generation below stacks under its own parent. A single wide row
+    /// is desktop map behaviour; on an iPhone it clips both ends and defeats
+    /// the purpose of choosing an org-chart view.
     private static func positionsTopDown(
         root: MapNode,
         sizes: [UUID: CGSize],
@@ -315,13 +308,7 @@ public enum MapLayout {
             node.isCollapsed ? [] : node.orderedChildren
         }
 
-        // The clone's sibling-spacing formula for the row root's own
-        // children fan out on — `rootRowSpacing` defaults to 92
-        // (`positionedNodes` :192); vertical orientation adds 26 at depth 0.
-        func rowSpacing(depth: Int) -> CGFloat {
-            let base = max(62, 92 - CGFloat(depth) * 8)
-            return depth == 0 ? base + 26 : base
-        }
+        let rootToChildCentreY: CGFloat = 118
 
         // Total height of a node's own stacked subtree (Layout.swift
         // :668-681, `stackedSubtreeHeight`) — a stacked sibling's top must
@@ -375,28 +362,37 @@ public enum MapLayout {
             return result
         }
 
-        // Depth-1 row: fan the root's own children out left-to-right, each
-        // reserving its own stacked subtree's width so a wide descendant
-        // stack can never collide with the next branch's column.
-        let spacing = rowSpacing(depth: 0)
-        // The clone's vertical `childOrigin` (Layout.swift :793-797) drops a
-        // depth-1 child's CENTRE `columnSpacing` (= rowSpacing at depth 0)
-        // below its parent's centre — 118pt centre-to-centre, never an edge
-        // gap. `levelGap` still spaces the chrome elsewhere; it is not this.
+        // Depth 1 uses a two-column masonry flow. Each branch stays intact in
+        // one column; the next branch enters whichever column is currently
+        // shorter, keeping the overall map narrow and vertically balanced.
         let rootCenterY = rootSize.height / 2
+        let columnCount = min(2, rootChildren.count)
+        var columns = Array(repeating: [MapNode](), count: columnCount)
+        var columnHeights = Array(repeating: CGFloat.zero, count: columnCount)
 
-        var cursor: CGFloat = 0
-        var rowMinX = CGFloat.greatestFiniteMagnitude
-        var rowMaxX = -CGFloat.greatestFiniteMagnitude
         for child in rootChildren {
-            let childSize = size(child)
-            stack(child, leftEdge: cursor, top: rootCenterY + spacing - childSize.height / 2)
-            rowMinX = min(rowMinX, cursor)
-            rowMaxX = max(rowMaxX, cursor + childSize.width)
-            cursor += stackedSubtreeWidth(child) + spacing
+            let column = columnHeights.indices.min { columnHeights[$0] < columnHeights[$1] } ?? 0
+            columns[column].append(child)
+            columnHeights[column] += stackedSubtreeHeight(child) + verticalGap
         }
 
-        result[root.id] = CGPoint(x: (rowMinX + rowMaxX) / 2, y: rootSize.height / 2)
+        let columnWidths = columns.map { column in
+            column.map(stackedSubtreeWidth).max() ?? metrics.minPillWidth
+        }
+        let totalWidth = columnWidths.reduce(0, +)
+            + CGFloat(max(columnCount - 1, 0)) * metrics.siblingGap
+
+        var columnLeft: CGFloat = 0
+        for columnIndex in columns.indices {
+            var top = rootCenterY + rootToChildCentreY - size(columns[columnIndex][0]).height / 2
+            for child in columns[columnIndex] {
+                stack(child, leftEdge: columnLeft, top: top)
+                top += stackedSubtreeHeight(child) + verticalGap
+            }
+            columnLeft += columnWidths[columnIndex] + metrics.siblingGap
+        }
+
+        result[root.id] = CGPoint(x: totalWidth / 2, y: rootSize.height / 2)
         return result
     }
 

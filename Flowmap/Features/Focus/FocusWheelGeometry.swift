@@ -712,6 +712,37 @@ public enum FocusWheelGeometry {
         return spans.firstIndex { $0.start <= bottomAngle && bottomAngle <= $0.end }
     }
 
+    /// Converts the finger's angular velocity into SwiftUI spring units for a
+    /// return to zero. A negative result means the wheel was still travelling
+    /// away from home when released; keeping a restrained amount of that
+    /// momentum is what makes the settle one continuous physical path instead
+    /// of a second, disconnected reset animation.
+    public static func wheelSettleInitialVelocity(
+        currentOffset: Double,
+        angularVelocity: Double
+    ) -> Double {
+        let distanceToHome = -currentOffset
+        guard abs(distanceToHome) > 0.001 else { return 0 }
+        return min(3, max(-1.5, angularVelocity / distanceToHome))
+    }
+
+    /// Keeps a native-size neighbour label wholly inside the visible wheel
+    /// viewport. The wedge can continue beyond the crop, but its title must
+    /// never lose the leading icon or the first letters at either screen edge.
+    public static func edgeSafeLabelPosition(
+        _ position: CGPoint,
+        labelWidth: CGFloat,
+        viewportWidth: CGFloat,
+        edgeInset: CGFloat
+    ) -> CGPoint {
+        guard viewportWidth > 0 else { return position }
+        let safeInset = min(max(0, edgeInset), viewportWidth / 2)
+        let halfWidth = min(max(0, labelWidth / 2), viewportWidth / 2 - safeInset)
+        let minimumX = safeInset + halfWidth
+        let maximumX = viewportWidth - safeInset - halfWidth
+        return CGPoint(x: min(maximumX, max(minimumX, position.x)), y: position.y)
+    }
+
     // MARK: - Re-forming swell
 
     /// How far the re-forming style lets the dial swell under the fingers.

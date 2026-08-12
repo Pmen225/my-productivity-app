@@ -173,23 +173,31 @@ final class ScreenshotTests: XCTestCase {
 
                 // The Project kind swaps the task's subtasks and note for the
                 // INITIATIVE chips — a different sheet worth its own shot.
-                let projectKind = app.buttons["Project"].firstMatch
-                if projectKind.waitForExistence(timeout: 5) {
-                    projectKind.tap()
+                let kindMenu = app.buttons["Kind"].firstMatch
+                if kindMenu.waitForExistence(timeout: 5) {
+                    kindMenu.tap()
+                    app.buttons["Project"].firstMatch.tap()
                     Thread.sleep(forTimeInterval: 1)
                     capture(app, named: "iphone-new-sheet-project")
+                    kindMenu.tap()
                     app.buttons["Task"].firstMatch.tap()
                     Thread.sleep(forTimeInterval: 1)
                 } else {
-                    XCTFail("Project kind segment not found in the New sheet")
+                    XCTFail("Kind menu not found in the New sheet")
                 }
 
                 // Creating a task raises the HUD pill over whatever screen the
                 // sheet was covering. It is the one moment that can be
                 // provoked deterministically, so it is what proves the moment
                 // overlay actually draws.
-                let name = app.textFields["Task name"].firstMatch
-                let create = app.buttons["Create"].firstMatch
+                //
+                // One-task-card spec (2026-08-10): a task now opens the fused
+                // `TaskDetailInspector` card instead of `FlowCreateSheet`, so
+                // the field is labelled "Task title" (not "Task name") and
+                // confirming uses the card's ✓ "Keep task" button (not
+                // "Create").
+                let name = app.textFields["Task title"].firstMatch
+                let create = app.buttons["Keep task"].firstMatch
                 if name.waitForExistence(timeout: 5), create.waitForExistence(timeout: 5) {
                     name.tap()
                     name.typeText("Sketch the cover")
@@ -197,7 +205,7 @@ final class ScreenshotTests: XCTestCase {
                     Thread.sleep(forTimeInterval: 0.8)
                     capture(app, named: "iphone-hud-pill")
                 } else {
-                    XCTFail("New sheet did not offer a name field and a Create button")
+                    XCTFail("New sheet did not offer a name field and a Keep-task button")
                 }
 
                 let close = app.buttons["Close"].firstMatch
@@ -524,8 +532,18 @@ final class ScreenshotTests: XCTestCase {
     /// Inbox. T6 removed Library's "Inbox" row (`PlanInboxSection` already
     /// shows the inbox inline at the top of Plan), so this no longer opens
     /// `TaskListScreen`'s "Add task" control — it drives the shared
-    /// `FlowCreateSheet` instead, whose title field shares the exact same
-    /// placeholder/label pair.
+    /// `QuickCaptureView`, which since the one-task-card spec (2026-08-10)
+    /// routes a task straight to the fused `TaskDetailInspector` card
+    /// (`FlowCreateSheet` now only handles Project/Initiative).
+    ///
+    /// KNOWN LIMITATION (2026-08-10): the fused card has no due-date field —
+    /// the founder ruling scoped due date to seed-only, matching the editor's
+    /// existing (pre-fusion) field set — so `dueToday` can no longer be
+    /// satisfied from this generic shell-FAB entry point. It fails loud below
+    /// rather than silently creating an undated task; `testCapturePrioritiseDuel`
+    /// needs a different route to a due-today task (e.g. seeding
+    /// `flagForTodayIfUndated` through a Today-scoped entry point) before it
+    /// can pass again.
     private func addQuickTask(_ app: XCUIApplication, title: String, dueToday: Bool = false) {
         // Reach the create sheet by the SHELL's floating button. Plan used to
         // carry a duplicate "+" in its own toolbar, and the sheet it presented
@@ -541,9 +559,10 @@ final class ScreenshotTests: XCTestCase {
         }
         addButton.tap()
         Thread.sleep(forTimeInterval: 0.5)
-        // Query the accessibility label the field sets deliberately
-        // (`QuickAddTaskView.swift:120`), not its placeholder.
-        let field = app.textFields["Task name"].firstMatch
+        // The fused `TaskDetailInspector` card's title field is
+        // `TextField("Task title", text: $task.title)` — label and
+        // placeholder are the same string, unlike the old sheet's field.
+        let field = app.textFields["Task title"].firstMatch
         guard field.waitForExistence(timeout: 5) else {
             XCTFail("Quick capture title field not found")
             return
@@ -565,7 +584,7 @@ final class ScreenshotTests: XCTestCase {
             // candidate B" shipped in a real capture).
             if let existing = field.value as? String,
                !existing.isEmpty,
-               existing != "Task name…" {
+               existing != "Task title" {
                 field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: existing.count))
             }
             field.typeText(title)
@@ -579,31 +598,26 @@ final class ScreenshotTests: XCTestCase {
             XCTFail("Quick capture title field never accepted text (value: \(String(describing: field.value)))")
             return
         }
-        // T10's Due pill: one tap sets a due date defaulting to now, which
-        // lands the task in today's set — what the today-scoped duel needs.
+        // T10's Due pill used to set a due date defaulting to now here, which
+        // landed the task in today's set — what the today-scoped duel needs.
+        // One-task-card spec (2026-08-10): the fused card has no due-date
+        // field at all (due date is seed-only, matching the editor's
+        // pre-fusion field set), so this generic shell-FAB entry point can no
+        // longer satisfy `dueToday`. Fail loud rather than silently creating
+        // an undated task and letting the duel assertion fail somewhere else
+        // with a confusing message.
         if dueToday {
-            let duePill = app.buttons["Add due date"].firstMatch
-            if duePill.waitForExistence(timeout: 3) {
-                if !duePill.isHittable { app.swipeUp(); Thread.sleep(forTimeInterval: 0.4) }
-                duePill.tap()
-                Thread.sleep(forTimeInterval: 0.5)
-            } else {
-                XCTFail("Due pill not found on the create sheet")
-                return
-            }
+            XCTFail("addQuickTask can no longer mark a task due-today: the fused TaskDetailInspector create card dropped the due-date field (one-task-card spec, 2026-08-10). testCapturePrioritiseDuel needs a due-today entry point instead (e.g. seeding flagForTodayIfUndated).")
+            return
         }
-        // FlowCreateSheet's title field has no `.onSubmit` — unlike the old
-        // QuickAddTaskView field, return does nothing here. Tap Create.
+        // The fused card's title field has no `.onSubmit`, so return does
+        // nothing here. Tap the ✓ "Keep task" button.
         //
-        // Scroll to it first. The sheet grew a PROJECT chip row once the demo
-        // seed started creating projects, which pushed Create below the fold
-        // of the medium detent. `exists` stays true for an off-screen element
-        // and `.tap()` on one silently does nothing, so the helper "succeeded"
-        // while creating no task at all — three tests then failed several
-        // steps later with "the inbox may be empty".
-        let createButton = app.buttons["Create"].firstMatch
+        // Scroll to it first — mirrors the old sheet's need to reach Create
+        // past a data-driven section.
+        let createButton = app.buttons["Keep task"].firstMatch
         guard createButton.waitForExistence(timeout: 3) else {
-            XCTFail("Create button not found")
+            XCTFail("Keep-task button not found")
             return
         }
         for _ in 0..<3 where !createButton.isHittable {
@@ -611,7 +625,7 @@ final class ScreenshotTests: XCTestCase {
             Thread.sleep(forTimeInterval: 0.4)
         }
         guard createButton.isHittable else {
-            XCTFail("Create button never became reachable — the create sheet may be taller than its detent")
+            XCTFail("Keep-task button never became reachable")
             return
         }
         createButton.tap()
@@ -628,6 +642,26 @@ final class ScreenshotTests: XCTestCase {
             created.waitForExistence(timeout: 5),
             "Quick capture reported success but no task titled \"\(title)\" appeared"
         )
+    }
+
+    /// Promotes a newly created inbox task through the same leading swipe a
+    /// person uses. The prioritise game intentionally compares Today's work,
+    /// while the fused create card has no due-date control.
+    private func flagForToday(_ app: XCUIApplication, title: String) -> Bool {
+        let row = app.staticTexts[title].firstMatch
+        guard row.waitForExistence(timeout: 5) else {
+            XCTFail("Could not find \(title) to flag it for Today")
+            return false
+        }
+        row.swipeRight()
+        let today = app.buttons["sun.max"].firstMatch
+        guard today.waitForExistence(timeout: 3) else {
+            XCTFail("Leading swipe on \(title) did not reveal Today")
+            return false
+        }
+        today.tap()
+        Thread.sleep(forTimeInterval: 0.7)
+        return true
     }
 
     /// The shared glass delete card, reached the way decision 11 says a row is
@@ -675,12 +709,13 @@ final class ScreenshotTests: XCTestCase {
         let app = launch()
         guard tapTab(app, "Plan") else { return }
 
-        // T19 scoped the duel to TODAY's tasks, so the top-up tasks must be
-        // due today (the Due pill defaults to now) — plain inbox tasks no
-        // longer qualify, and near the 21:00 cliff the demo's own today set
-        // can be thin.
-        addQuickTask(app, title: "Duel candidate A", dueToday: true)
-        addQuickTask(app, title: "Duel candidate B", dueToday: true)
+        // Insert real sample tasks, then use the visible swipe action to put
+        // them into the game. This proves the journey instead of relying on
+        // whatever the demo seed happened to schedule at the current hour.
+        addQuickTask(app, title: "Duel candidate A")
+        guard flagForToday(app, title: "Duel candidate A") else { return }
+        addQuickTask(app, title: "Duel candidate B")
+        guard flagForToday(app, title: "Duel candidate B") else { return }
 
         let playButton = app.buttons.matching(
             NSPredicate(format: "label BEGINSWITH 'Prioritise today'")
@@ -706,21 +741,53 @@ final class ScreenshotTests: XCTestCase {
             XCTFail("Prioritise duel did not present after tapping \"Play the game\"")
             return
         }
-        XCTAssertTrue(
-            app.buttons["Duel scope: Today"].waitForExistence(timeout: 5),
-            "The duel did not expose its default Today scope control"
-        )
-        capture(app, named: "iphone-prioritise-duel")
+        capture(app, named: "minigame-01-open")
+        XCTAssertFalse(app.buttons["No preference"].exists, "Redundant no-preference control is still visible")
 
-        // The pair count is n*(n-1)/2, so the two top-up tasks can still leave
-        // more than thirty choices. Keep tapping until the reveal is actually
-        // on screen; a fixed short loop used to label a live duel as a reveal.
+        // Exercise the close control and assert its actual outcome, then
+        // reopen to continue the game.
+        let close = app.buttons["Close"].firstMatch
+        guard close.waitForExistence(timeout: 3) else {
+            XCTFail("Full-screen minigame has no Close control")
+            return
+        }
+        close.tap()
+        XCTAssertTrue(
+            playButton.waitForExistence(timeout: 5),
+            "Close did not return to Plan"
+        )
+        playButton.tap()
+        guard app.buttons.matching(choicePredicate).firstMatch.waitForExistence(timeout: 5) else {
+            XCTFail("Minigame did not reopen")
+            return
+        }
+
+        // First offered task: capture the held selection beat before exit,
+        // proving visible winner/loser feedback rather than only a counter mutation.
+        app.buttons.matching(choicePredicate).element(boundBy: 0).tap()
+        Thread.sleep(forTimeInterval: 0.08)
+        capture(app, named: "minigame-02-first-choice-feedback")
+        Thread.sleep(forTimeInterval: 0.95)
+
+        // Second offered task on the next pair.
+        let secondChoice = app.buttons.matching(choicePredicate).element(boundBy: 1)
+        guard secondChoice.waitForExistence(timeout: 5) else {
+            XCTFail("Next comparison did not arrive after the first choice")
+            return
+        }
+        secondChoice.tap()
+        Thread.sleep(forTimeInterval: 0.08)
+        capture(app, named: "minigame-03-second-choice-feedback")
+        Thread.sleep(forTimeInterval: 0.95)
+
+        // Finish every remaining comparison. The ranked screen itself is the
+        // outcome assertion; a tap loop that simply ran is not evidence.
         var remainingTaps = 100
-        while remainingTaps > 0 {
+        while remainingTaps > 0 && !app.staticTexts["Decision made."].exists {
             let choice = app.buttons.matching(choicePredicate).firstMatch
             guard choice.waitForExistence(timeout: 3) else { break }
             choice.tap()
-            Thread.sleep(forTimeInterval: 0.3)
+            Thread.sleep(forTimeInterval: 1.05)
             remainingTaps -= 1
         }
 
@@ -729,12 +796,52 @@ final class ScreenshotTests: XCTestCase {
             app.staticTexts["Decision made."].waitForExistence(timeout: 5),
             "Prioritise duel did not reach its reveal after answering every available pair"
         )
-        capture(app, named: "iphone-prioritise-duel-reveal")
+        capture(app, named: "minigame-04-ranked-result")
 
-        let keepOrder = app.buttons["Keep order, plan later"].firstMatch
-        if keepOrder.waitForExistence(timeout: 5) {
-            keepOrder.tap()
+        let keepOrder = app.buttons["Keep order"].firstMatch
+        guard keepOrder.waitForExistence(timeout: 5) else {
+            XCTFail("Keep-order exit missing")
+            return
         }
+        keepOrder.tap()
+        let planReturn = expectation(
+            for: NSPredicate(format: "isHittable == true"),
+            evaluatedWith: playButton
+        )
+        wait(for: [planReturn], timeout: 8)
+        Thread.sleep(forTimeInterval: 0.8)
+        capture(app, named: "minigame-05-keep-order-exit")
+
+        // Re-run and exercise the other result action as well.
+        playButton.tap()
+        guard app.buttons.matching(choicePredicate).firstMatch.waitForExistence(timeout: 5) else {
+            XCTFail("Minigame did not reopen for plan-today exit")
+            return
+        }
+        remainingTaps = 100
+        while remainingTaps > 0 && !app.staticTexts["Decision made."].exists {
+            let choice = app.buttons.matching(choicePredicate).firstMatch
+            guard choice.waitForExistence(timeout: 3) else { break }
+            choice.tap()
+            Thread.sleep(forTimeInterval: 1.05)
+            remainingTaps -= 1
+        }
+        let planToday = app.buttons["Plan today"].firstMatch
+        guard planToday.waitForExistence(timeout: 5) else {
+            XCTFail("Plan-today exit missing")
+            return
+        }
+        planToday.tap()
+        let plannedReturn = expectation(
+            for: NSPredicate(format: "isHittable == true"),
+            evaluatedWith: playButton
+        )
+        wait(for: [plannedReturn], timeout: 15)
+        guard tapTab(app, "Plan") else {
+            XCTFail("Plan today returned, but the Plan tab did not settle")
+            return
+        }
+        capture(app, named: "minigame-06-plan-today-exit")
     }
 
     /// "Start planning" must actually present `PlanPreviewView`.

@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// One idea bubble: a rounded pill sized to its own text, filled with its
-/// branch's flat MindNode colour (or, for the root, `MapPalette`'s neutral
-/// root fill) — never a fixed-width card. Purely presentational — every
+/// One idea bubble: a rounded pill sized to its own text and tinted with the
+/// same colour token as the task or project it represents. Purely
+/// presentational — every
 /// interaction it exposes is a closure so `MapCanvasView` stays the single
 /// place that talks to `MapViewModel`.
 struct MapNodeView: View {
@@ -15,17 +15,14 @@ struct MapNodeView: View {
     /// the pill is drawn at this size, never recomputed here, so the visible
     /// bubble and the connector anchored to it can never disagree.
     let size: CGSize
-    /// This node's position among the root's direct children — `node`'s own
-    /// `sortOrder` if it IS a depth-1 branch, otherwise that ancestor's.
-    /// Feeds `MapPalette.branchColour` so a whole branch reads as one flat
-    /// colour. Meaningless (and unused) for the root.
-    let rootChildIndex: Int
+    let orientation: MapLayoutOrientation
     let isSelected: Bool
     let isDimmed: Bool
     let isCompact: Bool
     let isSearchMatch: Bool
     let onSelect: () -> Void
     let onToggleCollapse: () -> Void
+    let onAddChild: (() -> Void)?
 
     private var metrics: MapLayout.Metrics { .shared }
 
@@ -36,20 +33,9 @@ struct MapNodeView: View {
 
     var body: some View {
         pill
-            .mapMinimumHitTarget()
             .opacity(isDimmed ? 0.25 : 1)
-            .onTapGesture(count: 1) {
-                // The pill is the expand control for a collapsed branch —
-                // the "+N" text below is informational, too small to be a
-                // 44pt target in the inter-pill gap.
-                if node.isCollapsed, node.hasChildren { onToggleCollapse() }
-                onSelect()
-            }
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isSelected)
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel(node.title.isEmpty ? "Untitled idea" : node.title)
-            .accessibilityValue(accessibilityValue)
-            .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+            .animation(reduceMotion ? nil : FlowMotion.tap, value: isSelected)
+            .accessibilityElement(children: .contain)
     }
 
     // MARK: - Pill
@@ -61,54 +47,87 @@ struct MapNodeView: View {
                     activeDot.offset(x: -3, y: -3)
                 }
             }
-            .overlay(alignment: .top) {
-                // MindNode draws nothing beneath a pill except a collapsed
-                // branch's count — no per-node progress captions (Task 63
-                // pixel gate: literal match; level/XP live on Stats).
-                if node.isCollapsed, node.hasChildren {
-                    collapsedBadge
-                        .offset(y: size.height + FlowSpacing.xs)
+            .overlay(alignment: branchAnchorAlignment) {
+                if node.hasChildren {
+                    branchControl
+                        .offset(branchControlOffset)
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                if isSelected {
+                    selectedNodeControl
+                        .offset(x: FlowSpacing.m, y: -FlowSpacing.m)
                 }
             }
     }
 
-    /// One solid-fill pill treatment for every node — root or not, task or
-    /// not, leaf or branch. MindNode never gives a leaf its own outlined
-    /// variant (Task 63 MindNode restyle, item 3): the whole subtree under a
-    /// branch reads as that branch's flat colour.
     private var pillCore: some View {
-        HStack(spacing: FlowSpacing.xs) {
-            if !isCompact, node.hasChildren, !node.isCollapsed {
-                Image(systemName: "circle.fill")
-                    .font(.system(size: 4))
-                    .foregroundStyle(textColour.opacity(0.5))
-                    .accessibilityHidden(true)
-            }
+        Button(action: onSelect) {
+            HStack(spacing: FlowSpacing.s) {
+                if !isCompact, !node.iconName.isEmpty {
+                    Image(systemName: node.iconName)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(textColour)
+                        .symbolRenderingMode(.hierarchical)
+                }
 
-            if !isCompact, !node.iconName.isEmpty {
-                Image(systemName: node.iconName)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(node.isRoot ? textColour : node.colour.onSoft)
-            }
+                titleField
 
-            titleField
+                if node.isCompleted {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(textColour)
+                        .accessibilityHidden(true)
+                }
 
-            if node.isCompleted {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 12))
-                    .foregroundStyle(node.isRoot ? textColour : node.colour.onSoft)
-                    .accessibilityLabel("Completed")
+                if !isCompact, node.isTask {
+                    Text(DurationFormatter.compact(minutes: node.estimatedMinutes))
+                        .font(FlowFont.durationChip)
+                        .foregroundStyle(textColour.opacity(0.72))
+                        .accessibilityHidden(true)
+                }
             }
-
-            if !isCompact, node.isTask {
-                DurationChip(minutes: node.estimatedMinutes, tint: node.isRoot ? nil : node.colour)
-            }
+            .padding(.horizontal, metrics.horizontalPadding(forRoot: node.isRoot))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, metrics.horizontalPadding(forRoot: node.isRoot))
-        .padding(.vertical, metrics.verticalPadding(forRoot: node.isRoot))
+        .buttonStyle(NodePressStyle())
         .frame(width: size.width, height: size.height)
+        .contentShape(Rectangle())
         .background(pillShape.fill(fillColour))
-        .overlay(pillShape.strokeBorder(borderColour, lineWidth: isSelected ? 2.5 : 1.5))
+        .overlay(pillShape.strokeBorder(borderColour, lineWidth: isSelected ? 1.5 : 1))
+        .shadow(color: nodeShadowColour, radius: isSelected ? 9 : 3, y: isSelected ? 3 : 1)
+        .accessibilityIdentifier("map-node-\(node.id.uuidString)")
+        .accessibilityLabel(node.title.isEmpty ? "Untitled idea" : node.title)
+        .accessibilityHint("Selects this node")
+        .accessibilityValue(nodeAccessibilityValue)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+
+    /// The hierarchy control lives outside the label, matching MindNode's
+    /// branch endpoint. Its visual circle is restrained while its hit target
+    /// remains the full shared 58pt canvas control.
+    private var branchControl: some View {
+        Button(action: onToggleCollapse) {
+            HStack(spacing: FlowSpacing.xxs) {
+                Image(systemName: node.isCollapsed ? "chevron.right" : "chevron.down")
+                    .font(.system(size: 11, weight: .bold))
+                if node.isCollapsed {
+                    Text("\(node.orderedChildren.count)")
+                        .font(FlowFont.mapBadge)
+                }
+            }
+            .foregroundStyle(textColour.opacity(0.82))
+            .frame(minWidth: 24, minHeight: 24)
+            .padding(.horizontal, node.isCollapsed ? FlowSpacing.xs : 0)
+            .background(.regularMaterial, in: Capsule(style: .continuous))
+            .overlay(Capsule(style: .continuous).stroke(node.colour.base.opacity(0.28), lineWidth: 1))
+            .frame(width: metrics.accessoryAllowance, height: metrics.accessoryAllowance)
+            .contentShape(Circle())
+        }
+        .buttonStyle(NodePressStyle())
+        .accessibilityIdentifier("map-node-toggle-\(node.id.uuidString)")
+        .accessibilityLabel("\(node.isCollapsed ? "Expand" : "Collapse") \(node.title.isEmpty ? "untitled" : node.title) branch")
+        .accessibilityValue(node.isCollapsed ? "\(node.orderedChildren.count) hidden" : "Expanded")
     }
 
     /// MindNode's continuous rounded-rect pill, scaled to this pill's own
@@ -117,16 +136,6 @@ struct MapNodeView: View {
     /// the exact same outline.
     private var pillShape: RoundedRectangle {
         RoundedRectangle(cornerRadius: MapLayout.nodeCornerRadius(forHeight: size.height), style: .continuous)
-    }
-
-    /// The "+N" count beside a collapsed pill's caption. Informational only:
-    /// a 44pt button cannot fit the below-pill gap, so the pill itself is
-    /// the expand control (tap expands via `onSelect` in the canvas).
-    private var collapsedBadge: some View {
-        Text("+\(node.orderedChildren.count)")
-            .font(FlowFont.mapBadge)
-            .foregroundStyle(FlowTheme.tertiaryText(scheme))
-            .accessibilityHidden(true)
     }
 
     /// The 7pt clay dot marking a leaf task whose segment is the focus
@@ -149,39 +158,78 @@ struct MapNodeView: View {
 
     // MARK: - Styling
 
-    /// MindNode's own fixed palette (Task 63 MindNode restyle), not the
-    /// app-wide `ColourToken` pastel: root is a flat neutral fill, every
-    /// other node is its branch's colour SOLID — no wash, no per-depth
-    /// variant.
+    /// Root remains a quiet neutral anchor. Every project, task and subtask
+    /// uses the same semantic colour token it carries in Plan, Focus and the
+    /// wheel, so changing a task colour changes the entire visual thread.
     private var fillColour: Color {
-        node.isRoot ? MapPalette.rootFill(scheme) : MapPalette.branchColour(rootChildIndex: rootChildIndex)
+        node.isRoot ? MapPalette.rootFill(scheme) : node.colour.soft
     }
 
     private var textColour: Color {
-        node.isRoot ? MapPalette.rootText(scheme) : MapPalette.titleInk(on: fillColour)
+        node.isRoot ? MapPalette.rootText(scheme) : node.colour.onSoft
     }
 
-    /// Root is semibold, every other node is bold, at the clone's own
-    /// `NodeTextSizeStyle` sizes — flat across branch, leaf task and plain
-    /// idea alike, no per-kind variant. Matches `MapLayout.pillSize`'s own
-    /// measurement exactly, or the pill and its title drift apart.
+    /// The shared fixed map tokens keep a dense spatial hierarchy while the
+    /// node itself provides the 44pt interaction target.
     private var titleFont: Font {
-        .system(
-            size: MapLayout.titleFontSize(isRoot: node.isRoot, isCompact: isCompact),
-            weight: node.isRoot ? .semibold : .bold,
-            design: .rounded
-        )
+        if node.isRoot { return FlowFont.mapRootTitle }
+        return isCompact ? FlowFont.mapNodeTitleCompact : FlowFont.mapNodeTitle
     }
 
     private var borderColour: Color {
-        if isSelected { return node.isRoot ? textColour : node.colour.base }
+        if isSelected { return node.isRoot ? FlowTheme.accent : node.colour.base }
         if isSearchMatch { return FlowTheme.accent }
-        return .clear
+        return FlowTheme.glassBorder(scheme)
     }
 
-    private var accessibilityValue: String {
-        guard node.isCollapsed, node.hasChildren else { return "" }
-        return "\(node.orderedChildren.count) hidden"
+    private var nodeShadowColour: Color {
+        if isSelected { return (node.isRoot ? FlowTheme.accent : node.colour.base).opacity(0.28) }
+        return FlowTheme.shadow(scheme)
+    }
+
+    private var branchAnchorAlignment: Alignment {
+        orientation == .topDown ? .bottom : .trailing
+    }
+
+    private var branchControlOffset: CGSize {
+        orientation == .topDown
+            ? CGSize(width: 0, height: metrics.accessoryAllowance / 2)
+            : CGSize(width: metrics.accessoryAllowance / 2, height: 0)
+    }
+
+    @ViewBuilder
+    private var selectedNodeControl: some View {
+        if let onAddChild, let task = node.displayTask {
+            Button(action: onAddChild) {
+                Image(systemName: "plus")
+                    .font(.system(size: 15, weight: .semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(node.colour.onSoft)
+                    .frame(width: 26, height: 26)
+                    .background(.regularMaterial, in: Circle())
+                    .overlay(Circle().stroke(node.colour.base.opacity(0.45), lineWidth: 1))
+                    .shadow(color: node.colour.base.opacity(0.24), radius: 6, y: 2)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(NodePressStyle())
+            .accessibilityIdentifier("map-add-child-\(task.id.uuidString)")
+            .accessibilityLabel("Add child task to \(task.title)")
+        } else {
+            Circle()
+                .fill(node.isRoot ? FlowTheme.accent : node.colour.base)
+                .frame(width: 8, height: 8)
+                .overlay(Circle().stroke(Color.white.opacity(0.9), lineWidth: 1.5))
+                .accessibilityHidden(true)
+        }
+    }
+
+    private var nodeAccessibilityValue: String {
+        var values: [String] = []
+        if node.isTask { values.append(DurationFormatter.spoken(minutes: node.estimatedMinutes)) }
+        if node.isCompleted { values.append("Completed") }
+        if node.isCollapsed, node.hasChildren { values.append("\(node.orderedChildren.count) hidden") }
+        return values.joined(separator: ", ")
     }
 
     // MARK: - Task progress
@@ -191,5 +239,16 @@ struct MapNodeView: View {
     private var isActiveSegment: Bool {
         guard let displayTask = node.displayTask else { return false }
         return flow?.focusEngine.activeSession?.task?.id == displayTask.id
+    }
+
+    private struct NodePressStyle: ButtonStyle {
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .opacity(configuration.isPressed ? 0.74 : 1)
+                .scaleEffect(configuration.isPressed && !reduceMotion ? 0.975 : 1)
+                .animation(reduceMotion ? nil : FlowMotion.tap, value: configuration.isPressed)
+        }
     }
 }

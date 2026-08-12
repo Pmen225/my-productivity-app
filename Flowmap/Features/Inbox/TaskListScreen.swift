@@ -78,9 +78,19 @@ public struct TaskListScreen: View {
             .flowScreenTitle(source.title)
             .searchable(text: $searchText, placement: .automatic, prompt: "Search tasks")
             .toolbar { toolbarContent }
+            .sheet(isPresented: $isAddingTask) {
+                QuickCaptureView(
+                    initialListID: userListIfAny?.id,
+                    flagForTodayIfUndated: smartViewIfAny == .today
+                )
+            }
             .sheet(isPresented: $showCreateList) { CreateListSheet() }
             .sheet(isPresented: $showEditLists) { EditListsView() }
+            #if os(iOS)
+            .fullScreenCover(isPresented: $showDuel) { PrioritiseDuelView(tasks: filteredTasks) }
+            #else
             .sheet(isPresented: $showDuel) { PrioritiseDuelView(tasks: filteredTasks) }
+            #endif
             #if os(iOS)
             .sheet(item: $selectedTask) { task in
                 NavigationStack { TaskDetailInspector(task: task) }
@@ -122,20 +132,10 @@ public struct TaskListScreen: View {
                     title: source.title,
                     count: filteredTasks.count,
                     addLabel: "Add task",
-                    onAdd: { withAnimation(.snappy) { isAddingTask.toggle() } }
+                    onAdd: { isAddingTask = true }
                 )
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
-
-                if isAddingTask {
-                    QuickAddTaskView(
-                        smartView: smartViewIfAny,
-                        presetList: userListIfAny,
-                        onFinished: { withAnimation(.snappy) { isAddingTask = false } }
-                    )
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                }
 
                 // Hosted here rather than on a dedicated "Plan" screen, which
                 // this app does not have — the Today listing is where the
@@ -204,25 +204,6 @@ public struct TaskListScreen: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .primaryAction) {
-            Menu {
-                Button {
-                    filterPriority = nil
-                } label: {
-                    Label("All priorities", systemImage: filterPriority == nil ? "checkmark" : "line.3.horizontal.decrease")
-                }
-                ForEach(TaskPriority.allCases, id: \.self) { priority in
-                    Button {
-                        filterPriority = priority
-                    } label: {
-                        Label(priority.displayName, systemImage: filterPriority == priority ? "checkmark" : priority.symbolName)
-                    }
-                }
-            } label: {
-                Image(systemName: filterPriority == nil ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
-            }
-            .accessibilityLabel("Filter by priority")
-        }
         #if os(macOS)
         if !macSelection.isEmpty {
             ToolbarItem { Button("Complete", action: completeSelected) }
@@ -234,7 +215,9 @@ public struct TaskListScreen: View {
                 currentGrouping: currentGrouping,
                 onSelectGrouping: setGrouping,
                 onCreateList: { showCreateList = true },
-                onEditLists: { showEditLists = true }
+                onEditLists: { showEditLists = true },
+                filterPriority: filterPriority,
+                onSelectFilter: { filterPriority = $0 }
             )
         }
     }
@@ -331,7 +314,7 @@ public struct TaskListScreen: View {
     }
 
     private func completeSelected() {
-        withAnimation(.snappy) {
+        withAnimation(FlowMotion.tap) {
             for task in allTasks where macSelection.contains(task.id) {
                 task.markCompleted()
             }
@@ -341,7 +324,7 @@ public struct TaskListScreen: View {
     }
 
     private func deleteSelected() {
-        withAnimation(.snappy) {
+        withAnimation(FlowMotion.tap) {
             for task in allTasks where macSelection.contains(task.id) {
                 context.delete(task)
             }

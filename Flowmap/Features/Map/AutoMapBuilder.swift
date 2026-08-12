@@ -45,23 +45,29 @@ enum AutoMapBuilder {
         scope: TodayScope,
         reference: Date,
         tasks: [FlowTask],
+        includesBacklog: Bool = false,
         calendar: Calendar = .current
     ) -> MapNode? {
         let window = MapTaskScopeFilter.interval(for: scope, at: reference, calendar: calendar)
 
         let included: [Included] = tasks.compactMap { task in
-            guard let earliest = task.liveSegments.map(\.startDate).filter(window.contains).min() else {
-                return nil
+            if let earliest = task.liveSegments.map(\.startDate).filter(window.contains).min() {
+                return Included(task: task, earliestStart: earliest)
             }
-            return Included(task: task, earliestStart: earliest)
+            guard includesBacklog, task.status.isOpen else { return nil }
+            return Included(task: task, earliestStart: task.createdAt)
         }
 
         guard !included.isEmpty else { return nil }
+        let includedIDs = Set(included.map { $0.task.id })
 
         var itemsByProject: [ObjectIdentifier: [Included]] = [:]
         var projectByID: [ObjectIdentifier: Project] = [:]
         var projectless: [Included] = []
         for item in included {
+            if let parentID = item.task.parentTask?.id, includedIDs.contains(parentID) {
+                continue
+            }
             if let project = item.task.project {
                 let key = ObjectIdentifier(project)
                 itemsByProject[key, default: []].append(item)
@@ -85,12 +91,25 @@ enum AutoMapBuilder {
         root.children = rootChildren.enumerated().map { index, child in
             switch child {
             case .branch(let project, let items):
-                let branch = MapNode(title: project.title, sortOrder: index, parent: root)
+                let branch = MapNode(
+                    title: project.title,
+                    iconName: project.iconName,
+                    colourToken: project.colourToken,
+                    sortOrder: index,
+                    parent: root
+                )
                 branch.isCollapsed = false
-                branch.children = orderedTaskNodes(for: items, parent: branch)
+                branch.children = orderedTaskNodes(for: items, parent: branch, includedIDs: includedIDs)
                 return branch
             case .task(let item):
-                return taskNode(for: item, sortOrder: index, parent: root)
+                var visited: Set<UUID> = []
+                return taskNode(
+                    for: item.task,
+                    sortOrder: index,
+                    parent: root,
+                    includedIDs: includedIDs,
+                    visited: &visited
+                )!
             }
         }
 
@@ -98,37 +117,81 @@ enum AutoMapBuilder {
     }
 
     /// Tasks within a branch, ordered by first segment start then title (R6).
-    private static func orderedTaskNodes(for items: [Included], parent: MapNode) -> [MapNode] {
-        items
+    private static func orderedTaskNodes(
+        for items: [Included],
+        parent: MapNode,
+        includedIDs: Set<UUID>
+    ) -> [MapNode] {
+        var visited: Set<UUID> = []
+        return items
             .sorted {
                 if $0.earliestStart != $1.earliestStart { return $0.earliestStart < $1.earliestStart }
                 return $0.task.title < $1.task.title
             }
             .enumerated()
-            .map { index, item in taskNode(for: item, sortOrder: index, parent: parent) }
+            .compactMap { index, item in
+                taskNode(
+                    for: item.task,
+                    sortOrder: index,
+                    parent: parent,
+                    includedIDs: includedIDs,
+                    visited: &visited
+                )
+            }
     }
 
     /// A task node with its subtasks attached as plain child nodes. Starts
     /// collapsed when it has subtasks (R3) — a leaf task has no children, so
     /// the flag has nothing to hide either way.
-    private static func taskNode(for item: Included, sortOrder: Int, parent: MapNode) -> MapNode {
-        let task = item.task
+    private static func taskNode(
+        for task: FlowTask,
+        sortOrder: Int,
+        parent: MapNode,
+        includedIDs: Set<UUID>,
+        visited: inout Set<UUID>
+    ) -> MapNode? {
+        guard visited.insert(task.id).inserted else { return nil }
         let node = MapNode(
             title: task.title,
+            iconName: task.iconName,
             colourToken: task.colourToken,
             sortOrder: sortOrder,
             parent: parent
         )
         node.isTask = true
+        node.estimatedMinutes = task.estimatedMinutes
         // Never `linkedTask`: that writes the inverse onto the persisted
         // task and drags this never-inserted tree into the store.
         node.transientTask = task
 
-        let subtaskNodes = task.orderedSubtasks.enumerated().map { index, subtask in
-            MapNode(title: subtask.title, sortOrder: index, parent: node)
+        var taskChildren: [MapNode] = []
+        let includedChildren = task.orderedChildTasks.filter { includedIDs.contains($0.id) }
+        for (index, child) in includedChildren.enumerated() {
+            if let childNode = taskNode(
+                for: child,
+                sortOrder: index,
+                parent: node,
+                includedIDs: includedIDs,
+                visited: &visited
+            ) {
+                taskChildren.append(childNode)
+            }
         }
-        node.children = subtaskNodes
-        node.isCollapsed = !subtaskNodes.isEmpty
+
+        let subtaskNodes = task.orderedSubtasks.enumerated().map { index, subtask in
+            MapNode(
+                title: subtask.title,
+                iconName: "checkmark.circle",
+                colourToken: task.colourToken,
+                sortOrder: taskChildren.count + index,
+                parent: node
+            )
+        }
+        node.children = taskChildren + subtaskNodes
+        // Real task branches open on first view so the relationship is
+        // legible immediately. Checklist-only detail stays collapsed to keep
+        // the map calm; both remain user-toggleable.
+        node.isCollapsed = taskChildren.isEmpty && !subtaskNodes.isEmpty
 
         return node
     }

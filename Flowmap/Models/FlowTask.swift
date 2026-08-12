@@ -54,6 +54,11 @@ public final class FlowTask {
     public var list: TaskList?
     public var project: Project?
 
+    public var parentTask: FlowTask?
+
+    @Relationship(deleteRule: .nullify, inverse: \FlowTask.parentTask)
+    public var childTasks: [FlowTask]?
+
     @Relationship(deleteRule: .nullify, inverse: \MapNode.linkedTask)
     public var mapNode: MapNode?
 
@@ -128,6 +133,44 @@ public final class FlowTask {
 
     // MARK: - Derived
 
+    /// Root, child and grandchild are the only supported task levels.
+    public static let maximumHierarchyLevels = 3
+    public static let maximumHierarchyDepth = maximumHierarchyLevels - 1
+
+    public var orderedChildTasks: [FlowTask] {
+        (childTasks ?? []).sorted { left, right in
+            if left.sortOrder != right.sortOrder {
+                return left.sortOrder < right.sortOrder
+            }
+            if left.createdAt != right.createdAt {
+                return left.createdAt < right.createdAt
+            }
+            return left.id.uuidString < right.id.uuidString
+        }
+    }
+
+    /// The number of parent links above this task: roots are `0`.
+    public var hierarchyDepth: Int {
+        var depth = 0
+        var seen: Set<UUID> = [id]
+        var cursor = parentTask
+
+        while let task = cursor {
+            guard seen.insert(task.id).inserted else { break }
+            depth += 1
+            cursor = task.parentTask
+        }
+        return depth
+    }
+
+    /// The longest child path below this task: leaves are `0`.
+    public var descendantHeight: Int {
+        var path: Set<UUID> = []
+        // A corrupt cycle is reported as one level beyond the supported limit,
+        // keeping callers safe and ensuring it can never be reparented deeper.
+        return descendantHeight(path: &path) ?? Self.maximumHierarchyDepth + 1
+    }
+
     /// `30M`, `1H`, `1H 30M`. Duration is always visible in this compact form.
     public var durationLabel: String { DurationFormatter.compact(minutes: estimatedMinutes) }
 
@@ -200,6 +243,48 @@ public final class FlowTask {
     }
 
     // MARK: - Mutation
+
+    /// Whether moving this task under `candidate` preserves an acyclic tree
+    /// containing at most the root, child and grandchild levels.
+    public func canAssignParent(_ candidate: FlowTask?) -> Bool {
+        guard let candidate else { return true }
+        guard candidate !== self, candidate.id != id else { return false }
+
+        var candidateDepth = 0
+        var seen: Set<UUID> = []
+        var cursor: FlowTask? = candidate
+        while let task = cursor {
+            guard task !== self, task.id != id else { return false }
+            guard seen.insert(task.id).inserted else { return false }
+            if task.parentTask != nil { candidateDepth += 1 }
+            cursor = task.parentTask
+        }
+
+        var subtreePath: Set<UUID> = []
+        guard let subtreeHeight = descendantHeight(path: &subtreePath) else { return false }
+        return candidateDepth + 1 + subtreeHeight <= Self.maximumHierarchyDepth
+    }
+
+    /// Moves this task only when the resulting hierarchy remains valid.
+    @discardableResult
+    public func assignParent(_ parent: FlowTask?) -> Bool {
+        guard canAssignParent(parent) else { return false }
+        parentTask = parent
+        touch()
+        return true
+    }
+
+    private func descendantHeight(path: inout Set<UUID>) -> Int? {
+        guard path.insert(id).inserted else { return nil }
+        defer { path.remove(id) }
+
+        var height = 0
+        for child in childTasks ?? [] {
+            guard let childHeight = child.descendantHeight(path: &path) else { return nil }
+            height = max(height, childHeight + 1)
+        }
+        return height
+    }
 
     public func markCompleted(at date: Date = Date()) {
         status = .completed

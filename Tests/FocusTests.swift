@@ -1273,6 +1273,36 @@ struct FocusWheelGeometryTests {
         #expect(FocusWheelGeometry.carouselIndexAtPointer(zoom: 1, durations: []) == nil)
     }
 
+    @Test("Wheel release velocity preserves momentum but stays restrained")
+    func wheelReleaseVelocityIsContinuousAndBounded() {
+        // Still moving farther into the preview: SwiftUI receives a small
+        // negative unit velocity, so the wheel continues before returning.
+        #expect(abs(FocusWheelGeometry.wheelSettleInitialVelocity(
+            currentOffset: 120,
+            angularVelocity: 60
+        ) + 0.5) < 0.0001)
+
+        // Moving home already keeps that direction through the release.
+        #expect(abs(FocusWheelGeometry.wheelSettleInitialVelocity(
+            currentOffset: 120,
+            angularVelocity: -60
+        ) - 0.5) < 0.0001)
+
+        // Extreme flicks cannot turn the settle into a fling or a wobble.
+        #expect(FocusWheelGeometry.wheelSettleInitialVelocity(
+            currentOffset: 120,
+            angularVelocity: 9_999
+        ) == -1.5)
+        #expect(FocusWheelGeometry.wheelSettleInitialVelocity(
+            currentOffset: 120,
+            angularVelocity: -9_999
+        ) == 3)
+        #expect(FocusWheelGeometry.wheelSettleInitialVelocity(
+            currentOffset: 0,
+            angularVelocity: 500
+        ) == 0)
+    }
+
     @Test("The separator gap and the ring's turn interpolate with the layout")
     func gapAndSweepFollowTheZoom() {
         let durations = [30, 20, 10, 40]
@@ -1730,6 +1760,29 @@ struct NeighbourLabelTests {
         let label = FocusWheelGeometry.neighbourLabel(spanDegrees: 0.5, midRadius: 120, thickness: 60)
         #expect(label.width >= 30)
     }
+
+    @Test("A neighbour title is clamped inside both wheel edges")
+    func titleStaysInsideWheelEdges() {
+        let left = FocusWheelGeometry.edgeSafeLabelPosition(
+            CGPoint(x: -20, y: 80), labelWidth: 90, viewportWidth: 390, edgeInset: 8
+        )
+        let right = FocusWheelGeometry.edgeSafeLabelPosition(
+            CGPoint(x: 420, y: 80), labelWidth: 90, viewportWidth: 390, edgeInset: 8
+        )
+        let middle = FocusWheelGeometry.edgeSafeLabelPosition(
+            CGPoint(x: 180, y: 80), labelWidth: 90, viewportWidth: 390, edgeInset: 8
+        )
+
+        #expect(left.x == 53)
+        #expect(right.x == 337)
+        #expect(middle.x == 180)
+        #expect(left.y == 80 && right.y == 80 && middle.y == 80)
+
+        let tinyViewport = FocusWheelGeometry.edgeSafeLabelPosition(
+            CGPoint(x: -20, y: 80), labelWidth: 90, viewportWidth: 12, edgeInset: 20
+        )
+        #expect(tinyViewport.x == 6)
+    }
 }
 
 // MARK: - Empty-state signposting (Task 61)
@@ -1739,9 +1792,16 @@ struct NeighbourLabelTests {
 struct FocusEmptyStateTests {
     @Test("Waiting inbox tasks flip the empty screen to the plan prompt")
     func inboxTasksSelectThePlanPrompt() {
-        #expect(FocusScreen.emptyState(inboxCount: 0) == .dayDone)
-        #expect(FocusScreen.emptyState(inboxCount: 1) == .planPrompt(inboxCount: 1))
-        #expect(FocusScreen.emptyState(inboxCount: 7) == .planPrompt(inboxCount: 7))
+        #expect(FocusScreen.emptyState(inboxCount: 0, totalCount: 4) == .dayDone)
+        #expect(FocusScreen.emptyState(inboxCount: 1, totalCount: 1) == .planPrompt(inboxCount: 1))
+        #expect(FocusScreen.emptyState(inboxCount: 7, totalCount: 9) == .planPrompt(inboxCount: 7))
+    }
+
+    /// A brand-new install has completed nothing, so "That's the plan done"
+    /// asserted something untrue on the very first screen a user ever sees.
+    @Test("An empty store reads as first run, not as a finished day")
+    func anEmptyStoreReadsAsFirstRun() {
+        #expect(FocusScreen.emptyState(inboxCount: 0, totalCount: 0) == .firstRun)
     }
 
     @Test("The prompt's count reads as a sentence in singular and plural")

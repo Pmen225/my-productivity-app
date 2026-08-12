@@ -75,25 +75,7 @@ public struct CreateListSheet: View {
     }
 
     private var colourPicker: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: FlowSpacing.s) {
-                ForEach(ColourToken.taskTokens, id: \.self) { token in
-                    Button {
-                        colourToken = token
-                    } label: {
-                        Circle()
-                            .fill(token.base)
-                            .frame(width: 28, height: 28)
-                            .overlay(
-                                Circle().strokeBorder(.primary, lineWidth: token == colourToken ? 2 : 0)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(token.displayName)
-                }
-            }
-            .padding(.vertical, FlowSpacing.xs)
-        }
+        FlowColourPicker(selection: $colourToken, diameter: 28, scrollable: true)
     }
 
     private func createList() {

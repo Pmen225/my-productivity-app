@@ -36,12 +36,12 @@ struct CalendarRootView: View {
     /// Opening the jump panel swaps out half the screen — a spring settle.
     /// Reduce Motion drops straight to a plain cross-fade.
     private var panelSwitchAnimation: Animation? {
-        reduceMotion ? .linear(duration: 0.12) : .spring(response: 0.32, dampingFraction: 0.86)
+        reduceMotion ? FlowMotion.fade : FlowMotion.expand
     }
 
     /// Stepping to another day or month is lighter — a quiet settle.
     private var scopeChangeAnimation: Animation? {
-        reduceMotion ? .linear(duration: 0.12) : .smooth
+        reduceMotion ? FlowMotion.fade : FlowMotion.expand
     }
 
     private var calendar: Calendar {
@@ -170,7 +170,7 @@ struct CalendarRootView: View {
         HStack(spacing: 6) {
             ForEach(CalendarPanelPage.allCases) { candidate in
                 Button {
-                    withAnimation(.snappy(duration: 0.24)) { page = candidate }
+                    withAnimation(FlowMotion.tap) { page = candidate }
                 } label: {
                     Circle()
                         .fill(

@@ -169,7 +169,7 @@ struct FocusQueueListView: View {
             // Decision 15: the row's own tap unfolds the checklist, so
             // starting a task needs a control of its own.
             Button {
-                withAnimation(.snappy(duration: 0.24)) {
+                withAnimation(FlowMotion.expand) {
                     expandedSegmentID = expandedSegmentID == segment.id ? nil : segment.id
                 }
             } label: {
@@ -216,7 +216,9 @@ struct FocusQueueListView: View {
                 // without a CTA competing with the wheel's own (2026-08-08).
                 Text("\(DurationFormatter.time(segment.startDate)) · \(DurationFormatter.compact(minutes: segment.durationMinutes))")
                     .font(.system(size: 12, design: .rounded).monospacedDigit())
-                    .foregroundStyle(FlowTheme.secondaryText(scheme))
+                    // The row only takes a colour fill while it is the active
+                    // one, so the ink has to follow it there and nowhere else.
+                    .foregroundStyle(isActive ? colour.onSoft : FlowTheme.secondaryText(scheme))
             }
         }
         .padding(.horizontal, FlowSpacing.m)

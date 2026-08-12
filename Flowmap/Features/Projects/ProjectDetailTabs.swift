@@ -21,6 +21,15 @@ public struct ProjectOverviewTab: View {
 
             FlowCard {
                 VStack(alignment: .leading, spacing: FlowSpacing.m) {
+                    FlowEyebrow("Title")
+                    TextField("Project title", text: $project.title)
+                        .font(FlowFont.cardTitle)
+                        .onSubmit { project.touch(); try? context.save() }
+                }
+            }
+
+            FlowCard {
+                VStack(alignment: .leading, spacing: FlowSpacing.m) {
                     FlowEyebrow("Summary")
                     TextEditor(text: $project.summary)
                         .frame(minHeight: 80)
@@ -91,21 +100,10 @@ public struct ProjectOverviewTab: View {
             HStack {
                 FlowEyebrow("Colour")
                 Spacer()
-                ForEach(ColourToken.taskTokens, id: \.self) { token in
-                    Button {
-                        project.colourToken = token.rawValue
-                        project.touch()
-                    } label: {
-                        Circle()
-                            .fill(token.base)
-                            .frame(width: 22, height: 22)
-                            .overlay(
-                                Circle().strokeBorder(.primary, lineWidth: project.colour == token ? 2 : 0)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(token.displayName)
-                }
+                FlowColourPicker(selection: Binding(
+                    get: { project.colour },
+                    set: { project.colourToken = $0.rawValue; project.touch() }
+                ))
             }
         }
     }

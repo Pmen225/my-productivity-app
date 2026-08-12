@@ -34,7 +34,7 @@ public struct FlowMomentOverlay: View {
                 }
             }
         }
-        .animation(reduceMotion ? nil : .snappy(duration: 0.28), value: moment)
+        .animation(reduceMotion ? nil : FlowMotion.fade, value: moment)
         // Nothing here is tappable: a moment must never swallow a tap meant
         // for the screen it is floating over.
         .allowsHitTesting(false)

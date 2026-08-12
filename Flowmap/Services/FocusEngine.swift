@@ -592,8 +592,7 @@ public final class FocusEngine {
         followUp.isSplittable = source.isSplittable
         followUp.minimumChunkMinutes = source.minimumChunkMinutes
         followUp.hasBeenPlanned = false
-        context.insert(followUp)
-        try? context.save()
+        _ = TaskCreationService.insert(followUp, in: context)
         pendingTransition = nil
         return followUp
     }

@@ -292,8 +292,7 @@ public struct AssistantToolRouter {
             ),
             project: project
         )
-        context.insert(task)
-        save()
+        _ = TaskCreationService.insert(task, in: context)
         return AssistantToolResult(
             toolName: AssistantToolName.createTask.rawValue,
             success: true,

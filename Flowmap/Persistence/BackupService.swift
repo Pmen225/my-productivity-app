@@ -66,6 +66,8 @@ public enum BackupService {
         public var carryoverCount: Int, lastCarriedAt: Date?
         public var sealedForDay: Date?, admittedToSealedDay: Date?
         public var listID: UUID?, projectID: UUID?, workspaceID: UUID?
+        /// Optional so backups written before task hierarchy still decode.
+        public var parentTaskID: UUID?
         public var createdAt: Date, updatedAt: Date
     }
 
@@ -193,7 +195,8 @@ public enum BackupService {
                     carryoverCount: $0.carryoverCount, lastCarriedAt: $0.lastCarriedAt,
                     sealedForDay: $0.sealedForDay, admittedToSealedDay: $0.admittedToSealedDay,
                     listID: $0.list?.id, projectID: $0.project?.id,
-                    workspaceID: $0.workspace?.id, createdAt: $0.createdAt, updatedAt: $0.updatedAt
+                    workspaceID: $0.workspace?.id, parentTaskID: $0.parentTask?.id,
+                    createdAt: $0.createdAt, updatedAt: $0.updatedAt
                 )
             },
             segments: all(TaskSegment.self).map {
@@ -434,8 +437,11 @@ public enum BackupService {
             )
         }
 
+        // Tasks are merged before their parent links so an archive may list a
+        // child before its parent without losing the relationship.
+        var touchedTaskIDs: Set<UUID> = []
         for dto in archive.tasks {
-            _ = merge(
+            let wrote = merge(
                 existing: tasks[dto.id], incomingDate: dto.updatedAt,
                 currentDate: { $0.updatedAt },
                 apply: { model in
@@ -466,6 +472,24 @@ public enum BackupService {
                 },
                 create: { FlowTask(title: dto.title) }
             )
+            if wrote { touchedTaskIDs.insert(dto.id) }
+        }
+
+        // Restore parent links only after every task exists. The same guarded
+        // mutation used by live creation rejects self-links, cycles and a
+        // fourth hierarchy level. Skipped (newer local) tasks are deliberately
+        // not reparented by an older archive.
+        for dto in archive.tasks {
+            guard touchedTaskIDs.contains(dto.id), let task = tasks[dto.id] else { continue }
+            let parent = dto.parentTaskID.flatMap { tasks[$0] }
+            if dto.parentTaskID == nil || parent == nil {
+                _ = task.assignParent(nil)
+            } else if !task.assignParent(parent) {
+                _ = task.assignParent(nil)
+            }
+            // `assignParent` is a normal user-facing mutation and touches the
+            // task; an import preserves the archive's merge timestamp instead.
+            task.updatedAt = dto.updatedAt
         }
 
         for dto in archive.segments {

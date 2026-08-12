@@ -14,6 +14,7 @@ struct GeneralSettingsSection: View {
 
                 if let flow {
                     appearanceRow(flow)
+                    themeRow(flow)
                     accentRow(flow)
                     appFontRow(flow)
                     firstWeekdayRow(flow)
@@ -41,6 +42,70 @@ struct GeneralSettingsSection: View {
             .pickerStyle(.segmented)
             .labelsHidden()
         }
+    }
+
+    private func themeRow(_ flow: AppEnvironment) -> some View {
+        VStack(alignment: .leading, spacing: FlowSpacing.xs) {
+            Text("Theme").font(FlowFont.secondary).foregroundStyle(FlowTheme.secondaryText(scheme))
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: FlowSpacing.m) {
+                ForEach(FlowPalette.all) { palette in
+                    themeTile(palette, isSelected: flow.settings.themeRaw == palette.id) {
+                        flow.settings.themeRaw = palette.id
+                        save()
+                    }
+                }
+            }
+        }
+    }
+
+    private func themeTile(_ palette: FlowPalette, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: FlowSpacing.xs) {
+                ZStack(alignment: .topLeading) {
+                    palette.bgLightColor
+                    palette.bgDarkColor.clipShape(ThemeDiagonalSplit())
+                    themePreviewPill(palette)
+                        .padding(FlowSpacing.xs)
+                }
+                .frame(height: 72)
+                .clipShape(RoundedRectangle(cornerRadius: FlowRadius.medium))
+                .overlay {
+                    RoundedRectangle(cornerRadius: FlowRadius.medium)
+                        .stroke(
+                            isSelected ? palette.accentColor : FlowTheme.separatorStrong(scheme),
+                            lineWidth: isSelected ? 2 : 1
+                        )
+                }
+                .overlay(alignment: .topTrailing) {
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(palette.accentColor)
+                            .padding(FlowSpacing.xs)
+                    }
+                }
+
+                Text(palette.name)
+                    .font(FlowFont.secondary)
+                    .foregroundStyle(FlowTheme.primaryText(scheme))
+            }
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(palette.name) theme")
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+
+    /// A miniature of the app's own chrome — three accent dots on a white pill —
+    /// sitting in the tile's light half.
+    private func themePreviewPill(_ palette: FlowPalette) -> some View {
+        HStack(spacing: FlowSpacing.xxs) {
+            Circle().fill(palette.accentColor).frame(width: 10, height: 10)
+            Circle().fill(palette.accentDeepColor).frame(width: 10, height: 10)
+            Circle().fill(palette.accentFillColor).frame(width: 10, height: 10)
+        }
+        .padding(.horizontal, FlowSpacing.xs)
+        .padding(.vertical, FlowSpacing.xxs)
+        .background(palette.surfaceLightColor, in: Capsule())
     }
 
     private func accentRow(_ flow: AppEnvironment) -> some View {
@@ -184,5 +249,19 @@ struct GeneralSettingsSection: View {
 
     private func save() {
         try? context.save()
+    }
+}
+
+/// The lower-right triangle of its bounding rect — clips a theme tile's dark
+/// half so a single tile previews light and dark together, split diagonally
+/// from the top-right corner to the bottom-left, MindNode-style.
+private struct ThemeDiagonalSplit: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.closeSubpath()
+        return path
     }
 }

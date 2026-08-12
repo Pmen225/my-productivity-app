@@ -12,22 +12,31 @@ public enum FlowSpacing {
     public static let xxl: CGFloat = 32
     public static let xxxl: CGFloat = 48
 
+    /// Aligns the detached capture control's centre with the iOS 26 floating
+    /// tab pill; the overlay's bottom padding is applied before this offset.
+    public static let bottomControlBaselineOffset: CGFloat = 20
+
     /// Standard screen inset.
     public static let screen: CGFloat = 20
 
-    /// Space the FAB and the Assistant orb reserve at the bottom of the screens
-    /// they float over, so the last row of a list is reachable instead of
-    /// sitting under them. The mock leans on an idle-fade for this; a native tab
-    /// bar does not fade, so the room is reserved outright — the stack's own
-    /// height, plus the gap it is padded off the bottom by, plus a breath so the
-    /// last row does not touch the orb.
+    /// Space the single capture control reserves at the bottom of scrollable
+    /// screens, so the last row can move fully above it instead of putting its
+    /// trailing value under the orb. Floating tab bars provide a detached
+    /// trailing lane; legacy full-width bars need a complete lane above them.
     ///
     /// Shared rather than private to the phone shell: a scroll view nested
     /// inside a paging `TabView` never sees the shell's `.contentMargins`, so it
     /// has to reserve the same room itself.
-    public static let floatingControlsInset =
-        FlowControlSize.create + FlowSpacing.m + FlowControlSize.secondary
-            + FlowSpacing.xxxl + FlowSpacing.l
+    public static var floatingControlsInset: CGFloat {
+        #if os(iOS)
+        if #available(iOS 26.0, *) {
+            return FlowControlSize.create + FlowSpacing.l
+        }
+        return FlowControlSize.create + FlowSpacing.xxxl + FlowSpacing.l
+        #else
+        return FlowControlSize.create + FlowSpacing.l
+        #endif
+    }
 
     /// Minimum gap the focus card must keep from the wheel at rest.
     public static let wheelCardGap: CGFloat = 24

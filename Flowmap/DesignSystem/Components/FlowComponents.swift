@@ -58,7 +58,7 @@ public struct CompactSectionHeader: View {
             if let onAdd {
                 Button(action: onAdd) {
                     Image(systemName: "plus")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 13, weight: .regular))
                         .frame(width: 26, height: 26)
                         .background(Circle().fill(FlowTheme.separator(scheme).opacity(0.7)))
                         .flowHitTarget()
@@ -291,7 +291,7 @@ public struct FlowBanner: View {
                 Spacer(minLength: FlowSpacing.s)
                 Button(action: onDismiss) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 11, weight: .regular))
                         .foregroundStyle(FlowTheme.secondaryText(scheme))
                 }
                 .buttonStyle(.plain)

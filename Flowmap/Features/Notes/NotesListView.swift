@@ -260,8 +260,9 @@ private struct NoteRow: View {
     var body: some View {
         HStack(spacing: FlowSpacing.s) {
             Image(systemName: note.iconName)
-                .foregroundStyle(FlowTheme.secondaryText(scheme))
-                .frame(width: 20)
+                .foregroundStyle(note.colour.onSoft)
+                .frame(width: 20, height: 20)
+                .background(Circle().fill(note.colour.soft))
             VStack(alignment: .leading, spacing: 2) {
                 Text(note.title.isEmpty ? "Untitled" : note.title)
                     .font(FlowFont.cardTitle)

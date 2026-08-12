@@ -55,71 +55,15 @@ struct CalendarQuickAddSheetHost: View {
     var body: some View {
         switch sheet {
         case .task:
-            AddTaskSheet(anchorDate: anchorDate, onDismiss: onDismiss)
+            // The single task-creation card (`FlowCreateSheet`, via
+            // `QuickCaptureView`) — no second, unstyled `Form` implementation.
+            // Seeded with the tapped day so that context is not lost.
+            QuickCaptureView(initialDueDate: anchorDate)
         case .event:
             AddEventSheet(anchorDate: anchorDate, onDismiss: onDismiss)
         case .focusBlock:
             AddFocusBlockSheet(anchorDate: anchorDate, onDismiss: onDismiss)
         }
-    }
-}
-
-/// A plain task, unscheduled by default — it lands in the Inbox and gets
-/// planned like any other task. No segment is created here.
-private struct AddTaskSheet: View {
-    @Environment(\.flow) private var flow
-    @Environment(\.modelContext) private var context
-    let anchorDate: Date
-    let onDismiss: () -> Void
-
-    @State private var title = ""
-    @State private var estimatedMinutes = 30
-    @State private var hasDueDate = false
-    @State private var dueDate = Date()
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Task") {
-                    TextField("Title", text: $title)
-                    Stepper("Estimate: \(DurationFormatter.compact(minutes: estimatedMinutes))", value: $estimatedMinutes, in: 5...480, step: 5)
-                }
-                Section {
-                    Toggle("Due date", isOn: $hasDueDate)
-                    if hasDueDate {
-                        DatePicker("Due", selection: $dueDate, displayedComponents: [.date])
-                    }
-                }
-            }
-            .navigationTitle("Add Task")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel", role: .cancel) { onDismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") { save() }
-                        .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
-        }
-    }
-
-    private func save() {
-        let task = FlowTask(
-            title: title.trimmingCharacters(in: .whitespacesAndNewlines),
-            estimatedMinutes: estimatedMinutes,
-            dueDate: flow?.scheduling().dueDateForNewTask(
-                hasDueDate ? dueDate : nil,
-                now: flow?.now ?? Date()
-            ),
-            workspace: nil
-        )
-        context.insert(task)
-        try? context.save()
-        onDismiss()
     }
 }
 
@@ -193,9 +137,10 @@ private struct AddEventSheet: View {
             workspace: nil
         )
         task.isLockedInSchedule = true
-        context.insert(task)
+        _ = TaskCreationService.insert(task, in: context)
         guard let segment = flow.scheduling().schedule(task: task, at: start, minutes: minutes) else {
             context.delete(task)
+            try? context.save()
             refusal = "That time is already taken. Pick a free slot."
             return
         }
@@ -274,9 +219,10 @@ private struct AddFocusBlockSheet: View {
             iconName: "timer",
             workspace: nil
         )
-        context.insert(task)
+        _ = TaskCreationService.insert(task, in: context)
         guard flow.scheduling().schedule(task: task, at: start, minutes: minutes) != nil else {
             context.delete(task)
+            try? context.save()
             refusal = "That time is already taken. Pick a free slot."
             return
         }

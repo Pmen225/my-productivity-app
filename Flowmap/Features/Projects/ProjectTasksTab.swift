@@ -31,17 +31,9 @@ public struct ProjectTasksTab: View {
                     title: "Tasks",
                     count: tasks.count,
                     addLabel: "Add task",
-                    onAdd: { withAnimation(.snappy) { isAddingTask.toggle() } }
+                    onAdd: { isAddingTask = true }
                 )
                 .listRowSeparator(.hidden)
-
-                if isAddingTask {
-                    QuickAddTaskView(
-                        presetProject: project,
-                        onFinished: { withAnimation(.snappy) { isAddingTask = false } }
-                    )
-                    .listRowSeparator(.hidden)
-                }
             }
 
             if tasks.isEmpty {
@@ -72,5 +64,8 @@ public struct ProjectTasksTab: View {
             }
         }
         #endif
+        .sheet(isPresented: $isAddingTask) {
+            QuickCaptureView(initialProjectID: project.id)
+        }
     }
 }

@@ -54,7 +54,7 @@ public struct FlowTabBar<Tag: Hashable>: View {
                 } label: {
                     VStack(spacing: FlowSpacing.xs) {
                         Image(systemName: item.systemImage)
-                            .font(.system(size: 18, weight: .semibold))
+                            .font(.system(size: 18, weight: .regular))
                         Text(item.title)
                             .font(FlowFont.chromeLabel)
                     }
@@ -76,7 +76,7 @@ public struct FlowTabBar<Tag: Hashable>: View {
         if reduceMotion {
             selection = tag
         } else {
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+            withAnimation(FlowMotion.expand) {
                 selection = tag
             }
         }
@@ -93,6 +93,9 @@ public struct FlowFloatingButton: View {
     private let background: Color
     private let foreground: Color
     private let shadowColor: Color
+    private let shellStroke: Color
+    private let faceScale: CGFloat
+    private let iconScale: CGFloat
     private let accessibilityLabel: String
     private let action: () -> Void
     private let badgeSystemImage: String?
@@ -105,6 +108,9 @@ public struct FlowFloatingButton: View {
         background: Color,
         foreground: Color,
         shadowColor: Color,
+        shellStroke: Color = .white.opacity(0.88),
+        faceScale: CGFloat = 0.72,
+        iconScale: CGFloat = 0.34,
         accessibilityLabel: String,
         badgeSystemImage: String? = nil,
         assistantAction: (() -> Void)? = nil,
@@ -116,6 +122,9 @@ public struct FlowFloatingButton: View {
         self.background = background
         self.foreground = foreground
         self.shadowColor = shadowColor
+        self.shellStroke = shellStroke
+        self.faceScale = faceScale
+        self.iconScale = iconScale
         self.accessibilityLabel = accessibilityLabel
         self.badgeSystemImage = badgeSystemImage
         self.assistantAction = assistantAction
@@ -125,47 +134,94 @@ public struct FlowFloatingButton: View {
 
     public var body: some View {
         Button(action: action) {
-            ZStack(alignment: .topTrailing) {
-                Image(systemName: systemImage)
-                    .font(.system(size: diameter * 0.36, weight: .semibold))
-                    .foregroundStyle(foreground)
-
-                if let badgeSystemImage {
-                    Image(systemName: badgeSystemImage)
-                        .font(.system(size: diameter * 0.19, weight: .semibold))
-                        .foregroundStyle(foreground)
-                        .frame(width: diameter * 0.34, height: diameter * 0.34)
-                        .background(Circle().fill(FlowTheme.popoverSurface))
-                        .padding(diameter * 0.06)
-                }
-            }
-            .frame(width: diameter, height: diameter)
-            .background(Circle().fill(background))
-            .shadow(color: shadowColor, radius: 12, y: 4)
+            buttonFace
         }
         .buttonStyle(.plain)
+        .frame(width: diameter, height: diameter)
+        .contentShape(Circle())
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(assistantAction == nil ? "" : "Double tap to create. Use the Open Assistant custom action for help.")
         .accessibilityAction(named: "Open Assistant") {
             assistantAction?()
         }
-        // A high-priority recogniser cancels the Button's release action once
-        // the hold succeeds. A short tap still falls through to the Button,
-        // so a long press cannot swallow the next Create tap.
+        // Keep the assistant hold deliberately distinct from a normal create
+        // tap. XCUITest and some accessibility dwell settings can hold a
+        // synthetic tap for roughly half a second; the former 0.5s/44pt
+        // recogniser therefore opened Assistant when the person (and the
+        // harness) tapped +. A one-second, low-drift hold is still easy to
+        // discover from the hint while protecting the primary action.
         .highPriorityGesture(
-            LongPressGesture(minimumDuration: 0.5, maximumDistance: 44)
+            LongPressGesture(minimumDuration: 1.0, maximumDistance: FlowSpacing.m)
                 .onEnded { _ in activateAssistant() }
         )
     }
 
+    @ViewBuilder
+    private var buttonFace: some View {
+        let content = ZStack(alignment: .topTrailing) {
+            Circle()
+                .fill(background)
+                .frame(width: diameter * faceScale, height: diameter * faceScale)
+                .frame(width: diameter, height: diameter)
+
+            Image(systemName: systemImage)
+                .font(.system(size: diameter * iconScale, weight: .semibold))
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(foreground)
+                .frame(width: diameter, height: diameter)
+
+            if let badgeSystemImage {
+                Image(systemName: badgeSystemImage)
+                    .font(.system(size: diameter * 0.19, weight: .light))
+                    .foregroundStyle(background)
+                    .frame(width: diameter * 0.34, height: diameter * 0.34)
+                    .background(Circle().fill(foreground))
+                    .padding(diameter * 0.06)
+            }
+        }
+        .frame(width: diameter, height: diameter)
+
+        if #available(iOS 26.0, macOS 26.0, *) {
+            content
+                .glassEffect(.regular.interactive(), in: Circle())
+                .overlay(Circle().stroke(shellStroke, lineWidth: 1))
+        } else {
+            content
+                .background(.ultraThinMaterial, in: Circle())
+                .overlay(Circle().stroke(shellStroke, lineWidth: 1))
+                .shadow(
+                    color: shadowColor.opacity(0.18),
+                    radius: FlowSpacing.s,
+                    y: FlowSpacing.xs
+                )
+        }
+    }
+
     private func activateAssistant() {
         guard let assistantAction else { return }
-        #if os(iOS)
         if hapticsEnabled {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            FlowHaptic.light.play()
         }
-        #endif
         assistantAction()
+    }
+}
+
+// MARK: - Navigation glyph
+
+/// The shared, unboxed glyph used by Plan's Build, Browse and Lists rows.
+/// Colour communicates category identity without adding a filled tile or a
+/// second competing shape to an already compact navigation row.
+struct FlowNavigationGlyph: View {
+    let systemImage: String
+    let token: ColourToken
+
+    var body: some View {
+        Image(systemName: systemImage)
+            .font(.system(size: FlowIconSize.navigation, weight: .semibold))
+            .symbolRenderingMode(.hierarchical)
+            .foregroundStyle(token.base)
+            .frame(width: FlowControlSize.utility, height: FlowControlSize.utility)
+            .accessibilityHidden(true)
     }
 }
 
@@ -307,7 +363,7 @@ private struct FlowDialogOverlay<DialogContent: View>: ViewModifier {
                 .transition(.opacity.combined(with: .scale(scale: 0.96)))
             }
         }
-        .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.86), value: isPresented)
+        .animation(reduceMotion ? nil : FlowMotion.expand, value: isPresented)
     }
 }
 
@@ -478,7 +534,7 @@ public struct FlowPopoverMenu<ID: Hashable>: View {
                 Spacer(minLength: FlowSpacing.s)
                 if style == .dark, isSelected {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 13, weight: .regular))
                         .foregroundStyle(FlowTheme.accent)
                 }
             }
@@ -669,7 +725,6 @@ public struct FlowCreateSheet: View {
     private var content: some View {
         VStack(alignment: .leading, spacing: FlowSpacing.l) {
             header
-            kindPicker
             titleField
             if showsDurationAndProject {
                 if kind != .task {
@@ -712,20 +767,17 @@ public struct FlowCreateSheet: View {
         HStack {
             Button(action: onClose) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 14, weight: .regular))
                     .foregroundStyle(FlowTheme.secondaryText(scheme))
                     .flowHitTarget()
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close")
-            Text(kind == .task ? "Add task" : "New")
-                .font(FlowFont.sectionTitle)
-                .foregroundStyle(FlowTheme.primaryText(scheme))
-                .accessibilityAddTraits(.isHeader)
+            FlowKindMenu(kind: kindSelection)
             Spacer()
             Button(action: onCreate) {
                 Image(systemName: "checkmark")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 14, weight: .regular))
                     .foregroundStyle(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? FlowTheme.tertiaryText(scheme) : FlowTheme.accent)
                     // HIG override 1: a 14pt glyph on its own reads well
                     // under 44pt — the tappable area is grown around it
@@ -738,26 +790,8 @@ public struct FlowCreateSheet: View {
         }
     }
 
-    private var kindPicker: some View {
-        HStack(spacing: FlowSpacing.xxs) {
-            ForEach(FlowCreateKind.allCases) { option in
-                let isSelected = option == kind
-                Button {
-                    select(kind: option)
-                } label: {
-                    Text(option.title)
-                        .font(FlowFont.secondary.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, FlowSpacing.s)
-                        .background(Capsule().fill(isSelected ? FlowTheme.accentFill : .clear))
-                        .foregroundStyle(isSelected ? .white : FlowTheme.secondaryText(scheme))
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
-            }
-        }
-        .padding(FlowSpacing.xxs)
-        .background(Capsule().fill(FlowTheme.surfaceSunken(scheme)))
+    private var kindSelection: Binding<FlowCreateKind> {
+        Binding(get: { kind }, set: { select(kind: $0) })
     }
 
     private var titleField: some View {
@@ -786,7 +820,7 @@ public struct FlowCreateSheet: View {
                         subtaskTitles.remove(at: index)
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: 11, weight: .regular))
                             .foregroundStyle(FlowTheme.secondaryText(scheme))
                             // HIG override 1 again: small glyph, grown target.
                             .flowHitTarget()
@@ -833,7 +867,7 @@ public struct FlowCreateSheet: View {
     /// Duration stays a compact in-context choice so the sheet reads like a
     /// Tiimo task card; the full focus wheel remains on the Focus surface.
     private var durationSection: some View {
-        rowLabel("Duration", symbol: "clock") {
+        FlowFieldRow("Duration", symbol: "clock") {
             Menu {
                 ForEach(durations, id: \.self) { value in
                     Button {
@@ -843,13 +877,13 @@ public struct FlowCreateSheet: View {
                     }
                 }
             } label: {
-                rowValue(DurationFormatter.compact(minutes: minutes))
+                FlowFieldChip(DurationFormatter.compact(minutes: minutes))
             }
         }
     }
 
     private var timeOfDaySection: some View {
-        rowLabel("Time of day", symbol: "clock") {
+        FlowFieldRow("Time of day", symbol: "clock") {
             Menu {
                 ForEach(DayPeriod.allCases, id: \.self) { period in
                     Button {
@@ -864,7 +898,7 @@ public struct FlowCreateSheet: View {
                     }
                 }
             } label: {
-                rowValue(preferredPeriod.displayName)
+                FlowFieldChip(preferredPeriod.displayName)
             }
         }
     }
@@ -885,10 +919,9 @@ public struct FlowCreateSheet: View {
         .accessibilityHint("Alarm preference is not saved yet")
     }
 
-    /// Mirrors `QuickAddTaskView.dateControl`: a collapsed, self-labelled
-    /// control that expands into a date+time picker.
+    /// A collapsed, self-labelled control that expands into a date+time picker.
     private var dueSection: some View {
-        rowLabel("Date", symbol: "calendar") {
+        FlowFieldRow("Date", symbol: "calendar") {
             if hasDue {
                 DatePicker("", selection: $dueDate, displayedComponents: [.date, .hourAndMinute])
                     .labelsHidden()
@@ -896,7 +929,7 @@ public struct FlowCreateSheet: View {
                 Button {
                     hasDue = true
                 } label: {
-                    rowValue("Anytime")
+                    FlowFieldChip("Anytime")
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Add due date")
@@ -907,40 +940,13 @@ public struct FlowCreateSheet: View {
     /// Same self-labelled control idiom as `dueSection` — one control, no
     /// eyebrow or explanatory caption.
     private var repeatSection: some View {
-        rowLabel("Repeat", symbol: "repeat") {
+        FlowFieldRow("Repeat", symbol: "repeat") {
             Picker("Repeat", selection: $recurrence) {
                 ForEach(RecurrenceFrequency.allCases, id: \.self) { Text($0.displayName).tag($0) }
             }
             .pickerStyle(.menu)
             .labelsHidden()
         }
-    }
-
-    private func rowLabel<Content: View>(
-        _ title: String,
-        symbol: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        HStack(spacing: FlowSpacing.s) {
-            Label(title, systemImage: symbol)
-                .font(FlowFont.secondary)
-                .foregroundStyle(FlowTheme.primaryText(scheme))
-            Spacer(minLength: FlowSpacing.s)
-            content()
-        }
-        .padding(.horizontal, FlowSpacing.m)
-        .frame(minHeight: 52)
-        .background(RoundedRectangle(cornerRadius: FlowRadius.field, style: .continuous).fill(FlowTheme.surface(scheme)))
-        .overlay(RoundedRectangle(cornerRadius: FlowRadius.field, style: .continuous).strokeBorder(FlowTheme.separator(scheme), lineWidth: 1))
-    }
-
-    private func rowValue(_ value: String) -> some View {
-        Text(value)
-            .font(FlowFont.caption.weight(.semibold))
-            .foregroundStyle(FlowTheme.secondaryText(scheme))
-            .padding(.horizontal, FlowSpacing.s)
-            .padding(.vertical, FlowSpacing.xs)
-            .background(Capsule().fill(FlowTheme.surfaceSunken(scheme)))
     }
 
     private var projectSection: some View {
@@ -1008,7 +1014,7 @@ public struct FlowCreateSheet: View {
                         .lineLimit(1)
                     Spacer(minLength: FlowSpacing.s)
                     Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 11, weight: .regular))
                         .foregroundStyle(FlowTheme.tertiaryText(scheme))
                 }
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
@@ -1044,7 +1050,116 @@ public struct FlowCreateSheet: View {
         if reduceMotion {
             body()
         } else {
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.86), body)
+            withAnimation(FlowMotion.expand, body)
         }
+    }
+}
+
+// MARK: - Shared field row anatomy
+
+/// `FlowCreateSheet`'s row anatomy — leading SF Symbol + label, trailing
+/// content in a bordered field — extracted so the fused task card
+/// (`TaskDetailInspector`) can render identical rows for List, Project and
+/// Repeat rather than a second copy of the same shape (one-task-card spec,
+/// 2026-08-10).
+public struct FlowFieldRow<Content: View>: View {
+    @Environment(\.colorScheme) private var scheme
+    private let title: String
+    private let symbol: String
+    private let symbolColour: ColourToken?
+    private let content: Content
+
+    public init(
+        _ title: String,
+        symbol: String,
+        symbolColour: ColourToken? = nil,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.title = title
+        self.symbol = symbol
+        self.symbolColour = symbolColour
+        self.content = content()
+    }
+
+    public var body: some View {
+        HStack(spacing: FlowSpacing.s) {
+            if let symbolColour {
+                Image(systemName: symbol)
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(symbolColour.base)
+                    .frame(width: 36, height: 36)
+                    .background(Circle().fill(symbolColour.base.opacity(0.13)))
+                    .accessibilityHidden(true)
+                Text(title)
+                    .font(FlowFont.secondary)
+                    .foregroundStyle(FlowTheme.primaryText(scheme))
+            } else {
+                Label(title, systemImage: symbol)
+                    .font(FlowFont.secondary)
+                    .foregroundStyle(FlowTheme.primaryText(scheme))
+            }
+            Spacer(minLength: FlowSpacing.s)
+            content
+        }
+        .padding(.horizontal, FlowSpacing.m)
+        .frame(minHeight: 52)
+        .background(RoundedRectangle(cornerRadius: FlowRadius.field, style: .continuous).fill(FlowTheme.surface(scheme)))
+        .overlay(RoundedRectangle(cornerRadius: FlowRadius.field, style: .continuous).strokeBorder(FlowTheme.separator(scheme), lineWidth: 1))
+    }
+}
+
+/// The create sheet's rounded value pill, for a `FlowFieldRow`'s trailing edge.
+public struct FlowFieldChip: View {
+    @Environment(\.colorScheme) private var scheme
+    private let value: String
+
+    public init(_ value: String) {
+        self.value = value
+    }
+
+    public var body: some View {
+        Text(value)
+            .font(FlowFont.caption.weight(.semibold))
+            .foregroundStyle(FlowTheme.secondaryText(scheme))
+            .padding(.horizontal, FlowSpacing.s)
+            .padding(.vertical, FlowSpacing.xs)
+            .background(Capsule().fill(FlowTheme.surfaceSunken(scheme)))
+    }
+}
+
+/// The create sheet's header kind switch — the title IS the picker, so
+/// reaching Project or Initiative from the task card costs one menu tap
+/// rather than a permanent third of the header (founder, 2026-08-10). Takes
+/// its binding so the caller controls how (or whether) the change animates —
+/// `FlowCreateSheet` wraps its setter in `animated(_:)`.
+public struct FlowKindMenu: View {
+    @Environment(\.colorScheme) private var scheme
+    @Binding private var kind: FlowCreateKind
+
+    public init(kind: Binding<FlowCreateKind>) {
+        self._kind = kind
+    }
+
+    public var body: some View {
+        Menu {
+            Picker("Kind", selection: $kind) {
+                ForEach(FlowCreateKind.allCases) { option in
+                    Text(option.title).tag(option)
+                }
+            }
+            .pickerStyle(.inline)
+        } label: {
+            HStack(spacing: FlowSpacing.xxs) {
+                Text(kind == .task ? "Add task" : "New \(kind.title.lowercased())")
+                    .font(FlowFont.sectionTitle)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(FlowTheme.tertiaryText(scheme))
+            }
+            .foregroundStyle(FlowTheme.primaryText(scheme))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Kind")
+        .accessibilityValue(kind.title)
     }
 }

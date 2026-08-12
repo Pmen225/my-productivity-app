@@ -1,96 +1,73 @@
 import SwiftUI
 
-/// The mock's `cWheelRow` duration picker: a sunken well holding one value at a
-/// time, flanked by step chevrons, scroll-snapping between the eight offered
-/// lengths.
+/// The duration picker: a sunken well holding a spinning wheel of minute
+/// values, scrolled to the one being committed to.
 ///
 /// Shared on purpose — the create sheet and the Plan page both pick a duration
 /// this way, and decision 7 settles that it is a wheel rather than the chips
 /// this replaced.
+///
+/// A vertical wheel, not the chevron stepper this replaced: stepping one option
+/// per tap made choosing an hour a run of taps, and the founder asked for the
+/// scrolling picker directly ("that scrolly thing to choose mins, not a button
+/// to press for the next minute").
 public struct FlowDurationWheel: View {
-    /// The mock's eight options, in order.
-    public static let defaultOptions = [15, 20, 25, 30, 45, 60, 90, 120]
+    /// Five-minute steps up to two hours. Fine enough that the value people
+    /// actually mean is on the wheel, coarse enough to spin through.
+    public static let defaultOptions = Array(stride(from: 5, through: 120, by: 5))
 
     @Environment(\.colorScheme) private var scheme
 
     @Binding private var minutes: Int
     private let options: [Int]
+    private let accessibilityLabel: String
     @State private var scrolled: Int?
 
-    public init(minutes: Binding<Int>, options: [Int] = FlowDurationWheel.defaultOptions) {
+    /// `accessibilityLabel` defaults to "Duration" for existing callers; the
+    /// fused task card overrides it to "Worth" so VoiceOver matches the
+    /// worth-framed copy above the control (wheel-philosophy.md, scoped to
+    /// that card only — every other caller is unaffected).
+    public init(
+        minutes: Binding<Int>,
+        options: [Int] = FlowDurationWheel.defaultOptions,
+        accessibilityLabel: String = "Duration"
+    ) {
         self._minutes = minutes
         self.options = options
+        self.accessibilityLabel = accessibilityLabel
     }
 
     public var body: some View {
-        HStack(spacing: 0) {
-            chevron("chevron.left", by: -1)
-            wheel
-            chevron("chevron.right", by: 1)
+        Picker(accessibilityLabel, selection: $minutes) {
+            ForEach(options, id: \.self) { value in
+                Text(DurationFormatter.compact(minutes: value))
+                    .font(FlowFont.durationChip)
+                    .foregroundStyle(FlowTheme.accent)
+                    .tag(value)
+            }
         }
+        .labelsHidden()
+        #if os(iOS)
+        .pickerStyle(.wheel)
+        // Two rows of context either side of the choice: enough to see where a
+        // spin is heading, without the well swallowing the sheet.
+        .frame(height: 132)
+        #else
+        // macOS has no wheel style; a menu is the native equivalent there.
+        .pickerStyle(.menu)
+        #endif
         .background(
             RoundedRectangle(cornerRadius: FlowRadius.field, style: .continuous)
                 .fill(FlowTheme.surfaceSunken(scheme))
         )
-        // One adjustable control to VoiceOver rather than a scroll view and two
-        // buttons, which is what the rotor expects of a picker.
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Duration")
-        .accessibilityValue(DurationFormatter.spoken(minutes: minutes))
-        .accessibilityAdjustableAction { direction in
-            switch direction {
-            case .increment: minutes = Self.stepped(from: minutes, by: 1, in: options)
-            case .decrement: minutes = Self.stepped(from: minutes, by: -1, in: options)
-            default: break
-            }
-        }
-    }
-
-    private var wheel: some View {
-        ScrollView(.horizontal) {
-            LazyHStack(spacing: 0) {
-                ForEach(options, id: \.self) { value in
-                    Text(DurationFormatter.compact(minutes: value))
-                        .font(FlowFont.durationChip)
-                        .foregroundStyle(FlowTheme.accent)
-                        .containerRelativeFrame(.horizontal)
-                        .id(value)
-                }
-            }
-            .scrollTargetLayout()
-        }
-        .scrollIndicators(.hidden)
-        .scrollTargetBehavior(.viewAligned)
-        .scrollPosition(id: $scrolled)
-        // HIG minimum tappable height, and the well the mock draws.
-        .frame(height: 44)
+        .accessibilityLabel(accessibilityLabel)
         // Snapped, not assigned: a stored duration that is not one of the
-        // options — a default of 35, say — matches no row, so the wheel would
-        // open showing nothing at all.
+        // options — a task saved before the set changed — matches no row, so
+        // the wheel would open showing nothing at all.
         .onAppear {
             let snapped = Self.stepped(from: minutes, by: 0, in: options)
             if snapped != minutes { minutes = snapped }
-            scrolled = snapped
         }
-        .onChange(of: scrolled) { _, new in
-            if let new, new != minutes { minutes = new }
-        }
-        .onChange(of: minutes) { _, new in
-            if scrolled != new { scrolled = new }
-        }
-    }
-
-    private func chevron(_ systemImage: String, by delta: Int) -> some View {
-        Button {
-            minutes = Self.stepped(from: minutes, by: delta, in: options)
-        } label: {
-            Image(systemName: systemImage)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(FlowTheme.tertiaryText(scheme))
-                .frame(width: 44, height: 44)
-        }
-        .buttonStyle(.plain)
-        .accessibilityHidden(true)
     }
 
     /// The next option along, clamped at both ends. A value that is not one of

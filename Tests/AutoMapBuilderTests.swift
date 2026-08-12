@@ -83,6 +83,45 @@ struct AutoMapBuilderTests {
         #expect(find("Backlog", in: root!) == nil)
     }
 
+    @Test("Plan's Map mode includes open unscheduled tasks")
+    func backlogTaskAppearsInPlanMapMode() {
+        let backlog = makeTask("Backlog")
+
+        let root = AutoMapBuilder.build(
+            scope: .day,
+            reference: date(10),
+            tasks: [backlog],
+            includesBacklog: true,
+            calendar: calendar
+        )
+
+        #expect(root != nil)
+        #expect(find("Backlog", in: root!) != nil)
+    }
+
+    @Test("A FlowTask child is one connected child node, not a second root")
+    func flowTaskHierarchyBuildsOneBranch() {
+        let parent = makeTask("Project A")
+        let child = makeTask("Subtask B")
+        parent.childTasks = [child]
+        child.parentTask = parent
+
+        let root = AutoMapBuilder.build(
+            scope: .day,
+            reference: date(10),
+            tasks: [parent, child],
+            includesBacklog: true,
+            calendar: calendar
+        )!
+
+        let parentNode = find("Project A", in: root)!
+        let childNode = find("Subtask B", in: root)!
+        #expect(root.orderedChildren.filter { $0.isTask }.map(\.title) == ["Project A"])
+        #expect(childNode.parent?.id == parentNode.id)
+        #expect(parentNode.isCollapsed == false)
+        #expect(childNode.colourToken == child.colourToken)
+    }
+
     // MARK: - Case 2: window inclusion
 
     @Test("Only segments starting inside the scope window are included")

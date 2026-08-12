@@ -90,6 +90,7 @@ private struct CurvedRulerLabel: View {
 /// The fixed pointer beneath the wheel, shared by the carousel and the
 /// overview ring — kept in one place so a future tweak to its shape or offset
 /// can't drift between the two the way a duplicated angle once did.
+@MainActor
 private func wheelPointer(centre: CGPoint, radius: CGFloat) -> some View {
     let tip = FocusWheelGeometry.point(
         centre: centre,
@@ -151,6 +152,9 @@ struct FocusWheelView: View {
     /// nothing else, so peeking ahead cannot alter what the consumption and the
     /// ruler are saying about the running task.
     var previewOffset: Double = 0
+    /// Under Reduce Motion the ring remains stationary and this queued index
+    /// crossfades through the fixed centre readout instead.
+    var reducedMotionPreviewIndex: Int?
     /// Close-up magnification about the pointer, `1...8`. At `1` the whole
     /// circle is drawn exactly as before; above it the ring is enlarged around
     /// the pointer and its far side leaves the screen, which is the founder's
@@ -167,7 +171,7 @@ struct FocusWheelView: View {
     /// when Reduce Motion is on.
     private var zoomAnimation: Animation? {
         if isZooming { return nil }
-        return reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.4, dampingFraction: 0.86)
+        return reduceMotion ? FlowMotion.fade : FlowMotion.travel
     }
 
     var body: some View {
@@ -371,7 +375,8 @@ struct FocusWheelView: View {
                             labelAngle: labelAngle,
                             centre: magnifiedCentre,
                             radius: magnifiedMidRadius,
-                            thickness: thickness
+                            thickness: thickness,
+                            viewportWidth: size.width
                         )
                     }
                 }
@@ -380,6 +385,7 @@ struct FocusWheelView: View {
                     magnifiedCentre: magnifiedCentre,
                     plan: plan,
                     activeSpan: rulerActiveSpan,
+                    gap: gap,
                     window: window
                 )
             }
@@ -392,8 +398,15 @@ struct FocusWheelView: View {
             // — rather than a point on the ring, so it is a sibling of the
             // magnified group, not a child of it. Left inside `zoomed(in:)` it
             // scaled and slid off screen at any close-up past ~1.5×.
-            if let active = items.first(where: \.isActive) {
-                activeTitle(item: active, centre: centre, elapsed: elapsed)
+            if let centreItem = reducedMotionCentreItem {
+                activeTitle(
+                    item: centreItem.item,
+                    centre: centre,
+                    elapsed: centreItem.isPreview ? 0 : elapsed,
+                    isPreview: centreItem.isPreview
+                )
+                .id(centreItem.item.id)
+                .transition(.opacity)
             }
         }
         .frame(width: size.width, height: size.height)
@@ -401,6 +414,17 @@ struct FocusWheelView: View {
         .animation(zoomAnimation, value: magnification)
         .animation(.linear(duration: 1), value: progress)
         .animation(.easeInOut(duration: 0.35), value: activeID)
+        .animation(FlowMotion.fade, value: reducedMotionPreviewIndex)
+    }
+
+    /// Reduce Motion previews the same queue item without rotating the ring.
+    /// Keeping the readout in one place avoids introducing a second layout.
+    private var reducedMotionCentreItem: (item: WheelItem, isPreview: Bool)? {
+        if let index = reducedMotionPreviewIndex, items.indices.contains(index) {
+            return (items[index], index != 0)
+        }
+        guard let active = items.first(where: \.isActive) else { return nil }
+        return (active, false)
     }
 
     /// Applies whichever zoom style is live. The pointer is deliberately left
@@ -434,7 +458,12 @@ struct FocusWheelView: View {
     /// The chip shows minutes REMAINING, not the block's static duration — the
     /// duration doesn't change as the task runs and so cannot be the thing the
     /// hub is restating.
-    private func activeTitle(item: WheelItem, centre: CGPoint, elapsed: Double) -> some View {
+    private func activeTitle(
+        item: WheelItem,
+        centre: CGPoint,
+        elapsed: Double,
+        isPreview: Bool
+    ) -> some View {
         let position = FocusWheelGeometry.carouselActiveTitleCentre(dialCentre: centre)
         let remaining = FocusWheelGeometry.carouselActiveRemainingMinutes(totalMinutes: item.minutes, elapsed: elapsed)
         return HStack(spacing: FlowSpacing.xs) {
@@ -460,7 +489,10 @@ struct FocusWheelView: View {
         .clipped()
         .position(position)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Now: \(item.title), \(DurationFormatter.spoken(minutes: remaining)) remaining")
+        .accessibilityLabel(
+            "\(isPreview ? "Preview" : "Now"): \(item.title), "
+                + "\(DurationFormatter.spoken(minutes: remaining))\(isPreview ? "" : " remaining")"
+        )
     }
 
     /// A neighbour wedge's title, drawn outside the scaled group: `centre` and
@@ -473,15 +505,20 @@ struct FocusWheelView: View {
         labelAngle: Double,
         centre: CGPoint,
         radius: CGFloat,
-        thickness: CGFloat
+        thickness: CGFloat,
+        viewportWidth: CGFloat
     ) -> some View {
         let midAngle = labelAngle
-        let position = FocusWheelGeometry.point(centre: centre, radius: radius, angle: midAngle)
-        let rotation = FocusWheelGeometry.readableRotation(atAngle: midAngle)
         let label = FocusWheelGeometry.neighbourLabel(
             spanDegrees: visibleDegrees,
             midRadius: radius,
             thickness: thickness
+        )
+        let position = FocusWheelGeometry.edgeSafeLabelPosition(
+            FocusWheelGeometry.point(centre: centre, radius: radius, angle: midAngle),
+            labelWidth: label.width,
+            viewportWidth: viewportWidth,
+            edgeInset: FlowSpacing.s
         )
 
         return HStack(spacing: FlowSpacing.xs) {
@@ -497,12 +534,16 @@ struct FocusWheelView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
         }
-        // Quiet ink for the title (mockup `--sub`); the icon above keeps the
-        // task's own colour as the one accent on an otherwise soft wedge.
-        .foregroundStyle(FlowTheme.secondaryText(scheme))
+        // The title takes the wedge's own on-colour, not a fixed ink. A single
+        // quiet ink worked while every wedge was a 20% pastel over cream; now
+        // that each fill carries its own lightness, one ink cannot clear
+        // contrast on both the yellow and the crimson.
+        .foregroundStyle(item.colour.onSoft)
         .frame(width: label.width)
         .clipped()
-        .rotationEffect(.degrees(rotation))
+        // Keep words screen-upright while their position follows the wheel.
+        // The former 180° readability flip was the visible discontinuity the
+        // founder described as the labels "going back" on release.
         .position(position)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Next: \(item.title), \(DurationFormatter.spoken(minutes: item.minutes))")
@@ -513,14 +554,11 @@ struct FocusWheelView: View {
     /// time is the absence of a task rather than one more block to compare.
     private func freeLabel(angle: Double, centre: CGPoint, radius: CGFloat) -> some View {
         let position = FocusWheelGeometry.point(centre: centre, radius: radius, angle: angle)
-        let rotation = FocusWheelGeometry.readableRotation(atAngle: angle)
-
         return Text("FREE")
             .font(FlowFont.wheelSegmentCompact)
             .fontWeight(.heavy)
             .tracking(2.5)
             .foregroundStyle(FlowTheme.tertiaryText(scheme))
-            .rotationEffect(.degrees(rotation))
             .position(position)
             .accessibilityHidden(true)
     }
@@ -601,9 +639,15 @@ struct FocusWheelView: View {
         magnifiedCentre: CGPoint,
         plan: RulerPlan,
         activeSpan: (start: Double, end: Double),
+        gap: Double,
         window: (start: Double, end: Double)
     ) -> some View {
         let magnifiedRadii = plan.radii.magnified(factor: magnification)
+        // The wedge the ruler sits on is drawn inset by `gap` at both ends,
+        // but the tape it is measured along is not — so the end marks landed
+        // in the separator and on the neighbouring wedge (the 0 tick was
+        // drawn across Exercise). Clip to the fill the marks belong to.
+        let drawn = (start: activeSpan.start + gap, end: activeSpan.end - gap)
 
         return ZStack {
             ForEach(Array(stride(from: plan.topTick, through: 0, by: -plan.step)), id: \.self) { remaining in
@@ -618,7 +662,11 @@ struct FocusWheelView: View {
                 if FocusWheelGeometry.carouselRulerTickIsVisible(angle: angle, window: window) {
                     rulerTick(
                         centre: magnifiedCentre,
-                        angle: angle,
+                        // Clamped, not dropped: only the two end marks fall
+                        // outside, and each by exactly `gap`. Dropping them
+                        // cost the scale its `0`; pinning them to the wedge
+                        // edge keeps the count whole and off the neighbour.
+                        angle: min(max(angle, drawn.start), drawn.end),
                         tier: FocusWheelGeometry.carouselRulerTickTier(
                             minutesRemaining: remaining,
                             totalMinutes: plan.totalMinutes
@@ -670,9 +718,9 @@ struct FocusWheelView: View {
         let opacity: Double
         let tint: Color
         switch tier {
-        case .minor: (width, opacity, tint) = (0.8, 0.42, FlowTheme.rulerTickMinor(scheme))
-        case .medium: (width, opacity, tint) = (1.2, 0.7, FlowTheme.rulerTickMinor(scheme))
-        case .major: (width, opacity, tint) = (1.8, 1, FlowTheme.rulerTickMajor(scheme))
+        case .minor: (width, opacity, tint) = (0.8, 0.42, FlowTheme.accent)
+        case .medium: (width, opacity, tint) = (1.2, 0.7, FlowTheme.accent)
+        case .major: (width, opacity, tint) = (1.8, 1, FlowTheme.accent)
         }
 
         return Path { path in

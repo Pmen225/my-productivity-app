@@ -10,6 +10,17 @@ import Testing
 @MainActor
 struct MapConnectorGeometryTests {
 
+    @Test("left-to-right connector starts at the external branch port")
+    func horizontalStartUsesBranchPort() {
+        let point = MapConnectorGeometry.horizontalStart(
+            parentCenter: CGPoint(x: 100, y: 50),
+            parentSize: CGSize(width: 80, height: 40),
+            branchPortOffset: 29
+        )
+        #expect(abs(point.x - 169) < 0.0001)
+        #expect(abs(point.y - 50) < 0.0001)
+    }
+
     // MARK: - railX (root centre vs. child left edge + inset)
 
     @Test("railX at depth 0 is the node's own centre x, regardless of its width")
