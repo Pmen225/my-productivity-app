@@ -20,10 +20,14 @@ private enum TaskIdentityLevel {
     }
 
     var font: Font {
-        switch self {
-        case .parent: FlowFont.body.weight(.bold)
-        case .subtask: FlowFont.caption.weight(.semibold)
-        }
+        .system(
+            size: FlowIconSize.navigation,
+            weight: self == .parent ? .bold : .semibold
+        )
+    }
+
+    var imageScale: Image.Scale {
+        self == .parent ? .large : .medium
     }
 }
 
@@ -39,6 +43,7 @@ private struct TaskIdentityBadge: View {
     var body: some View {
         Image(systemName: resolvedSymbolName)
             .font(level.font)
+            .imageScale(level.imageScale)
             .symbolRenderingMode(.hierarchical)
             .foregroundStyle(tint.onSoft)
             .frame(width: level.dimension, height: level.dimension)
