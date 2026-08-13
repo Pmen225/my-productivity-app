@@ -540,80 +540,63 @@ struct LibraryView: View {
     }
 
     /// One fixed 3-way control replaces the old task-page chips and the
-    /// "Smart task views" menu (decision 40). iOS 26 gets the platform's
-    /// interactive Liquid Glass control material; older supported systems
-    /// retain the native segmented picker. In both versions the destinations
-    /// stay in one place, remain text-only per the HIG, and expose a full
-    /// 44-point target.
+    /// "Smart task views" menu (decision 40). One implementation serves every
+    /// supported iOS version: native Button interaction stays stable while the
+    /// extracted OpenAI Apps control language supplies compact labels and a
+    /// selected underline.
     @ViewBuilder
     private var planSegmentControl: some View {
-        Group {
-            if #available(iOS 26.0, *) {
-                liquidGlassPlanSegmentControl
-            } else {
-                Picker("Plan page", selection: $planSegment) {
-                    ForEach(PlanSegment.allCases) { segment in
-                        Text(segment.title).tag(segment)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(minHeight: 44)
-            }
-        }
+        tokenPlanSegmentControl
         .padding(.horizontal, FlowSpacing.screen)
         .padding(.top, FlowSpacing.s)
         .padding(.bottom, FlowSpacing.xs)
         .sensoryFeedback(.selection, trigger: planSegment)
     }
 
-    @available(iOS 26.0, *)
-    private var liquidGlassPlanSegmentControl: some View {
-        GlassEffectContainer(spacing: FlowSpacing.xs) {
-            HStack(spacing: 0) {
-                ForEach(PlanSegment.allCases) { segment in
-                    let isSelected = planSegment == segment
+    private var tokenPlanSegmentControl: some View {
+        HStack(spacing: FlowSpacing.xxs) {
+            ForEach(PlanSegment.allCases) { segment in
+                let isSelected = planSegment == segment
 
-                    Button {
-                        selectPlanSegment(segment)
-                    } label: {
+                Button {
+                    selectPlanSegment(segment)
+                } label: {
+                    VStack(spacing: 0) {
                         Text(segment.title)
-                            .font(FlowFont.body.weight(isSelected ? .semibold : .medium))
+                            .font(FlowFont.caption.weight(isSelected ? .semibold : .medium))
                             .foregroundStyle(
                                 isSelected
-                                    ? FlowTheme.accent
+                                    ? FlowTheme.accentText(scheme)
                                     : FlowTheme.secondaryText(scheme)
                             )
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                            .contentShape(Capsule())
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, minHeight: 40)
+
+                        Rectangle()
+                            .fill(isSelected ? FlowTheme.accent : .clear)
+                            .frame(height: FlowSpacing.xs)
+                            .clipShape(Capsule())
                     }
-                    .buttonStyle(PlanSegmentPressStyle())
-                    .background {
-                        if isSelected {
-                            Capsule(style: .continuous)
-                                .fill(FlowTheme.accent.opacity(scheme == .dark ? 0.10 : 0.05))
-                                .glassEffect(
-                                    .regular
-                                        .tint(FlowTheme.accent.opacity(scheme == .dark ? 0.20 : 0.12))
-                                        .interactive(),
-                                    in: Capsule(style: .continuous)
-                                )
-                                .glassEffectID("plan-selection", in: planSegmentSelection)
-                                .matchedGeometryEffect(
-                                    id: "plan-selection-position",
-                                    in: planSegmentSelection
-                                )
-                        }
-                    }
-                    .accessibilityIdentifier("plan-segment-\(segment.rawValue)")
-                    .accessibilityLabel(segment.title)
-                    .accessibilityHint("Shows the \(segment.title.lowercased()) view")
-                    .accessibilityValue(isSelected ? "Selected" : "")
-                    .accessibilityAddTraits(isSelected ? .isSelected : [])
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(PlanSegmentPressStyle())
+                .accessibilityIdentifier("plan-segment-\(segment.rawValue)")
+                .accessibilityLabel(segment.title)
+                .accessibilityHint("Shows the \(segment.title.lowercased()) view")
+                .accessibilityValue(isSelected ? "Selected" : "")
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
-            .padding(FlowSpacing.xs)
-            .glassEffect(.clear.interactive(), in: Capsule(style: .continuous))
         }
+        .padding(.horizontal, FlowSpacing.s)
+        .background(
+            Capsule(style: .continuous)
+                .fill(FlowTheme.glass(scheme))
+                .overlay {
+                    Capsule(style: .continuous)
+                        .stroke(FlowTheme.glassBorder(scheme), lineWidth: 1)
+                }
+        )
         .frame(minHeight: 52)
     }
 
