@@ -736,11 +736,7 @@ struct MapCanvasView: View {
         }
         .padding(.horizontal, FlowSpacing.m)
         .padding(.vertical, FlowSpacing.s)
-        .background(
-            RoundedRectangle(cornerRadius: FlowRadius.small, style: .continuous)
-                .fill(FlowTheme.surface(scheme))
-        )
-        .shadow(color: FlowTheme.shadow(scheme), radius: 6, y: 2)
+        .flowGlass(radius: FlowRadius.small)
         .padding(.top, FlowSpacing.m)
         .frame(maxWidth: 320)
     }
