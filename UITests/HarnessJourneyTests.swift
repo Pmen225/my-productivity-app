@@ -540,9 +540,32 @@ final class HarnessJourneyTests: XCTestCase {
         capture(app, named: "journey-16-calendar")
         _ = popToPlan(app)
 
-        // 11. Remaining tabs — each asserted selected by tapTab.
-        if tapTab(app, "Settings") { capture(app, named: "journey-17-settings") }
-        if tapTab(app, "Focus") { capture(app, named: "journey-18-focus-return") }
+        // 11. Settings → Calendar: verify the native push and the account
+        // control's explicit state without starting a permission flow.
+        if tapTab(app, "Settings") {
+            capture(app, named: "journey-17-settings")
+            let calendarSettingsRow = app.buttons["Calendar"].firstMatch
+            guard calendarSettingsRow.waitForExistence(timeout: 5) else {
+                XCTFail("Settings Calendar row not found")
+                return
+            }
+            calendarSettingsRow.tap()
+            let calendarSettingsTitle = app.navigationBars["Calendar"].firstMatch
+            guard calendarSettingsTitle.waitForExistence(timeout: 5) else {
+                XCTFail("Settings Calendar row did not open Calendar settings")
+                return
+            }
+            let appleConnection = app.buttons["calendar-apple-connection"].firstMatch
+            XCTAssertTrue(appleConnection.waitForExistence(timeout: 5))
+            XCTAssertEqual(appleConnection.value as? String, "Not connected")
+            capture(app, named: "journey-18-settings-calendar")
+            app.navigationBars.buttons.firstMatch.tap()
+            XCTAssertTrue(app.navigationBars["Calendar"].waitForNonExistence(timeout: 5))
+            XCTAssertTrue(app.buttons["Calendar"].waitForExistence(timeout: 5))
+        }
+
+        // 12. Remaining tab — asserted selected by tapTab.
+        if tapTab(app, "Focus") { capture(app, named: "journey-19-focus-return") }
     }
 
     /// Regression test for the wrong-project push that failed journey runs 3-5.

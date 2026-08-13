@@ -186,13 +186,17 @@ struct CalendarSettingsSection: View {
         onConnected: @escaping () -> Void
     ) -> some View {
         let isWorking = flow.calendarHub.isWorking
+        let state = isWorking ? "Working" : (isConnected ? "Connected" : "Not connected")
         if isConnected {
             SecondaryActionButton("Disconnect", systemImage: "xmark.circle") {
                 pendingDisconnect = kind
             }
             .disabled(isWorking)
             .opacity(isWorking ? 0.5 : 1)
+            .accessibilityIdentifier("calendar-\(kind.rawValue)-connection")
             .accessibilityLabel("Disconnect \(kind.displayName)")
+            .accessibilityValue(state)
+            .accessibilityHint("Asks for confirmation before disconnecting this account")
         } else {
             SecondaryActionButton("Connect", systemImage: "link") {
                 Task {
@@ -205,7 +209,14 @@ struct CalendarSettingsSection: View {
             }
             .disabled(isWorking || disabledToConnect)
             .opacity((isWorking || disabledToConnect) ? 0.5 : 1)
+            .accessibilityIdentifier("calendar-\(kind.rawValue)-connection")
             .accessibilityLabel("Connect \(kind.displayName)")
+            .accessibilityValue(state)
+            .accessibilityHint(
+                disabledToConnect
+                    ? "Enter the Google client ID before connecting"
+                    : "Connects this calendar account"
+            )
         }
     }
 
@@ -228,6 +239,7 @@ struct CalendarSettingsSection: View {
                     .foregroundStyle(FlowTheme.tertiaryText(scheme))
             } else {
                 ForEach(calendars) { calendar in
+                    let isShown = selected.contains(calendar.id)
                     Toggle(calendar.title, isOn: Binding(
                         get: { selected.contains(calendar.id) },
                         set: { isOn in
@@ -244,7 +256,10 @@ struct CalendarSettingsSection: View {
                     ))
                     .font(FlowFont.secondary)
                     .tint(FlowTheme.accent)
+                    .accessibilityIdentifier("calendar-visibility-\(calendar.id)")
                     .accessibilityLabel("Show \(calendar.title)")
+                    .accessibilityValue(isShown ? "Shown" : "Hidden")
+                    .accessibilityHint("Controls whether this calendar appears in your plan")
                 }
             }
         }
@@ -265,6 +280,9 @@ struct CalendarSettingsSection: View {
                 }
             ))
             .tint(FlowTheme.accent)
+            .accessibilityIdentifier("calendar-writeback-toggle")
+            .accessibilityValue(flow.settings.writesFocusBlocksToCalendar ? "On" : "Off")
+            .accessibilityHint("Writes focus blocks to the selected writable calendar")
 
             if flow.settings.writesFocusBlocksToCalendar {
                 if writableCalendars.isEmpty {
@@ -284,6 +302,7 @@ struct CalendarSettingsSection: View {
                         }
                     }
                     .labelsHidden()
+                    .accessibilityIdentifier("calendar-writeback-picker")
                 }
             }
         }
