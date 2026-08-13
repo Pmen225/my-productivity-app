@@ -494,6 +494,19 @@ final class HarnessJourneyTests: XCTestCase {
         guard selectPlanSegment(app, "Map") else { return }
         capture(app, named: "journey-15-plan-map")
 
+        let horizontalLayout = app.buttons["map-layout-horizontal"].firstMatch
+        let topDownLayout = app.buttons["map-layout-org-chart"].firstMatch
+        XCTAssertTrue(horizontalLayout.waitForExistence(timeout: 5))
+        XCTAssertTrue(topDownLayout.waitForExistence(timeout: 5))
+        topDownLayout.tap()
+        XCTAssertTrue(topDownLayout.isSelected, "Top-down map layout did not become selected")
+        XCTAssertFalse(horizontalLayout.isSelected, "Map layout left two orientations selected")
+        capture(app, named: "journey-15-map-top-down")
+        horizontalLayout.tap()
+        XCTAssertTrue(horizontalLayout.isSelected, "Horizontal map layout did not become selected")
+        XCTAssertFalse(topDownLayout.isSelected, "Map layout did not leave top-down mode")
+        capture(app, named: "journey-15-map-horizontal")
+
         // Map search is a reachable control with a visible clear outcome.
         let mapSearch = app.buttons["map-search"].firstMatch
         guard mapSearch.waitForExistence(timeout: 5) else {
