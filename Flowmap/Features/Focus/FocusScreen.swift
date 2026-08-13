@@ -352,7 +352,7 @@ struct FocusScreen: View {
             Spacer(minLength: 0)
 
             Text("Pinch to zoom")
-                .font(.system(size: 16, weight: .regular, design: .rounded))
+                .font(FlowFont.secondary)
                 .foregroundStyle(FlowTheme.tertiaryText(scheme))
                 .opacity(hintVisible ? 1 : 0)
                 .accessibilityHidden(true)
