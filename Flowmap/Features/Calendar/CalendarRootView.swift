@@ -85,6 +85,7 @@ struct CalendarRootView: View {
                     .foregroundStyle(FlowTheme.tertiaryText(scheme))
             }
             .flowHitTarget()
+            .buttonStyle(FlowNavigationRowPressStyle())
             .accessibilityLabel("Previous month")
 
             Spacer(minLength: 0)
@@ -103,6 +104,7 @@ struct CalendarRootView: View {
                 }
             }
             .buttonStyle(.plain)
+            .buttonStyle(FlowNavigationRowPressStyle())
             .flowHitTarget()
             .accessibilityLabel("\(titleLabel), choose month")
             .accessibilityAddTraits(isPickingMonth ? [.isButton, .isSelected] : .isButton)
@@ -116,6 +118,7 @@ struct CalendarRootView: View {
                 .font(FlowFont.caption.weight(.semibold))
                 .foregroundStyle(FlowTheme.accentText(scheme))
                 .flowHitTarget()
+                .buttonStyle(FlowNavigationRowPressStyle())
             }
 
             Button { step(1) } label: {
@@ -124,6 +127,7 @@ struct CalendarRootView: View {
                     .foregroundStyle(FlowTheme.tertiaryText(scheme))
             }
             .flowHitTarget()
+            .buttonStyle(FlowNavigationRowPressStyle())
             .accessibilityLabel("Next month")
         }
         .padding(.horizontal, FlowSpacing.screen)
@@ -186,6 +190,7 @@ struct CalendarRootView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .buttonStyle(FlowNavigationRowPressStyle())
                 .accessibilityLabel(candidate.eyebrowTitle)
                 .accessibilityAddTraits(candidate == page ? [.isButton, .isSelected] : .isButton)
             }

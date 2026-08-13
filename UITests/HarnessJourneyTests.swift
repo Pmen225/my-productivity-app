@@ -541,6 +541,21 @@ final class HarnessJourneyTests: XCTestCase {
         calendar.tap()
         Thread.sleep(forTimeInterval: 1.5)
         capture(app, named: "journey-16-calendar")
+        let nextMonth = app.buttons["Next month"].firstMatch
+        XCTAssertTrue(nextMonth.waitForExistence(timeout: 5))
+        nextMonth.tap()
+        let todayButton = app.buttons["Today"].firstMatch
+        XCTAssertTrue(
+            todayButton.waitForExistence(timeout: 5),
+            "Calendar next-month control did not move away from today"
+        )
+        capture(app, named: "journey-16-calendar-next-month")
+        todayButton.tap()
+        XCTAssertTrue(
+            todayButton.waitForNonExistence(timeout: 5),
+            "Calendar Today control did not return to the current month"
+        )
+        capture(app, named: "journey-16-calendar-today")
         _ = popToPlan(app)
 
         // 11. Settings → Calendar: verify the native push and the account
