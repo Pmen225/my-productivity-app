@@ -785,7 +785,7 @@ public struct FlowCreateSheet: View {
                     .foregroundStyle(FlowTheme.secondaryText(scheme))
                     .flowHitTarget()
             }
-            .buttonStyle(.plain)
+            .buttonStyle(FlowNavigationRowPressStyle())
             .accessibilityLabel("Close")
             FlowKindMenu(kind: kindSelection)
             Spacer()
@@ -798,7 +798,7 @@ public struct FlowCreateSheet: View {
                     // rather than the ✕ itself being scaled up.
                     .flowHitTarget()
             }
-            .buttonStyle(.plain)
+            .buttonStyle(FlowNavigationRowPressStyle())
             .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .accessibilityLabel("Create task")
         }
@@ -1035,7 +1035,7 @@ public struct FlowCreateSheet: View {
                 .padding(.horizontal, FlowSpacing.s)
                 .background(Capsule().fill(FlowTheme.surfaceSunken(scheme)))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(FlowNavigationRowPressStyle())
             .accessibilityLabel(title)
             .accessibilityValue(selectionTitle)
         }
@@ -1172,7 +1172,7 @@ public struct FlowKindMenu: View {
             }
             .foregroundStyle(FlowTheme.primaryText(scheme))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(FlowNavigationRowPressStyle())
         .accessibilityLabel("Kind")
         .accessibilityValue(kind.title)
     }
