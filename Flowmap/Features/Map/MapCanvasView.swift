@@ -149,9 +149,12 @@ struct MapCanvasView: View {
             }
             .overlay(alignment: .top) { if viewModel.isSearchPresented { searchBar } }
             .overlay(alignment: .topTrailing) {
-                mapLayoutControl
-                    .padding(.top, FlowSpacing.s)
-                    .padding(.trailing, FlowSpacing.screen)
+                HStack(spacing: FlowSpacing.xs) {
+                    mapSearchControl
+                    mapLayoutControl
+                }
+                .padding(.top, FlowSpacing.s)
+                .padding(.trailing, FlowSpacing.screen)
             }
         }
         .clipped()
@@ -604,6 +607,29 @@ struct MapCanvasView: View {
 
     // MARK: - Floating controls
 
+    private var mapSearchControl: some View {
+        Button {
+            viewModel.isSearchPresented.toggle()
+            if !viewModel.isSearchPresented {
+                viewModel.searchQuery = ""
+            }
+        } label: {
+            Image(systemName: viewModel.isSearchPresented ? "xmark" : "magnifyingglass")
+                .font(FlowFont.body.weight(.medium))
+                .foregroundStyle(FlowTheme.secondaryText(scheme))
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
+        }
+        .buttonStyle(LayoutPressStyle())
+        .padding(4)
+        .flowGlass(radius: FlowRadius.small)
+        .accessibilityIdentifier("map-search")
+        .accessibilityLabel(viewModel.isSearchPresented ? "Hide map search" : "Search map")
+        .accessibilityHint("Shows the map search field")
+        .accessibilityValue(viewModel.isSearchPresented ? "Shown" : "Hidden")
+        .accessibilityAddTraits(viewModel.isSearchPresented ? .isSelected : [])
+    }
+
     private func zoom(by delta: CGFloat) {
         viewModel.zoom = min(max(viewModel.zoom + delta, Self.minimumZoom), Self.maximumZoom)
         viewModel.persistCanvasState()
@@ -731,13 +757,18 @@ struct MapCanvasView: View {
                     Image(systemName: "xmark.circle.fill")
                 }
                 .buttonStyle(.plain)
+                .flowHitTarget()
+                .accessibilityIdentifier("map-search-clear")
                 .accessibilityLabel("Clear search")
+                .accessibilityHint("Clears the map search text")
             }
         }
         .padding(.horizontal, FlowSpacing.m)
         .padding(.vertical, FlowSpacing.s)
         .flowGlass(radius: FlowRadius.small)
-        .padding(.top, FlowSpacing.m)
+        // Keep the field below the top-right control capsule so its clear
+        // button is visibly and physically tappable when the search is open.
+        .padding(.top, FlowSpacing.xxxl)
         .frame(maxWidth: 320)
     }
 }

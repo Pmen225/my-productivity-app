@@ -491,6 +491,44 @@ final class HarnessJourneyTests: XCTestCase {
         guard selectPlanSegment(app, "Map") else { return }
         capture(app, named: "journey-15-plan-map")
 
+        // Map search is a reachable control with a visible clear outcome.
+        let mapSearch = app.buttons["map-search"].firstMatch
+        guard mapSearch.waitForExistence(timeout: 5) else {
+            XCTFail("Map search control not found")
+            return
+        }
+        mapSearch.tap()
+        let mapSearchField = app.textFields["Search ideas"].firstMatch
+        guard mapSearchField.waitForExistence(timeout: 5) else {
+            XCTFail("Map search control did not reveal its search field")
+            return
+        }
+        XCTAssertTrue(mapSearch.isSelected, "Map search control did not expose its shown state")
+        mapSearchField.tap()
+        mapSearchField.typeText("Harness")
+        let clearMapSearch = app.buttons["map-search-clear"].firstMatch
+        guard clearMapSearch.waitForExistence(timeout: 5) else {
+            XCTFail("Map search text did not reveal its clear control")
+            return
+        }
+        capture(app, named: "journey-15-map-search-filled")
+        clearMapSearch.tap()
+        XCTAssertTrue(
+            clearMapSearch.waitForNonExistence(timeout: 5),
+            "Clearing Map search did not remove the clear control"
+        )
+        XCTAssertEqual(
+            mapSearchField.value as? String,
+            "",
+            "Clearing Map search did not empty the search field"
+        )
+        capture(app, named: "journey-15-map-search-cleared")
+        mapSearch.tap()
+        XCTAssertTrue(
+            mapSearchField.waitForNonExistence(timeout: 5),
+            "Closing Map search did not dismiss its field"
+        )
+
         // 10. Calendar from Plan's nav bar (decision 41), then back.
         let calendar = app.navigationBars.buttons["Calendar"].firstMatch
         guard calendar.waitForExistence(timeout: 5) else {
