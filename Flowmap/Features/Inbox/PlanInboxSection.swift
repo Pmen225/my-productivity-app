@@ -225,6 +225,7 @@ struct PlanInboxSection: View {
                     .frame(minHeight: 44)
                     .accessibilityLabel("Rename task")
             }
+            FlowColourPicker(selection: colourSelection(for: task), scrollable: true)
             // Label above, not beside: the wheel is a full spinning picker
             // now, and a tall control next to a one-line label reads as two
             // competing left edges.
@@ -251,6 +252,17 @@ struct PlanInboxSection: View {
             get: { task.iconName.isEmpty ? "circle" : task.iconName },
             set: { symbol in
                 task.iconName = symbol
+                task.touch()
+                try? context.save()
+            }
+        )
+    }
+
+    private func colourSelection(for task: FlowTask) -> Binding<ColourToken> {
+        Binding(
+            get: { task.colour },
+            set: { token in
+                task.colourToken = token.rawValue
                 task.touch()
                 try? context.save()
             }

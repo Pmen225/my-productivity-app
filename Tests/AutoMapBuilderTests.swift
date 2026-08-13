@@ -122,6 +122,22 @@ struct AutoMapBuilderTests {
         #expect(childNode.colourToken == child.colourToken)
     }
 
+    @Test("Changing a task colour is reflected by its generated map node")
+    func taskColourFlowsToMapNode() {
+        let task = makeTask("Colourful task")
+        task.colourToken = ColourToken.teal.rawValue
+
+        let root = AutoMapBuilder.build(
+            scope: .day,
+            reference: date(10),
+            tasks: [task],
+            includesBacklog: true,
+            calendar: calendar
+        )!
+
+        #expect(find("Colourful task", in: root)?.colourToken == ColourToken.teal.rawValue)
+    }
+
     // MARK: - Case 2: window inclusion
 
     @Test("Only segments starting inside the scope window are included")

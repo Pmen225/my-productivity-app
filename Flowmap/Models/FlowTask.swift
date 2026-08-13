@@ -105,7 +105,7 @@ public final class FlowTask {
         priority: TaskPriority = .none,
         estimatedMinutes: Int = 30,
         dueDate: Date? = nil,
-        colourToken: String = ColourToken.violet.rawValue,
+        colourToken: String? = nil,
         iconName: String = "circle",
         sortOrder: Int = 0,
         list: TaskList? = nil,
@@ -119,7 +119,11 @@ public final class FlowTask {
         self.priorityRaw = priority.rawValue
         self.estimatedMinutes = max(5, estimatedMinutes)
         self.dueDate = dueDate
-        self.colourToken = colourToken
+        // A task owns one persisted token. Fresh tasks receive a stable hue
+        // from their UUID instead of every creation path silently producing
+        // violet; any explicit user choice always wins and flows unchanged to
+        // Plan, Today, Focus and the generated map.
+        self.colourToken = colourToken ?? ColourToken.deterministic(for: self.id).rawValue
         self.iconName = iconName
         self.sortOrder = sortOrder
         self.list = list

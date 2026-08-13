@@ -252,6 +252,7 @@ public enum SeedData {
         context.insert(parent)
         context.insert(dependency)
         context.insert(independent)
+        context.insert(Subtask(title: "Prepare project brief", sortOrder: 0, task: parent))
         _ = dependency.assignParent(parent)
         settings.appearance = .dark
         settings.touch()

@@ -766,6 +766,13 @@ final class ScreenshotTests: XCTestCase {
             XCTFail("Prioritise duel did not present after tapping \"Play the game\"")
             return
         }
+        let openChoices = app.buttons.matching(choicePredicate)
+        XCTAssertEqual(openChoices.count, 2, "A duel must present exactly two choices")
+        for index in 0..<min(openChoices.count, 2) {
+            let frame = openChoices.element(boundBy: index).frame
+            XCTAssertGreaterThanOrEqual(frame.width, 44, "Duel choice \(index + 1) is too narrow to tap")
+            XCTAssertGreaterThanOrEqual(frame.height, 44, "Duel choice \(index + 1) is too short to tap")
+        }
         capture(app, named: "minigame-01-open")
         XCTAssertFalse(app.buttons["No preference"].exists, "Redundant no-preference control is still visible")
 
@@ -794,16 +801,19 @@ final class ScreenshotTests: XCTestCase {
         capture(app, named: "minigame-02-first-choice-feedback")
         Thread.sleep(forTimeInterval: 0.95)
 
-        // Second offered task on the next pair.
-        let secondChoice = app.buttons.matching(choicePredicate).element(boundBy: 1)
-        guard secondChoice.waitForExistence(timeout: 5) else {
-            XCTFail("Next comparison did not arrive after the first choice")
-            return
+        // Two tasks complete after one comparison. Larger rounds continue to
+        // a second pair and exercise the other choice before the tap-through.
+        if !app.staticTexts["Decision made."].waitForExistence(timeout: 2) {
+            let secondChoice = app.buttons.matching(choicePredicate).element(boundBy: 1)
+            guard secondChoice.waitForExistence(timeout: 5) else {
+                XCTFail("Next comparison did not arrive after the first choice")
+                return
+            }
+            secondChoice.tap()
+            Thread.sleep(forTimeInterval: 0.08)
+            capture(app, named: "minigame-03-second-choice-feedback")
+            Thread.sleep(forTimeInterval: 0.95)
         }
-        secondChoice.tap()
-        Thread.sleep(forTimeInterval: 0.08)
-        capture(app, named: "minigame-03-second-choice-feedback")
-        Thread.sleep(forTimeInterval: 0.95)
 
         // Finish every remaining comparison. The ranked screen itself is the
         // outcome assertion; a tap loop that simply ran is not evidence.
@@ -857,13 +867,14 @@ final class ScreenshotTests: XCTestCase {
             return
         }
         planToday.tap()
-        let plannedReturn = expectation(
-            for: NSPredicate(format: "isHittable == true"),
-            evaluatedWith: playButton
+        let duelNavigationBar = app.navigationBars["Prioritise duel"].firstMatch
+        XCTAssertTrue(
+            duelNavigationBar.waitForNonExistence(timeout: 10),
+            "Plan today did not dismiss the prioritise duel"
         )
-        wait(for: [plannedReturn], timeout: 15)
-        guard tapTab(app, "Plan") else {
-            XCTFail("Plan today returned, but the Plan tab did not settle")
+        let planTab = app.tabBars.buttons["Plan"].firstMatch
+        guard planTab.waitForExistence(timeout: 5), planTab.isSelected else {
+            XCTFail("Plan today returned, but the native Plan tab was not selected")
             return
         }
         capture(app, named: "minigame-06-plan-today-exit")

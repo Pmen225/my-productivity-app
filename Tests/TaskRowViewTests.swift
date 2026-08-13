@@ -39,6 +39,15 @@ struct TaskRowViewTests {
         #expect(task.subtaskCompletionFraction == 1)
     }
 
+    @Test("Fresh tasks receive a stable content colour instead of a universal violet")
+    func freshTaskColourIsStableAndExplicitChoicesWin() {
+        let task = FlowTask(title: "New task")
+        #expect(task.colourToken == ColourToken.deterministic(for: task.id).rawValue)
+
+        let chosen = FlowTask(title: "Chosen", colourToken: ColourToken.pink.rawValue)
+        #expect(chosen.colourToken == ColourToken.pink.rawValue)
+    }
+
     @Test("Copy carries title, icon, colour, duration and sub-task titles into the same list/project")
     func duplicateCopiesFields() throws {
         let world = try TestWorld()

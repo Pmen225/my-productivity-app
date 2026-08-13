@@ -37,7 +37,10 @@ final class HarnessJourneyTests: XCTestCase {
 
     private func launch() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments += ["-flowmapSeedDemo"]
+        // Each journey must start from its own deterministic workspace. A
+        // shared simulator store made a preceding rename or first-run test
+        // change this journey's data and produced false failures.
+        app.launchArguments += ["-flowmapHarnessClean", "-flowmapSeedDemo"]
         app.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30))
         Thread.sleep(forTimeInterval: 4)
@@ -604,9 +607,14 @@ final class HarnessJourneyTests: XCTestCase {
     /// arrived.
     func testFirstRunCallToAction() {
         let app = XCUIApplication()
+        app.launchArguments += ["-flowmapHarnessClean"]
         app.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30))
         Thread.sleep(forTimeInterval: 4)
+        // Tab selection is persisted outside the in-memory model store, so a
+        // genuine first-run data state may still reopen on Plan or Settings.
+        // Navigate to Focus before asserting its first-run empty state.
+        guard tapTab(app, "Focus") else { return }
 
         let title = app.staticTexts["Nothing here yet"]
         XCTAssertTrue(
@@ -882,6 +890,147 @@ final class HarnessJourneyTests: XCTestCase {
         )
 
         capture(app, named: "iphone-task-dependency-stack")
+    }
+
+    /// Regression coverage for TICKET-425: a parent task with real checklist
+    /// items keeps a tappable disclosure footer inside its card.
+    func testPlanTaskCardRevealsChecklistFromFooter() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-flowmapHarnessClean", "-flowmapHarnessHierarchy"]
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30))
+        Thread.sleep(forTimeInterval: 4)
+
+        guard selectPlanSegment(app, "Inbox") else { return }
+
+        let expand = app.buttons["Expand sub-tasks"].firstMatch
+        guard expand.waitForExistence(timeout: 8) else {
+            XCTFail("Project A has no collapsed sub-task disclosure footer")
+            return
+        }
+        XCTAssertGreaterThanOrEqual(
+            expand.frame.height,
+            44,
+            "The sub-task disclosure footer must have a 44pt target"
+        )
+        capture(app, named: "ticket-425-task-card-collapsed")
+
+        expand.tap()
+        let checklistItem = app.staticTexts["Prepare project brief"].firstMatch
+        XCTAssertTrue(
+            checklistItem.waitForExistence(timeout: 5),
+            "Expanding Project A did not reveal its inline checklist item"
+        )
+
+        if app.textFields["Rename task"].firstMatch.waitForExistence(timeout: 1) {
+            XCTFail("Expanding the checklist must not also open the parent task editor")
+            return
+        }
+
+        let collapse = app.buttons["Collapse sub-tasks"].firstMatch
+        guard collapse.waitForExistence(timeout: 5) else {
+            XCTFail("The expanded footer did not expose its collapse action")
+            return
+        }
+        let parentCard = app.otherElements["Task: Project A"].firstMatch
+        XCTAssertGreaterThan(checklistItem.frame.minY, parentCard.frame.minY)
+        XCTAssertLessThan(checklistItem.frame.maxY, parentCard.frame.maxY)
+        XCTAssertGreaterThan(collapse.frame.minY, checklistItem.frame.maxY)
+        capture(app, named: "ticket-425-task-card-expanded")
+
+        collapse.tap()
+        XCTAssertTrue(
+            checklistItem.waitForNonExistence(timeout: 5),
+            "Collapsing Project A did not hide its inline checklist item"
+        )
+    }
+
+    /// Human-facing controls for TICKET-425 must each change the visible
+    /// state that their label promises: direct edit, swipe edit, long-press
+    /// edit, completion, and inline sub-task completion.
+    func testPlanTaskCardControlsJourney() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-flowmapHarnessClean", "-flowmapHarnessHierarchy"]
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30))
+        Thread.sleep(forTimeInterval: 4)
+
+        guard selectPlanSegment(app, "Inbox") else { return }
+
+        // Ordinary content tap opens the inline editor and a second tap closes it.
+        let projectContent = app.buttons["Project A"].firstMatch
+        guard projectContent.waitForExistence(timeout: 8) else {
+            XCTFail("Project A task content is not tappable")
+            return
+        }
+        projectContent.tap()
+        let projectEditor = app.textFields["Rename task"].firstMatch
+        XCTAssertTrue(projectEditor.waitForExistence(timeout: 5))
+        capture(app, named: "ticket-425-direct-edit")
+        let green = app.buttons["Green"].firstMatch
+        XCTAssertTrue(green.waitForExistence(timeout: 5))
+        green.tap()
+        XCTAssertTrue(green.isSelected, "Choosing Green did not update Project A's task colour")
+        capture(app, named: "ticket-425-colour-changed-in-plan")
+        projectContent.tap()
+        XCTAssertTrue(projectEditor.waitForNonExistence(timeout: 5))
+
+        // The protected trailing swipe exposes its explicit Edit action.
+        let rootContent = app.buttons["Root C"].firstMatch
+        rootContent.swipeLeft()
+        let swipeEdit = app.buttons["Edit"].firstMatch
+        guard swipeEdit.waitForExistence(timeout: 5) else {
+            XCTFail("Trailing swipe did not expose Edit")
+            return
+        }
+        capture(app, named: "ticket-425-trailing-edit")
+        swipeEdit.tap()
+        XCTAssertTrue(projectEditor.waitForExistence(timeout: 5))
+        rootContent.tap()
+        XCTAssertTrue(projectEditor.waitForNonExistence(timeout: 5))
+
+        // The long-press menu exposes the same explicit editing outcome.
+        projectContent.press(forDuration: 1.0)
+        let longPressEdit = app.buttons["Edit task"].firstMatch
+        guard longPressEdit.waitForExistence(timeout: 5) else {
+            XCTFail("Long press did not expose Edit task")
+            return
+        }
+        capture(app, named: "ticket-425-long-press-edit")
+        longPressEdit.tap()
+        XCTAssertTrue(projectEditor.waitForExistence(timeout: 5))
+        projectContent.tap()
+        XCTAssertTrue(projectEditor.waitForNonExistence(timeout: 5))
+
+        // Completion remains a separate trailing control and never opens editing.
+        let rootCard = app.otherElements["Task: Root C"].firstMatch
+        let complete = rootCard.buttons["Mark task complete"].firstMatch
+        XCTAssertTrue(complete.waitForExistence(timeout: 5))
+        complete.tap()
+        XCTAssertTrue(
+            rootCard.waitForNonExistence(timeout: 5),
+            "Completing an Inbox task did not remove it from the open-task list"
+        )
+        XCTAssertTrue(projectEditor.waitForNonExistence(timeout: 1))
+        capture(app, named: "ticket-425-task-completed")
+
+        // The child completion control is independent from the disclosure footer.
+        let expand = app.buttons["Expand sub-tasks"].firstMatch
+        expand.tap()
+        let childComplete = app.buttons["Prepare project brief"].firstMatch
+        guard childComplete.waitForExistence(timeout: 5) else {
+            XCTFail("Expanded checklist has no completion control")
+            return
+        }
+        childComplete.tap()
+        XCTAssertEqual(childComplete.value as? String, "Completed")
+        capture(app, named: "ticket-425-subtask-completed")
+
+        // Map is derived from the same stored token, so the user-set colour
+        // must survive the surface change without a second map-only setting.
+        guard selectPlanSegment(app, "Map") else { return }
+        XCTAssertTrue(app.buttons["Project A"].firstMatch.waitForExistence(timeout: 8))
+        capture(app, named: "ticket-425-colour-propagated-to-map")
     }
 
 }

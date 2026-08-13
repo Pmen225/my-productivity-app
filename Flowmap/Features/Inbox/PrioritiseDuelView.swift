@@ -197,18 +197,16 @@ struct PrioritiseDuelView: View {
             pick(task)
         } label: {
             HStack(spacing: FlowSpacing.m) {
-                Circle()
-                    .strokeBorder(isLoser ? task.colour.base : task.colour.onSoft, lineWidth: 2)
-                    .frame(width: 22, height: 22)
                 VStack(alignment: .leading, spacing: FlowSpacing.xs) {
                     Image(systemName: task.iconName)
                         .symbolEffect(.wiggle.byLayer, options: .nonRepeating, value: isWinner)
                         .symbolEffectsRemoved(reduceMotion)
                     Text(task.title)
                         .font(FlowFont.cardTitle)
-                        .foregroundStyle(isLoser ? task.colour.base : task.colour.onSoft)
+                        .foregroundStyle(task.colour.onSoft)
                         .lineLimit(2)
                 }
+                .opacity(isLoser ? 0.48 : 1)
                 Spacer(minLength: FlowSpacing.s)
                 DurationChip(minutes: task.estimatedMinutes, tint: task.colour)
             }
@@ -216,22 +214,21 @@ struct PrioritiseDuelView: View {
             .frame(maxWidth: .infinity, minHeight: 112)
             .background(
                 RoundedRectangle(cornerRadius: FlowRadius.large, style: .continuous)
-                    .fill(isLoser ? FlowTheme.surfaceWell(scheme) : task.colour.soft)
+                    .fill(task.colour.soft)
             )
             .overlay {
                 RoundedRectangle(cornerRadius: FlowRadius.large, style: .continuous)
-                    .strokeBorder(isLoser ? task.colour.base : FlowTheme.raisedHighlight(scheme), lineWidth: isLoser ? 2 : 1)
+                    .strokeBorder(FlowTheme.raisedHighlight(scheme), lineWidth: 1)
             }
         }
         .buttonStyle(.plain)
         .flowHitTarget()
-        .disabled(isResolving)
+        .allowsHitTesting(!isResolving)
         .offset(
             x: isExitingPair && isWinner ? -520 : 0,
             y: isExitingPair && isLoser ? 620 : 0
         )
         .rotationEffect(.degrees(isExitingPair && isLoser ? 8 : 0))
-        .opacity(isLoser ? 0.48 : 1)
         .accessibilityLabel("Put \(task.title) ahead of \(other.title)")
     }
 

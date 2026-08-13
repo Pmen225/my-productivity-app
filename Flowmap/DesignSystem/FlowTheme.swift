@@ -139,8 +139,15 @@ public enum ColourToken: String, CaseIterable, Codable, Sendable {
     /// so the same object keeps the same colour across launches and devices.
     public static func deterministic(for uuid: UUID) -> ColourToken {
         let all = ColourToken.taskTokens
-        let hash = abs(uuid.uuidString.hashValue % all.count)
-        return all[hash]
+        // Swift's `hashValue` is deliberately randomised for each process, so
+        // it cannot back a persisted visual identity. This small FNV-1a pass
+        // over the UUID bytes is stable across launches and devices.
+        var hash: UInt64 = 14_695_981_039_346_656_037
+        for byte in uuid.uuidString.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 1_099_511_628_211
+        }
+        return all[Int(hash % UInt64(all.count))]
     }
 }
 

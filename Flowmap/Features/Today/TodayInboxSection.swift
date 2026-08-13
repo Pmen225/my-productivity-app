@@ -17,7 +17,7 @@ struct TodayInboxSection: View {
                 )
             } else {
                 VStack(spacing: FlowSpacing.s) {
-                    ForEach(tasks) { task in
+                    ForEach(tasks, id: \.id) { task in
                         TaskRowView(task: task)
                             .onDrag {
                                 TimelineHaptics.dragStarted()
