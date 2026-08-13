@@ -41,14 +41,13 @@ final class ScreenshotTests: XCTestCase {
         add(attachment)
     }
 
-    /// Pick a wheel zoom from the always-visible reference pill.
-    private func selectWheelMode(_ app: XCUIApplication, _ mode: String) {
-        // Current Focus uses pinch/VoiceOver adjustment; the old dial submenu
-        // is intentionally gone. The rendered wheel is the evidence for this
-        // capture, while this checkpoint prevents photographing a blank tab.
+    /// Confirm the current Focus wheel is rendered before a capture.
+    private func assertFocusWheelReady(_ app: XCUIApplication, _ captureName: String) {
+        // Current Focus uses pinch/VoiceOver adjustment; the removed dial
+        // submenu is not part of the acceptance contract.
         XCTAssertTrue(
             app.staticTexts["Pinch to zoom"].waitForExistence(timeout: 8),
-            "Focus wheel did not render before the \(mode) capture"
+            "Focus wheel did not render before the \(captureName) capture"
         )
         Thread.sleep(forTimeInterval: 0.8)
     }
@@ -110,46 +109,6 @@ final class ScreenshotTests: XCTestCase {
         }
         button.tap()
         Thread.sleep(forTimeInterval: 2.5)
-        return true
-    }
-
-    /// The Plan task surface is native horizontal paging. Drive the actual
-    /// page gesture here, then verify the visible title strip so a swallowed
-    /// swipe cannot produce a screenshot with the wrong filename.
-    private func selectPlanTaskPage(_ app: XCUIApplication, _ title: String) -> Bool {
-        let outcomeLabel = "Task page: \(title)"
-        let current = {
-            app.buttons.matching(NSPredicate(format: "label == %@", outcomeLabel))
-                .allElementsBoundByIndex
-                .first(where: { $0.isHittable })
-        }
-        if current() != nil { return true }
-
-        let titles = ["Inbox", "Today", "Upcoming", "Anytime", "All tasks", "Completed"]
-        guard let target = titles.firstIndex(of: title) else {
-            XCTFail("Unknown Plan task page \(title)")
-            return false
-        }
-        guard let currentIndex = titles.firstIndex(where: { label in
-            app.buttons.matching(NSPredicate(format: "label == %@", "Task page: \(label)"))
-                .allElementsBoundByIndex
-                .contains(where: { $0.isHittable })
-        }) else {
-            // The fixed Plan segment control replaced the old task-page
-            // pager. Do not fail a catalogue capture on that removed UI.
-            return true
-        }
-
-        let step = target >= currentIndex ? 1 : -1
-        for _ in stride(from: currentIndex, to: target, by: step) {
-            if step > 0 { app.swipeLeft() } else { app.swipeRight() }
-            Thread.sleep(forTimeInterval: 0.8)
-        }
-
-        guard current() != nil else {
-            XCTFail("Plan task page did not switch to \(title)")
-            return false
-        }
         return true
     }
 
@@ -245,10 +204,10 @@ final class ScreenshotTests: XCTestCase {
             // The wheel mode is persisted in settings and survives a re-seed,
             // so without choosing one here the shot silently captures whichever
             // dial the previous run happened to leave selected.
-            selectWheelMode(app, "All")
+            assertFocusWheelReady(app, "focus-wheel")
             capture(app, named: "iphone-focus-wheel")
 
-            selectWheelMode(app, "2")
+            assertFocusWheelReady(app, "focus-wheel-close")
             capture(app, named: "iphone-focus-wheel-close")
 
             // Drag the lower card up. Window-relative coordinates are used
@@ -384,21 +343,6 @@ final class ScreenshotTests: XCTestCase {
                 app.staticTexts["REVIEW"].exists,
                 "Plan should not expose a duplicate REVIEW/Stats route; use the chart toolbar button"
             )
-
-            // T25 replaces TASKS accordions with six ordered peers. Capture
-            // each through native horizontal paging; the helper proves the
-            // selected title strip before its capture.
-            let taskPages = ["Inbox", "Today", "Upcoming", "Anytime", "All tasks", "Completed"]
-            for page in taskPages {
-                guard selectPlanTaskPage(app, page) else { continue }
-                Thread.sleep(forTimeInterval: 0.8)
-                let filename = page.lowercased().replacingOccurrences(of: " ", with: "-")
-                capture(app, named: "iphone-plan-tasks-\(filename)")
-            }
-
-            // Restore Inbox before the remaining Plan interactions. This is
-            // an outcome-checked page change, not an assumed menu tap.
-            _ = selectPlanTaskPage(app, "Inbox")
 
             // Scrolled to the end, to prove the last row clears the floating
             // FAB and orb rather than sitting under them.
@@ -1117,43 +1061,11 @@ final class ScreenshotTests: XCTestCase {
         let app = launch()
         guard tapTab(app, "Plan") else { return }
 
-        let listsButton = app.buttons["Lists"].firstMatch
-        guard listsButton.waitForExistence(timeout: 8) else {
-            // The obsolete Lists carousel was replaced by the direct list row
-            // in the fixed Plan surface. Capture the current surface instead.
-            capture(app, named: "iphone-list-options-current-plan")
-            return
-        }
-        listsButton.tap()
-
-        let chooseList = app.buttons["Choose list"].firstMatch
-        guard chooseList.waitForExistence(timeout: 8) else {
-            XCTFail("Lists carousel did not expose its list menu")
-            return
-        }
-        chooseList.tap()
-        // The menu must actually be open; otherwise a tap can fall through to
-        // the underlying direct Personal row and give a false-positive route.
-        XCTAssertTrue(app.buttons["Delete Personal"].waitForExistence(timeout: 5))
-        capture(app, named: "iphone-list-carousel-menu")
-        let personalList = app.buttons["Personal"].firstMatch
-        guard personalList.waitForExistence(timeout: 5) else {
-            XCTFail("Seeded Personal list was not present in the list menu")
-            return
-        }
-        personalList.tap()
-
-        // Return to the smart-view surface, then use the native row for the
-        // existing list-options flow. This keeps the carousel assertion above
-        // independent from the pushed TaskListScreen assertion below.
-        let inboxButton = app.buttons["Task page: Inbox"].firstMatch
-        guard inboxButton.waitForExistence(timeout: 5) else {
-            XCTFail("Inbox route was not reachable from the list carousel")
-            return
-        }
-        inboxButton.tap()
+        // The current Plan surface exposes the seeded list as a direct native
+        // row; the removed Lists carousel and task-page pager are not part of
+        // this route.
         let directPersonal = app.buttons["Personal"].firstMatch
-        guard directPersonal.waitForExistence(timeout: 5) else {
+        guard directPersonal.waitForExistence(timeout: 8) else {
             XCTFail("Seeded Personal list row was not visible on Plan")
             return
         }
@@ -1221,7 +1133,7 @@ final class ScreenshotTests: XCTestCase {
     func testCaptureFocusDialLight() {
         let app = launch()
         guard tapTab(app, "Focus") else { return }
-        selectWheelMode(app, "2")
+        assertFocusWheelReady(app, "focus-original-dial-light")
         if app.buttons["Show timer"].firstMatch.waitForExistence(timeout: 2) {
             app.buttons["Show timer"].firstMatch.tap()
             Thread.sleep(forTimeInterval: 0.5)
@@ -1232,7 +1144,7 @@ final class ScreenshotTests: XCTestCase {
     func testCaptureFocusDialOverviewLight() {
         let app = launch()
         guard tapTab(app, "Focus") else { return }
-        selectWheelMode(app, "All")
+        assertFocusWheelReady(app, "focus-overview-ring-light")
         capture(app, named: "iphone-focus-overview-ring-light")
     }
 }
