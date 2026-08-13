@@ -17,6 +17,7 @@ struct SettingsScreen: View {
                             Label(row.title, systemImage: row.symbolName)
                         }
                         .accessibilityLabel(row.title)
+                        .accessibilityHint("Opens this Settings section")
                     }
                 } header: {
                     FlowEyebrow(group.title)

@@ -85,6 +85,22 @@ final class ScreenshotTests: XCTestCase {
         return true
     }
 
+    /// Map and Calendar are Plan-owned destinations, not top-level tabs.
+    private func selectPlanSegment(_ app: XCUIApplication, _ title: String) -> Bool {
+        let segment = app.buttons["plan-segment-\(title.lowercased())"].firstMatch
+        guard segment.waitForExistence(timeout: 5) else {
+            XCTFail("Plan segment \(title) not found")
+            return false
+        }
+        segment.tap()
+        Thread.sleep(forTimeInterval: 1.0)
+        guard segment.isSelected else {
+            XCTFail("Plan segment \(title) did not become selected")
+            return false
+        }
+        return true
+    }
+
     /// Stats dropped off the tab bar (decision 1b) — it's reached instead by
     /// the chart-icon button pushed onto Plan's own `NavigationStack`.
     /// Caller must already be on the Plan tab.
@@ -146,12 +162,14 @@ final class ScreenshotTests: XCTestCase {
         // the Map page rather than a destination, and T3 builds it.
         capture(app, named: "iphone-launch")
 
-        if tapTab(app, "Map") {
+        if tapTab(app, "Plan"), selectPlanSegment(app, "Map") {
             capture(app, named: "iphone-map")
 
             // The same destination's other pane, reached by the toggle in the
             // nav bar's centre — not a separate tab any more.
-            let todayPane = app.buttons["Today plan"].firstMatch
+            let todayPane = app.descendants(matching: .any)
+                .matching(NSPredicate(format: "label == 'Today plan'"))
+                .firstMatch
             if todayPane.waitForExistence(timeout: 5) {
                 todayPane.tap()
                 Thread.sleep(forTimeInterval: 1.5)
@@ -214,7 +232,7 @@ final class ScreenshotTests: XCTestCase {
             } else {
                 // A bare `if` would skip the shot silently and still report a
                 // green run — the trap CLAUDE.md records against this suite.
-                XCTFail("Create FAB not found on the Map screen")
+                XCTFail("Create FAB not found on the Plan Map segment")
             }
 
             // The demo workspace ships one map; opening it shows the canvas.
@@ -284,7 +302,14 @@ final class ScreenshotTests: XCTestCase {
             }
         }
 
-        if tapTab(app, "Calendar") {
+        if tapTab(app, "Plan") {
+            let calendarButton = app.navigationBars.buttons["Calendar"].firstMatch
+            guard calendarButton.waitForExistence(timeout: 5) else {
+                XCTFail("Calendar button not found in Plan's navigation bar")
+                return
+            }
+            calendarButton.tap()
+            Thread.sleep(forTimeInterval: 1.5)
             capture(app, named: "iphone-calendar")
 
             // A day cell still takes a tap: the grid's own drag recogniser sits

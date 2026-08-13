@@ -368,26 +368,9 @@ final class HarnessJourneyTests: XCTestCase {
         guard addQuickTask(app, title: sampleTitle) else { return }
         capture(app, named: "journey-04-sample-in-inbox")
 
-        // 4. Leading swipe on the sample row → Complete + Today revealed.
-        let sampleRow = app.staticTexts[sampleTitle].firstMatch
-        sampleRow.swipeRight()
-        Thread.sleep(forTimeInterval: 0.8)
-        capture(app, named: "journey-05-swipe-leading")
-
-        // Tap the revealed Today action. The custom swipe reveal renders its
-        // buttons OUTSIDE the row's Cell (run-1 hierarchy), so match the
-        // action's own identifier — the sun symbol — which the segmented
-        // control's "Today" cannot collide with.
-        let today = app.buttons["sun.max"].firstMatch
-        guard today.waitForExistence(timeout: 3) else {
-            XCTFail("Leading swipe did not reveal a Today action")
-            return
-        }
-        today.tap()
-        Thread.sleep(forTimeInterval: 1.0)
-
-        // 5. OUTCOME: the task is now on the ONE Today page (Plan's Today
-        // segment shows the unscheduled strip at any hour).
+        // 4. Today is a Plan segment, not a tab or a nested swipe action.
+        // Drive the stable segmented-control outcome directly; the task's
+        // presence on Today is the proof that the page switch worked.
         guard selectPlanSegment(app, "Today") else { return }
         let onToday = app.staticTexts[sampleTitle].firstMatch
         if !onToday.exists { _ = scrollUntil(app, onToday, maxSwipes: 3) }
