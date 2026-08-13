@@ -63,14 +63,6 @@ private struct TaskIdentityBadge: View {
     }
 }
 
-private struct TaskSubtaskRevealHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
-    }
-}
-
 /// One polished task card with direct editing, completion, scheduling, moving,
 /// deletion, and an inline sub-task disclosure when the task has children.
 public struct TaskRowView: View {
@@ -105,10 +97,6 @@ public struct TaskRowView: View {
     /// Not persisted — collapses again next time this row is built, matching
     /// every other per-row disclosure in the app.
     @State private var isSubtasksExpanded = false
-    /// The child content is always measured, then clipped from zero to its
-    /// natural height. This makes the card itself unfold instead of swapping
-    /// one list state for another.
-    @State private var subtaskRevealHeight: CGFloat = 0
 
     private struct MetadataItem: Identifiable {
         let id: String
@@ -168,7 +156,10 @@ public struct TaskRowView: View {
             parentRow
 
             if hasSubtasks {
-                subtaskReveal
+                if isSubtasksExpanded {
+                    subtaskReveal
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
 
                 Divider()
                     .padding(.leading, hierarchyInset + FlowSpacing.m)
@@ -259,7 +250,6 @@ public struct TaskRowView: View {
         .onChange(of: task.orderedSubtasks.count) { _, count in
             if count == 0 {
                 isSubtasksExpanded = false
-                subtaskRevealHeight = 0
             }
         }
     }
@@ -428,34 +418,14 @@ public struct TaskRowView: View {
 
     // MARK: - Sub-task disclosure
 
-    /// The child content keeps its identity in the hierarchy while the outer
-    /// card animates between zero and its measured height. The footer therefore
-    /// travels with the card instead of jumping between two list states.
+    /// The child region is inserted directly into the card, so its natural
+    /// layout height pushes the footer down before the spring settles.
     private var subtaskReveal: some View {
         VStack(alignment: .leading, spacing: 0) {
             Divider()
                 .padding(.leading, hierarchyInset + FlowSpacing.m)
             subtaskList
         }
-        .fixedSize(horizontal: false, vertical: true)
-        .background {
-            GeometryReader { proxy in
-                Color.clear.preference(
-                    key: TaskSubtaskRevealHeightKey.self,
-                    value: proxy.size.height
-                )
-            }
-        }
-        .onPreferenceChange(TaskSubtaskRevealHeightKey.self) { height in
-            guard height > 0 else { return }
-            subtaskRevealHeight = height
-        }
-        .frame(height: isSubtasksExpanded ? subtaskRevealHeight : 0, alignment: .top)
-        .opacity(isSubtasksExpanded ? 1 : 0)
-        .scaleEffect(x: 1, y: isSubtasksExpanded ? 1 : 0.94, anchor: .top)
-        .clipped()
-        .allowsHitTesting(isSubtasksExpanded)
-        .accessibilityHidden(!isSubtasksExpanded)
     }
 
     /// The entire quiet footer is the disclosure target. Expanded child rows
@@ -519,7 +489,7 @@ public struct TaskRowView: View {
 
     private func subtaskRow(_ subtask: Subtask) -> some View {
         HStack(spacing: FlowSpacing.s) {
-            TaskIdentityBadge(symbolName: task.iconName, tint: task.colour, level: .subtask)
+            FlowTaskIconBadge(symbolName: task.iconName, tint: task.colour)
             Text(subtask.title)
                 .font(FlowFont.caption)
                 .foregroundStyle(
