@@ -579,6 +579,7 @@ struct FocusScreen: View {
                     .background(neumorphicDisc())
             }
             .buttonStyle(.plain)
+            .buttonStyle(FlowNavigationRowPressStyle())
             .accessibilityLabel(playPauseLabel)
 
         }
@@ -608,6 +609,7 @@ struct FocusScreen: View {
                 .background(neumorphicDisc())
         }
         .buttonStyle(.plain)
+        .buttonStyle(FlowNavigationRowPressStyle())
         // FlowControlSize.secondary (42pt) draws under the HIG's 44pt floor;
         // the tap target is grown around the disc rather than the disc scaled up.
         .frame(minWidth: 44, minHeight: 44)
