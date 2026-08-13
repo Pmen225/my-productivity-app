@@ -18,6 +18,7 @@ struct SettingsScreen: View {
                         }
                         .accessibilityLabel(row.title)
                         .accessibilityHint("Opens this Settings section")
+                        .buttonStyle(FlowNavigationRowPressStyle())
                     }
                 } header: {
                     FlowEyebrow(group.title)
