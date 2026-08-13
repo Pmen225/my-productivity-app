@@ -702,6 +702,7 @@ struct LibraryView: View {
                 }
                 .accessibilityLabel(firstList.name)
                 .accessibilityHint("Opens this list")
+                .buttonStyle(FlowNavigationRowPressStyle())
             }
             .listRowBackground(FlowTheme.surface(scheme))
         }
@@ -777,6 +778,7 @@ struct LibraryView: View {
                 .frame(minHeight: 44)
             }
             .accessibilityLabel("\(page.title), \(count)")
+            .buttonStyle(FlowNavigationRowPressStyle())
         }
     }
 

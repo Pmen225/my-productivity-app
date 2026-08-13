@@ -225,6 +225,20 @@ struct FlowNavigationGlyph: View {
     }
 }
 
+/// Gives native navigation rows a brief, low-noise acknowledgement on touch.
+/// The row remains a `NavigationLink`; this only makes the existing action
+/// legible before the pushed screen settles.
+struct FlowNavigationRowPressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.72 : 1)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.985 : 1)
+            .animation(reduceMotion ? nil : FlowMotion.tap, value: configuration.isPressed)
+    }
+}
+
 // MARK: - Screen title
 
 /// The mock's quiet centred screen title — 15pt bold, sitting in the nav
