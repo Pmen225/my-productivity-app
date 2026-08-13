@@ -479,6 +479,13 @@ struct FocusWheelView: View {
                 .minimumScaleFactor(0.72)
             Text(DurationFormatter.compact(minutes: remaining))
                 .font(FlowFont.durationChip)
+                // The compact chip sits beside the active title in a fixed
+                // 136pt readout. At accessibility-XXXL Dynamic Type the
+                // token remains large enough to wrap unless it is explicitly
+                // kept to one line; wrapping turned `30M` into a two-line
+                // block that collided with the centre play control.
+                .lineLimit(1)
+                .minimumScaleFactor(0.55)
                 .opacity(0.85)
         }
         .foregroundStyle(FlowTheme.primaryText(scheme))
