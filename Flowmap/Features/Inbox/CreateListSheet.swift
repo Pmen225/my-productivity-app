@@ -66,7 +66,7 @@ public struct CreateListSheet: View {
                             )
                             .foregroundStyle(symbol == iconName ? colourToken.onSoft : .primary)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(FlowNavigationRowPressStyle())
                     .accessibilityLabel(symbol)
                 }
             }

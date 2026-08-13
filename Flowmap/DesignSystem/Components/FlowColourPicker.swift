@@ -48,7 +48,7 @@ public struct FlowColourPicker: View {
                             Circle().strokeBorder(.primary, lineWidth: selection == token ? 2 : 0)
                         )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(FlowNavigationRowPressStyle())
                 // Keep the visible swatch quiet while meeting the iOS 44pt
                 // touch target. The previous 22pt AX frame was half Apple's
                 // minimum and made colour selection unnecessarily fiddly.
