@@ -2,5 +2,10 @@
 set -eu
 
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+staged_files=$(git -C "$project_root" diff --cached --name-only --diff-filter=ACMR)
+if printf '%s\n' "$staged_files" | grep -Eq '(^|/)(\.taskmaster|state|Artifacts|Screenshots|Prototypes|docs/course-setup-spec\.md)(/|$)'; then
+    echo "Private operational material cannot be staged in the public repository." >&2
+    exit 1
+fi
 "$project_root/scripts/check-instruction-clones.sh"
 "$project_root/scripts/check-ios-governance.sh"

@@ -74,6 +74,7 @@ public struct AssistantRunPolicy: Sendable, Equatable {
     public let requestTimeout: TimeInterval
     public let maxRetries: Int
     public let retryDelay: TimeInterval
+    public let retryAfterCap: TimeInterval
     public let circuitFailureThreshold: Int
 
     public init(
@@ -85,6 +86,7 @@ public struct AssistantRunPolicy: Sendable, Equatable {
         requestTimeout: TimeInterval = 30,
         maxRetries: Int = 2,
         retryDelay: TimeInterval = 0.5,
+        retryAfterCap: TimeInterval = 5,
         circuitFailureThreshold: Int = 3
     ) {
         self.maxTurns = maxTurns
@@ -95,6 +97,7 @@ public struct AssistantRunPolicy: Sendable, Equatable {
         self.requestTimeout = requestTimeout
         self.maxRetries = maxRetries
         self.retryDelay = retryDelay
+        self.retryAfterCap = retryAfterCap
         self.circuitFailureThreshold = circuitFailureThreshold
     }
 }
@@ -118,9 +121,21 @@ public struct AssistantDiagnosticEvent: Sendable, Equatable {
 public enum AssistantRunError: Error, Sendable, Equatable {
     case limitExceeded
     case timeout
+    case transient(String, retryAfter: TimeInterval?)
     case circuitOpen
     case transport(String)
     case cancelled
+
+    fileprivate var diagnosticCode: String {
+        switch self {
+        case .limitExceeded: return "limit_exceeded"
+        case .timeout: return "timeout"
+        case .transient: return "transient_failure"
+        case .circuitOpen: return "circuit_open"
+        case .transport: return "transport_failure"
+        case .cancelled: return "cancelled"
+        }
+    }
 }
 
 public struct AssistantContinuation: Sendable {
@@ -239,7 +254,8 @@ public actor AssistantConversationRunner {
             consecutiveTransientFailures = 0
         } catch let error as AssistantRunError {
             if case .timeout = error { consecutiveTransientFailures += 1 }
-            let event = diagnostic(provider: provider, started: started, retries: 0, toolCount: totalToolCalls, outcome: String(describing: error))
+            if case .transient = error { consecutiveTransientFailures += 1 }
+            let event = diagnostic(provider: provider, started: started, retries: 0, toolCount: totalToolCalls, outcome: error.diagnosticCode)
             return .failed(error, messages, diagnostics + [event])
         } catch is CancellationError {
             throw CancellationError()
@@ -314,8 +330,15 @@ public actor AssistantConversationRunner {
                 throw CancellationError()
             } catch let error as AssistantRunError where error == .timeout {
                 if retries >= policy.maxRetries { throw error }
+            } catch let error as AssistantRunError {
+                guard case .transient(_, let retryAfter) = error else { throw error }
+                if retries >= policy.maxRetries { throw error }
+                retries += 1
+                let delay = min(retryAfter ?? policy.retryDelay, policy.retryAfterCap)
+                if delay > 0 { try await Task.sleep(for: .seconds(delay)) }
+                continue
             } catch {
-                if retries >= policy.maxRetries { throw AssistantRunError.transport("The assistant request failed.") }
+                throw AssistantRunError.transport("The assistant request failed.")
             }
             retries += 1
             if policy.retryDelay > 0 {
@@ -403,7 +426,16 @@ public struct LiveAssistantTransport: AssistantTransport {
         case .success(let turn):
             return turn
         case .failure(let error):
-            throw error
+            switch error {
+            case .http(let status, _, let retryAfter) where [408, 425, 429].contains(status) || status >= 500:
+                throw AssistantRunError.transient("HTTP \(status)", retryAfter: retryAfter)
+            case .network(let message):
+                throw AssistantRunError.transient(message, retryAfter: nil)
+            case .cancelled:
+                throw CancellationError()
+            default:
+                throw error
+            }
         }
     }
 }

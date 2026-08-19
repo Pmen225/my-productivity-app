@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+
+project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+branch=$(git -C "$project_root" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+if [ "$branch" = "main" ]; then
+    echo "Direct pushes to main are blocked. Use the automated ship flow." >&2
+    exit 1
+fi
+
+"$project_root/scripts/check-public-policy.sh"
+"$project_root/scripts/check-instruction-clones.sh"

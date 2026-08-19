@@ -10,6 +10,7 @@ import SwiftData
 public final class AssistantViewModel {
     public let thread: AssistantThread
     private let flow: AppEnvironment
+    private let toolCatalog = AssistantToolCatalog()
     private var context: ModelContext { flow.context }
     private var router: AssistantToolRouter { AssistantToolRouter(flow: flow) }
     private var providerRunner: AssistantConversationRunner?
@@ -135,7 +136,7 @@ public final class AssistantViewModel {
             model: flow.settings.assistantModel,
             system: systemPrompt(),
             messages: messages,
-            tools: AssistantToolRouter.toolDefinitions,
+            tools: toolCatalog.definitions(for: messages),
             executor: executor
         )
         streamingText = ""
@@ -171,6 +172,7 @@ public final class AssistantViewModel {
             switch error {
             case .limitExceeded: message = "The assistant stopped safely because the request exceeded its action limit."
             case .timeout: message = "The assistant took too long to respond."
+            case .transient: message = "The assistant service is temporarily unavailable."
             case .circuitOpen: message = "The assistant is temporarily paused after repeated connection failures."
             case .transport: message = "The assistant could not complete the request."
             case .cancelled: message = "Cancelled."

@@ -173,6 +173,7 @@
 		B524AF2AB34A311419F2A02C /* AutoMapBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CFC38950DCDADCC84177FFC /* AutoMapBuilderTests.swift */; };
 		B7F70163BA832751F690632C /* AssistantConversationRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEAF9AFC56AB9552BEA8C6EB /* AssistantConversationRunnerTests.swift */; };
 		B897D707B83F8A6055F8632B /* FlowPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = B641425B7D586C5566B3AE63 /* FlowPalette.swift */; };
+		B97760AB5BA8B3BFF2BC2A9B /* AssistantToolCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5D9A153A267816A98D65ADE /* AssistantToolCatalog.swift */; };
 		BA1BC1B1B99541C8E7AB8CF1 /* MapLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF8ECC4E137699AFCD73EC17 /* MapLayoutTests.swift */; };
 		BAF7B9C0648212447A577C7D /* NotesRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AFBB707203CEC6E2433B63D /* NotesRootView.swift */; };
 		BB90A9F87516D3165B580401 /* TaskRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C0FAA414196DF49EB138466 /* TaskRowView.swift */; };
@@ -437,6 +438,7 @@
 		C3F8E2F1B974A574AD0FA750 /* TimelineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineView.swift; sourceTree = "<group>"; };
 		C49E96E117B13FAE6CA4F21A /* Flowmap.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Flowmap.entitlements; sourceTree = "<group>"; };
 		C5D054B24CCA37651B41EE92 /* FlowSurfaces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowSurfaces.swift; sourceTree = "<group>"; };
+		C5D9A153A267816A98D65ADE /* AssistantToolCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantToolCatalog.swift; sourceTree = "<group>"; };
 		C6D1AFCE558D64E00D5AE795 /* ListEllipsisMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListEllipsisMenu.swift; sourceTree = "<group>"; };
 		C725DB48EE46BD11ABA1BCB9 /* Workspace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workspace.swift; sourceTree = "<group>"; };
 		C7A5B04286EF445FCEB14B8E /* FlowTask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowTask.swift; sourceTree = "<group>"; };
@@ -857,6 +859,7 @@
 				5D81F33C6008D388F84115B6 /* Calendar */,
 				3B337E9E937AD7F3726A0144 /* AssistantConversationRunner.swift */,
 				8F8AEC33B7C494E630C43DD8 /* AssistantService.swift */,
+				C5D9A153A267816A98D65ADE /* AssistantToolCatalog.swift */,
 				9AE7A6299405545AE13993BA /* AssistantToolRouter.swift */,
 				2D37B6ECC0169153F5381900 /* CalendarService.swift */,
 				4106483AA8C1DD1D7FFA42A5 /* FlowMomentService.swift */,
@@ -1173,6 +1176,7 @@
 				B0FB283F720CE52C82B10C04 /* AssistantService.swift in Sources */,
 				2A28278789146C377D928120 /* AssistantSettingsSection.swift in Sources */,
 				EC6E77BFA296769C83BC262B /* AssistantThread.swift in Sources */,
+				B97760AB5BA8B3BFF2BC2A9B /* AssistantToolCatalog.swift in Sources */,
 				C84F2399FF533AB314A62EA2 /* AssistantToolRouter.swift in Sources */,
 				4BE39C1F7C9418BCFCC5621A /* AssistantViewModel.swift in Sources */,
 				82EC7A34ADBCBCA4B0B133CF /* AutoMapBuilder.swift in Sources */,

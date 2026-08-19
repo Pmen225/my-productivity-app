@@ -47,7 +47,7 @@ public struct AssistantTurn: Sendable {
 public enum AssistantServiceError: Error, LocalizedError, Sendable {
     case missingAPIKey
     case invalidResponse
-    case http(status: Int, body: String)
+    case http(status: Int, body: String, retryAfter: TimeInterval? = nil)
     case network(String)
     case cancelled
 
@@ -57,7 +57,7 @@ public enum AssistantServiceError: Error, LocalizedError, Sendable {
             return "No API key saved yet. Add one in Settings → Assistant."
         case .invalidResponse:
             return "The assistant sent back something Flowmap couldn't read."
-        case .http(let status, let body):
+        case .http(let status, let body, _):
             return KeychainService.redact("The assistant service returned an error (\(status)): \(body)")
         case .network(let message):
             return KeychainService.redact("Couldn't reach the assistant: \(message)")
@@ -372,7 +372,8 @@ public struct AssistantService {
         guard let http = response as? HTTPURLResponse else { throw AssistantServiceError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else {
             let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-            throw AssistantServiceError.http(status: http.statusCode, body: String(body.prefix(300)))
+            let retryAfter = http.value(forHTTPHeaderField: "Retry-After").flatMap(TimeInterval.init)
+            throw AssistantServiceError.http(status: http.statusCode, body: String(body.prefix(300)), retryAfter: retryAfter)
         }
     }
 
