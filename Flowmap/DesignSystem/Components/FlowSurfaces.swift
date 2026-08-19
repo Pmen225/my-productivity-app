@@ -71,7 +71,7 @@ extension View {
     /// The design's controls are 38 and 42pt circles. Scaling them up would lose
     /// the look; leaving them at 38pt would lose the thumb. So the artwork stays
     /// its own size and only the tappable area grows around it.
-    public func flowHitTarget(_ size: CGFloat = 44) -> some View {
+    public func flowHitTarget(_ size: CGFloat = FlowControlSize.minimumTouch) -> some View {
         frame(minWidth: size, minHeight: size)
             .contentShape(Rectangle())
     }

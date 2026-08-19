@@ -28,6 +28,10 @@ struct FocusScreen: View {
     /// Set only while a close-up pinch is in progress: the live magnification
     /// about the pointer. `nil` means the dial is showing the settled factor.
     @State private var liveMagnify: Double?
+    /// A launch always begins at the whole-wheel view. A deliberate pinch can
+    /// still settle elsewhere for this visit, but stale persisted zoom never
+    /// makes the dial swell as the screen loads.
+    @State private var settledMagnification: Double = 1
     /// Where the close-up pinch in progress started from.
     @State private var pinchBaseMagnify: Double = 1
     /// The re-forming style's live swell, `1` at rest. Rendering only.
@@ -224,7 +228,7 @@ struct FocusScreen: View {
     /// Always `1` in the re-forming style, which draws the whole circle.
     private var magnification: Double {
         guard zoomStyle == .magnify else { return 1 }
-        return liveMagnify ?? FocusWheelGeometry.clampMagnify(flow?.settings.wheelMagnifyFactor ?? 1)
+        return liveMagnify ?? settledMagnification
     }
 
     /// What a settle is worth knocking for in each style: the level landed on
@@ -339,18 +343,12 @@ struct FocusScreen: View {
         // circular dial shrink by roughly a quarter at the exact moment focus
         // began.
         let widthSizedDialHeight = dialWidth + 44
-        let dialHeight = max(
-            120,
-            min(dialCeiling, max(widthSizedDialHeight, size.height - reserved - chromeReserve))
-        )
+        // Keep the wheel's frame close to its width-sized circle. A tall
+        // invisible frame centres the geometry too low and creates the false
+        // impression that the wheel is loading with extra scale.
+        let dialHeight = min(dialCeiling, max(120, widthSizedDialHeight))
 
         return VStack(spacing: FlowSpacing.m) {
-            // Balances the trailing spacer below so any leftover height above
-            // the reserved card area splits evenly, keeping the dial
-            // optically centred instead of pinned to the top with all the
-            // air collecting under it (board 140).
-            Spacer(minLength: 0)
-
             Text("Pinch to zoom")
                 .font(FlowFont.secondary)
                 .foregroundStyle(FlowTheme.tertiaryText(scheme))
@@ -370,7 +368,6 @@ struct FocusScreen: View {
                     activeID: wheelItems.first?.id,
                     nowMinutes: nowMinutes,
                     zoom: zoom,
-                    isZooming: liveZoom != nil || liveMagnify != nil,
                     previewOffset: previewOffset,
                     reducedMotionPreviewIndex: reducedMotionPreviewIndex,
                     magnification: magnification,
@@ -405,7 +402,7 @@ struct FocusScreen: View {
                 }
             }
 
-            Spacer(minLength: FlowSpacing.wheelCardGap)
+            Spacer(minLength: FlowSpacing.s)
         }
         .padding(.top, FlowSpacing.s)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -868,9 +865,11 @@ struct FocusScreen: View {
     private func setMagnify(_ factor: Double) {
         guard let flow else { return }
         let clamped = FocusWheelGeometry.clampMagnify(factor)
-        guard flow.settings.wheelMagnifyFactor != clamped else { return }
-        flow.settings.wheelMagnifyFactor = clamped
-        try? context.save()
+        settledMagnification = clamped
+        if flow.settings.wheelMagnifyFactor != clamped {
+            flow.settings.wheelMagnifyFactor = clamped
+            try? context.save()
+        }
         announce(magnifyAnnouncement(for: clamped))
     }
 

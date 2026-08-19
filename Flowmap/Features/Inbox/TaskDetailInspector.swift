@@ -25,6 +25,7 @@ public struct TaskDetailInspector: View {
     @State private var newSubtaskTitle = ""
     @State private var showAddSegment = false
     @State private var newSegmentStart = Date()
+    @State private var showColourPicker = false
     @State private var showWorthWheel = false
 
     /// Creation-mode only. `nil` in edit mode, where the body is otherwise
@@ -88,13 +89,7 @@ public struct TaskDetailInspector: View {
             }
             .listRowBackground(FlowTheme.surface(scheme))
 
-            Section {
-                FlowColourPicker(selection: Binding(
-                    get: { task.colour },
-                    set: { task.colourToken = $0.rawValue; task.touch() }
-                ), scrollable: true)
-            }
-            .listRowInsets(EdgeInsets(top: FlowSpacing.xs, leading: FlowSpacing.m, bottom: FlowSpacing.xs, trailing: FlowSpacing.m))
+            colourSection
 
             worthSection
 
@@ -178,6 +173,8 @@ public struct TaskDetailInspector: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .accessibilityLabel("Priority")
+            } header: {
+                FlowEyebrow("Priority")
             }
             .listRowBackground(FlowTheme.surface(scheme))
 
@@ -233,11 +230,54 @@ public struct TaskDetailInspector: View {
         TextField("Task title", text: $task.title)
             .font(FlowFont.sectionTitle)
             .focused($titleFieldFocused)
+            .submitLabel(.done)
+            .onSubmit { titleFieldFocused = false }
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .accessibilityLabel("Task title")
     }
 
-    // MARK: - Worth
+    // MARK: - Colour and duration
+
+    private var colourSection: some View {
+        Section {
+            Button(action: toggleColourPicker) {
+                FlowFieldRow("Colour", symbol: "paintpalette", symbolColour: task.colour) {
+                    HStack(spacing: FlowSpacing.xs) {
+                        FlowFieldChip(task.colour.displayName)
+                        Image(systemName: showColourPicker ? "chevron.up" : "chevron.down")
+                            .font(FlowFont.caption.weight(.semibold))
+                            .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Colour")
+            .accessibilityValue(task.colour.displayName)
+            .accessibilityHint(showColourPicker ? "Hides colour choices" : "Shows colour choices")
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: FlowSpacing.xxs, leading: 0, bottom: FlowSpacing.xxs, trailing: 0))
+            .listRowSeparator(.hidden)
+
+            if showColourPicker {
+                FlowColourPicker(selection: Binding(
+                    get: { task.colour },
+                    set: { task.colourToken = $0.rawValue; task.touch() }
+                ))
+                .listRowInsets(EdgeInsets(top: FlowSpacing.xs, leading: FlowSpacing.m, bottom: FlowSpacing.xs, trailing: FlowSpacing.m))
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+
+    private func toggleColourPicker() {
+        if reduceMotion {
+            showColourPicker.toggle()
+        } else {
+            withAnimation(FlowMotion.expand) {
+                showColourPicker.toggle()
+            }
+        }
+    }
 
     /// The Tiimo-style wheel stays available without owning the whole first
     /// viewport or intercepting an ordinary form scroll. Its compact summary
@@ -245,9 +285,9 @@ public struct TaskDetailInspector: View {
     private var worthSection: some View {
         Section {
             Button(action: toggleWorthWheel) {
-                FlowFieldRow("Worth", symbol: "clock", symbolColour: .violet) {
+                FlowFieldRow("Duration", symbol: "clock", symbolColour: .violet) {
                     HStack(spacing: FlowSpacing.xs) {
-                        FlowFieldChip(task.durationLabel)
+                        FlowFieldChip(FlowDurationWheel.label(for: task.estimatedMinutes))
                         Image(systemName: showWorthWheel ? "chevron.up" : "chevron.down")
                             .font(FlowFont.caption.weight(.semibold))
                             .foregroundStyle(FlowTheme.tertiaryText(scheme))
@@ -255,7 +295,7 @@ public struct TaskDetailInspector: View {
                 }
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Worth")
+            .accessibilityLabel("Duration")
             .accessibilityValue(task.durationAccessibilityLabel)
             .accessibilityHint(showWorthWheel ? "Hides the time wheel" : "Shows the time wheel")
             .listRowBackground(Color.clear)
@@ -263,7 +303,7 @@ public struct TaskDetailInspector: View {
             .listRowSeparator(.hidden)
 
             if showWorthWheel {
-                FlowDurationWheel(minutes: $task.estimatedMinutes, accessibilityLabel: "Worth")
+                FlowDurationWheel(minutes: $task.estimatedMinutes, accessibilityLabel: "Duration")
                     .listRowBackground(Color.clear)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
@@ -317,6 +357,7 @@ public struct TaskDetailInspector: View {
                 // exactly like Cancel. Only the colour signals "nothing to keep".
                 .accessibilityLabel("Keep task")
             }
+
         }
     }
 

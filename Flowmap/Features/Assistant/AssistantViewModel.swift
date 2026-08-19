@@ -12,6 +12,9 @@ public final class AssistantViewModel {
     private let flow: AppEnvironment
     private var context: ModelContext { flow.context }
     private var router: AssistantToolRouter { AssistantToolRouter(flow: flow) }
+    private var providerRunner: AssistantConversationRunner?
+    private var providerExecutor: AssistantRouterToolExecutor?
+    private var providerContinuation: AssistantContinuation?
 
     public var inputText: String = ""
     public var isSending = false
@@ -57,15 +60,26 @@ public final class AssistantViewModel {
 
     public func confirmPendingProposal() {
         guard let (message, proposal) = pendingProposal else { return }
-        let result = router.confirm(proposal)
-        message.toolResultJSON = encode(result)
-        message.isApplied = true
-        thread.touch()
-        try? context.save()
+        if let continuation = providerContinuation, let runner = providerRunner, let executor = providerExecutor {
+            Task { [weak self] in
+                guard let result = try? await runner.resume(continuation, confirmed: true, executor: executor) else { return }
+                self?.providerContinuation = nil
+                self?.applyProviderResult(result, pendingMessage: message)
+            }
+            return
+        }
+        Task {
+            let result = await router.confirm(proposal)
+            message.toolResultJSON = encode(result)
+            message.isApplied = true
+            thread.touch()
+            try? context.save()
+        }
     }
 
     public func cancelPendingProposal() {
         guard let (message, _) = pendingProposal else { return }
+        providerContinuation = nil
         message.toolResultJSON = encode(AssistantToolResult(toolName: message.toolName ?? "", success: false, message: "Cancelled — nothing was changed."))
         message.isApplied = true
         thread.touch()
@@ -97,34 +111,72 @@ public final class AssistantViewModel {
         errorMessage = nil
         defer { isSending = false }
 
-        let service = AssistantService(provider: flow.settings.assistantProvider, model: flow.settings.assistantModel)
-        let history = thread.visibleMessages
-            .filter { $0.role == .user || $0.role == .assistant }
-            .map { AssistantChatMessage(role: $0.role == .assistant ? .assistant : .user, text: $0.text) }
-
-        let result = await service.streamSend(
-            system: systemPrompt(),
-            history: history,
-            tools: AssistantToolRouter.toolDefinitions
-        ) { [weak self] token in
-            Task { @MainActor in self?.streamingText += token }
-        }
-        streamingText = ""
-
-        switch result {
-        case .success(let turn):
-            if !turn.text.isEmpty {
-                appendMessage(role: .assistant, text: turn.text)
+        let runner = AssistantConversationRunner(
+            transport: LiveAssistantTransport(provider: flow.settings.assistantProvider, model: flow.settings.assistantModel)
+        )
+        let executor = AssistantRouterToolExecutor(flow: flow)
+        providerRunner = runner
+        providerExecutor = executor
+        let messages = thread.visibleMessages.flatMap { message -> [AssistantExchange] in
+            switch message.role {
+            case .user:
+                return [AssistantExchange(role: .user, text: message.text)]
+            case .assistant:
+                return [AssistantExchange(role: .assistant, text: message.text)]
+            case .tool:
+                guard let result = message.toolResultJSON else { return [] }
+                return [AssistantExchange(role: .tool, text: result, toolName: message.toolName)]
+            case .system:
+                return []
             }
-            if let call = turn.toolCalls.first {
-                let message = appendMessage(role: .tool, text: "", toolName: call.name)
-                applyToolCall(call, to: message)
-            } else if turn.text.isEmpty {
+        }
+        let result = try? await runner.run(
+            provider: flow.settings.assistantProvider,
+            model: flow.settings.assistantModel,
+            system: systemPrompt(),
+            messages: messages,
+            tools: AssistantToolRouter.toolDefinitions,
+            executor: executor
+        )
+        streamingText = ""
+        if let result { applyProviderResult(result) }
+    }
+
+    private func applyProviderResult(_ result: AssistantRunResult, pendingMessage: AssistantMessage? = nil) {
+        switch result {
+        case .completed(let text, let exchanges, _):
+            providerContinuation = nil
+            if let pendingMessage, let toolResult = exchanges.last(where: { $0.role == .tool }) {
+                pendingMessage.toolResultJSON = encode(AssistantToolResult(toolName: pendingMessage.toolName ?? "", success: true, message: toolResult.text))
+                pendingMessage.isApplied = true
+                thread.touch()
+                try? context.save()
+            }
+            if !text.isEmpty {
+                appendMessage(role: .assistant, text: text)
+            } else if pendingMessage == nil {
                 appendMessage(role: .assistant, text: "(No response.)")
             }
-        case .failure(let error):
-            errorMessage = error.errorDescription
-            appendMessage(role: .assistant, text: error.errorDescription ?? "Something went wrong.")
+        case .awaitingConfirmation(let continuation):
+            providerContinuation = continuation
+            let call = continuation.pendingToolCall
+            let message = pendingMessage ?? appendMessage(role: .tool, text: "", toolName: call.name)
+            if case .pendingConfirmation(let proposal) = router.handle(toolName: call.name, argumentsJSON: call.argumentsJSON) {
+                message.toolProposalJSON = encode(proposal)
+                try? context.save()
+            }
+        case .failed(let error, _, _):
+            providerContinuation = nil
+            let message: String
+            switch error {
+            case .limitExceeded: message = "The assistant stopped safely because the request exceeded its action limit."
+            case .timeout: message = "The assistant took too long to respond."
+            case .circuitOpen: message = "The assistant is temporarily paused after repeated connection failures."
+            case .transport: message = "The assistant could not complete the request."
+            case .cancelled: message = "Cancelled."
+            }
+            errorMessage = message
+            appendMessage(role: .assistant, text: message)
         }
     }
 

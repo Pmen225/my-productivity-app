@@ -12,13 +12,22 @@ import UIKit
 public enum FlowMotion {
     /// Taps, toggles, chip selection — the fastest thing a user should
     /// notice. Matches the `.snappy` used at every plain toggle site.
-    public static let tap: Animation = .snappy
+    public static let tap: Animation = .easeOut(duration: 0.12)
+
+    /// Mode and segmented-control selection.
+    public static let selection: Animation = .easeInOut(duration: 0.18)
 
     /// Cards expanding, sheets settling, accordions.
-    public static let expand: Animation = .spring(response: 0.32, dampingFraction: 0.86)
+    public static let expand: Animation = .spring(response: 0.32, dampingFraction: 0.9)
 
     /// Anything that moves across the screen (wheel, canvas, page changes).
-    public static let travel: Animation = .spring(response: 0.4, dampingFraction: 0.86)
+    public static let travel: Animation = .spring(response: 0.34, dampingFraction: 0.9)
+
+    /// Row insertion and local content replacement.
+    public static let insert: Animation = .easeOut(duration: 0.22)
+
+    /// The one expressive transition reserved for Focus.
+    public static let expressive: Animation = .spring(response: 0.5, dampingFraction: 0.9)
 
     /// The focus wheel returning from a time-travel peek. This is deliberately
     /// separate from `travel`: a wheel released with momentum must continue
@@ -34,7 +43,17 @@ public enum FlowMotion {
     }
 
     /// Content appearing or disappearing.
-    public static let fade: Animation = .easeOut(duration: 0.2)
+    public static let fade: Animation = .easeOut(duration: 0.18)
+
+    /// The HTML drawer's reveal-under travel: precise, non-springing, and
+    /// easy to understand when the foreground moves over the stationary rail.
+    public static let drawerReveal: Animation = .timingCurve(
+        0.2,
+        0,
+        0,
+        1,
+        duration: 0.36
+    )
 }
 
 /// The app's whole haptic vocabulary. Three feelings, nothing else. `play()`

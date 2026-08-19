@@ -110,7 +110,7 @@ struct PlanInboxSection: View {
     /// The duel's own set — today's open tasks (flagged, due, or scheduled
     /// today), never the inbox. Planning must not require the game, so the
     /// game is offered as a way to order what's already lined up for today,
-    /// not a gate in front of triage (state/specs/cognitive-profile.md,
+    /// not a gate in front of triage (the planning guidance,
     /// "product thesis").
     private var today: [FlowTask] {
         SmartView.today.matches(allTasks, now: flow?.now ?? Date())

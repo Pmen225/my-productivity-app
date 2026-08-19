@@ -6,6 +6,48 @@ import Testing
 @Suite("Calendar control API")
 @MainActor
 struct CalendarControlAPITests {
+    private final class StubCalendarProvider: CalendarProvider {
+        let kind: CalendarAccountKind = .google
+        var connection = CalendarConnection(kind: .google, isConnected: true)
+        var eventsToReturn: [ExternalCalendarEvent] = []
+        var createResult: String?
+        var moveResult = false
+        var deleteResults: [String: Bool] = [:]
+        var operations: [String] = []
+
+        func connect() async -> Bool { true }
+        func disconnect() {}
+        func refreshCalendars() async {}
+        func events(from start: Date, to end: Date, selectedIdentifiers: [String]) async -> [ExternalCalendarEvent] { eventsToReturn }
+        func createEvent(title: String, start: Date, end: Date, calendarIdentifier: String) async -> String? {
+            operations.append("create")
+            if let createResult {
+                eventsToReturn.append(ExternalCalendarEvent(
+                    id: createResult, title: title, start: start, end: end, isAllDay: false,
+                    calendarIdentifier: calendarIdentifier, calendarTitle: "Stub"
+                ))
+            }
+            return createResult
+        }
+        func moveEvent(identifier: String, start: Date, end: Date) async -> Bool {
+            operations.append("move")
+            if moveResult, let index = eventsToReturn.firstIndex(where: { $0.id == identifier }) {
+                let event = eventsToReturn[index]
+                eventsToReturn[index] = ExternalCalendarEvent(
+                    id: event.id, title: event.title, start: start, end: end, isAllDay: event.isAllDay,
+                    calendarIdentifier: event.calendarIdentifier, calendarTitle: event.calendarTitle
+                )
+            }
+            return moveResult
+        }
+        func deleteEvent(identifier: String) async -> Bool {
+            operations.append("delete:\(identifier)")
+            let result = deleteResults[identifier] ?? false
+            if result { eventsToReturn.removeAll { $0.id == identifier } }
+            return result
+        }
+    }
+
     private func makeFlow() throws -> AppEnvironment {
         let world = try TestWorld()
         return AppEnvironment(context: world.context)
@@ -59,6 +101,77 @@ struct CalendarControlAPITests {
                 Issue.record("\(tool.rawValue) executed immediately instead of coming back as a proposal to confirm")
             }
         }
+    }
+
+    @Test("Confirmed calendar create reports provider failure")
+    func confirmedCreateReportsProviderFailure() async throws {
+        let flow = try makeFlow()
+        let provider = StubCalendarProvider()
+        let hub = CalendarHub(providers: [provider])
+        let api = CalendarControlAPI(flow: flow, calendarHub: hub)
+
+        let result = await api.createEvent(
+            #"{"account":"google","calendarId":"cal-1","title":"Standup","startISO8601":"2026-07-27T09:00:00Z","endISO8601":"2026-07-27T09:15:00Z"}"#
+        )
+
+        #expect(result.success == false)
+        #expect(result.message.contains("couldn't create"))
+    }
+
+    @Test("Move fallback creates first and removes replacement when old deletion fails")
+    func moveFallbackRollsBackReplacement() async throws {
+        let flow = try makeFlow()
+        let provider = StubCalendarProvider()
+        let oldStart = Date(timeIntervalSince1970: 1_785_139_200)
+        provider.eventsToReturn = [ExternalCalendarEvent(
+            id: "old", title: "Standup", start: oldStart, end: oldStart.addingTimeInterval(900),
+            isAllDay: false, calendarIdentifier: "cal-1", calendarTitle: "Work"
+        )]
+        provider.createResult = "replacement"
+        provider.deleteResults = ["old": false, "replacement": true]
+        let hub = CalendarHub(providers: [provider])
+        await hub.loadEvents(from: oldStart, to: oldStart.addingTimeInterval(86_400), selection: [.google: []])
+        let api = CalendarControlAPI(flow: flow, calendarHub: hub)
+
+        let result = await api.moveEvent(
+            #"{"account":"google","eventId":"old","startISO8601":"2026-07-27T10:00:00Z","endISO8601":"2026-07-27T10:15:00Z"}"#
+        )
+
+        #expect(result.success == false)
+        #expect(provider.operations == ["move", "create", "delete:old", "delete:replacement"])
+    }
+
+    @Test("Create move and delete refresh provider state used by replanning")
+    func mutationsRefreshSchedulingInputs() async throws {
+        let world = try TestWorld()
+        let flow = AppEnvironment(context: world.context)
+        let provider = StubCalendarProvider()
+        provider.createResult = "event-1"
+        provider.moveResult = true
+        provider.deleteResults = ["event-1": true]
+        let hub = CalendarHub(providers: [provider])
+        let api = CalendarControlAPI(flow: flow, calendarHub: hub)
+        let task = world.makeTask("Deep work", minutes: 60, splittable: false)
+        let now = world.date(hour: 8)
+        let iso = ISO8601DateFormatter()
+
+        let create = await api.createEvent(
+            #"{"account":"google","calendarId":"cal-1","title":"Meeting","startISO8601":"\#(iso.string(from: world.date(hour: 8)))","endISO8601":"\#(iso.string(from: world.date(hour: 10)))"}"#
+        )
+        let blockedPlan = world.service(externalEvents: hub.events).proposePlan(for: now, now: now)
+
+        let move = await api.moveEvent(
+            #"{"account":"google","eventId":"event-1","startISO8601":"\#(iso.string(from: world.date(hour: 12)))","endISO8601":"\#(iso.string(from: world.date(hour: 13)))"}"#
+        )
+        let movedPlan = world.service(externalEvents: hub.events).proposePlan(for: now, now: now)
+
+        let delete = await api.deleteEvent(#"{"account":"google","eventId":"event-1"}"#)
+
+        #expect(create.success && move.success && delete.success)
+        #expect(provider.operations == ["create", "move", "delete:event-1"])
+        #expect(blockedPlan.blocks.first(where: { $0.taskID == task.id })?.start == world.date(hour: 10))
+        #expect(movedPlan.blocks.first(where: { $0.taskID == task.id })?.start == world.date(hour: 8))
+        #expect(hub.events.isEmpty)
     }
 
     @Test("A malformed ISO 8601 date is rejected with a helpful message, not a crash")

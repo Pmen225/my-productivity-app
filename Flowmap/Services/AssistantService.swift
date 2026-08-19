@@ -2,13 +2,17 @@ import Foundation
 
 /// One message in the chat sent to the provider (not the SwiftData model).
 public struct AssistantChatMessage: Sendable {
-    public enum Role: String, Sendable { case user, assistant }
+    public enum Role: String, Sendable { case user, assistant, tool }
     public let role: Role
     public let text: String
+    public let toolCallID: String?
+    public let toolCalls: [AssistantToolCallRequest]
 
-    public init(role: Role, text: String) {
+    public init(role: Role, text: String, toolCallID: String? = nil, toolCalls: [AssistantToolCallRequest] = []) {
         self.role = role
         self.text = text
+        self.toolCallID = toolCallID
+        self.toolCalls = toolCalls
     }
 }
 
@@ -127,7 +131,7 @@ public struct AssistantService {
 
     // MARK: - Anthropic
 
-    private func anthropicToolsPayload(_ tools: [AssistantToolDefinition]) -> [[String: Any]] {
+    func anthropicToolsPayload(_ tools: [AssistantToolDefinition]) -> [[String: Any]] {
         tools.map { tool in
             var payload: [String: Any] = [
                 "name": tool.name,
@@ -144,7 +148,16 @@ public struct AssistantService {
             "max_tokens": 2048,
             "system": system,
             "stream": stream,
-            "messages": history.map { ["role": $0.role.rawValue, "content": $0.text] },
+            "messages": history.map { message in
+                var payload: [String: Any] = ["role": message.role.rawValue, "content": message.text]
+                if let toolCallID = message.toolCallID { payload["tool_call_id"] = toolCallID }
+                if !message.toolCalls.isEmpty {
+                    payload["tool_calls"] = message.toolCalls.map { call in
+                        ["id": call.id, "type": "function", "function": ["name": call.name, "arguments": call.argumentsJSON]]
+                    }
+                }
+                return payload
+            },
             "tools": anthropicToolsPayload(tools),
         ]
     }
@@ -234,7 +247,7 @@ public struct AssistantService {
 
     // MARK: - OpenAI
 
-    private func openAIToolsPayload(_ tools: [AssistantToolDefinition]) -> [[String: Any]] {
+    func openAIToolsPayload(_ tools: [AssistantToolDefinition]) -> [[String: Any]] {
         tools.map { tool in
             [
                 "type": "function",
@@ -249,7 +262,16 @@ public struct AssistantService {
 
     private func openAIRequestBody(system: String, history: [AssistantChatMessage], tools: [AssistantToolDefinition], stream: Bool) -> [String: Any] {
         var messages: [[String: Any]] = [["role": "system", "content": system]]
-        messages += history.map { ["role": $0.role.rawValue, "content": $0.text] }
+        messages += history.map { message in
+            var payload: [String: Any] = ["role": message.role.rawValue, "content": message.text]
+            if let toolCallID = message.toolCallID { payload["tool_call_id"] = toolCallID }
+            if !message.toolCalls.isEmpty {
+                payload["tool_calls"] = message.toolCalls.map { call in
+                    ["id": call.id, "type": "function", "function": ["name": call.name, "arguments": call.argumentsJSON]]
+                }
+            }
+            return payload
+        }
         return [
             "model": model,
             "stream": stream,

@@ -19,9 +19,16 @@ import Foundation
 @MainActor
 public struct CalendarControlAPI {
     private let flow: AppEnvironment
+    private let calendarHub: CalendarHub
 
     public init(flow: AppEnvironment) {
         self.flow = flow
+        self.calendarHub = flow.calendarHub
+    }
+
+    init(flow: AppEnvironment, calendarHub: CalendarHub) {
+        self.flow = flow
+        self.calendarHub = calendarHub
     }
 
     // MARK: - Arguments
@@ -278,7 +285,7 @@ public struct CalendarControlAPI {
 
     // MARK: - 7. Create event
 
-    public func createEvent(_ json: String) -> AssistantToolResult {
+    public func createEvent(_ json: String) async -> AssistantToolResult {
         guard let args = decode(CreateEventArgs.self, json), let kind = CalendarAccountKind(rawValue: args.account) else {
             return failure(.createCalendarEvent, "I don't recognise that calendar account.")
         }
@@ -292,25 +299,23 @@ public struct CalendarControlAPI {
         guard let end = parseDate(args.endISO8601), end > start else {
             return failure(.createCalendarEvent, "I need a valid end time after the start time.")
         }
-        guard flow.calendarHub.connection(for: kind)?.isConnected == true else {
+        guard calendarHub.connection(for: kind)?.isConnected == true else {
             return failure(.createCalendarEvent, "\(kind.displayName) isn't connected, so I can't create that event.")
         }
-        let calendarId = args.calendarId
-        Task { _ = await flow.calendarHub.createEvent(kind: kind, title: title, start: start, end: end, calendarIdentifier: calendarId) }
-        // The write happens on `CalendarHub` in the background, so the real
-        // event id — and therefore a working undo — only exists after this
-        // call returns. Saying so beats offering an undo that would silently
-        // fail to find anything to delete.
+        guard await calendarHub.createEvent(kind: kind, title: title, start: start, end: end, calendarIdentifier: args.calendarId) != nil else {
+            return failure(.createCalendarEvent, "I couldn't create \"\(title)\" on \(kind.displayName).")
+        }
+        await refreshEvents(around: start)
         return AssistantToolResult(
             toolName: AssistantToolName.createCalendarEvent.rawValue,
             success: true,
-            message: "Creating \"\(title)\" on \(kind.displayName) — it'll appear on your calendar in a moment. This happens in the background, so it can't be undone from here; delete it directly if you change your mind."
+            message: "Created \"\(title)\" on \(kind.displayName)."
         )
     }
 
     // MARK: - 8. Move event
 
-    public func moveEvent(_ json: String) -> AssistantToolResult {
+    public func moveEvent(_ json: String) async -> AssistantToolResult {
         guard let args = decode(MoveEventArgs.self, json), let kind = CalendarAccountKind(rawValue: args.account) else {
             return failure(.moveCalendarEvent, "I don't recognise that calendar account.")
         }
@@ -320,49 +325,53 @@ public struct CalendarControlAPI {
         guard let end = parseDate(args.endISO8601), end > start else {
             return failure(.moveCalendarEvent, "I need a valid end time after the start time.")
         }
-        guard let existing = (flow.calendarHub.eventsByKind[kind] ?? []).first(where: { $0.id == args.eventId }) else {
+        guard let existing = (calendarHub.eventsByKind[kind] ?? []).first(where: { $0.id == args.eventId }) else {
             return failure(.moveCalendarEvent, "I couldn't find that event on \(kind.displayName) to move.")
         }
-        guard let provider = flow.calendarHub.providers[kind] else {
+        guard calendarHub.providers[kind] != nil else {
             return failure(.moveCalendarEvent, "\(kind.displayName) isn't connected, so I can't move that event.")
         }
-        let eventId = args.eventId
-        Task {
-            let moved = await provider.moveEvent(identifier: eventId, start: start, end: end)
-            guard !moved else { return }
-            // Some providers (Apple's EventKit write-back) never edit an event
-            // in place — the documented alternative is to delete and recreate it.
-            _ = await flow.calendarHub.deleteEvent(kind: kind, identifier: eventId)
-            _ = await flow.calendarHub.createEvent(
+        if !(await calendarHub.moveEvent(kind: kind, identifier: args.eventId, start: start, end: end)) {
+            guard let replacementID = await calendarHub.createEvent(
                 kind: kind,
                 title: existing.title,
                 start: start,
                 end: end,
                 calendarIdentifier: existing.calendarIdentifier
-            )
+            ) else {
+                return failure(.moveCalendarEvent, "I couldn't move \"\(existing.title)\" on \(kind.displayName).")
+            }
+            guard await calendarHub.deleteEvent(kind: kind, identifier: args.eventId) else {
+                _ = await calendarHub.deleteEvent(kind: kind, identifier: replacementID)
+                return failure(.moveCalendarEvent, "I couldn't move \"\(existing.title)\" on \(kind.displayName).")
+            }
         }
+        await refreshEvents(around: min(existing.start, start))
         return AssistantToolResult(
             toolName: AssistantToolName.moveCalendarEvent.rawValue,
             success: true,
-            message: "Moving \"\(existing.title)\" on \(kind.displayName) to its new time."
+            message: "Moved \"\(existing.title)\" on \(kind.displayName) to its new time."
         )
     }
 
     // MARK: - 9. Delete event
 
-    public func deleteEvent(_ json: String) -> AssistantToolResult {
+    public func deleteEvent(_ json: String) async -> AssistantToolResult {
         guard let args = decode(DeleteEventArgs.self, json), let kind = CalendarAccountKind(rawValue: args.account) else {
             return failure(.deleteCalendarEvent, "I don't recognise that calendar account.")
         }
-        guard flow.calendarHub.connection(for: kind)?.isConnected == true else {
+        guard calendarHub.connection(for: kind)?.isConnected == true else {
             return failure(.deleteCalendarEvent, "\(kind.displayName) isn't connected, so there's nothing to delete.")
         }
-        let eventId = args.eventId
-        Task { _ = await flow.calendarHub.deleteEvent(kind: kind, identifier: eventId) }
+        let affectedDate = (calendarHub.eventsByKind[kind] ?? []).first(where: { $0.id == args.eventId })?.start ?? flow.now
+        guard await calendarHub.deleteEvent(kind: kind, identifier: args.eventId) else {
+            return failure(.deleteCalendarEvent, "I couldn't delete that event from \(kind.displayName).")
+        }
+        await refreshEvents(around: affectedDate)
         return AssistantToolResult(
             toolName: AssistantToolName.deleteCalendarEvent.rawValue,
             success: true,
-            message: "Deleting that event from \(kind.displayName) — this can't be undone."
+            message: "Deleted that event from \(kind.displayName)."
         )
     }
 
@@ -383,5 +392,16 @@ public struct CalendarControlAPI {
         let withFraction = ISO8601DateFormatter()
         withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return withFraction.date(from: iso)
+    }
+
+    private func refreshEvents(around date: Date) async {
+        if calendarHub === flow.calendarHub {
+            await flow.refreshCalendarWindowAwaitingRemote(around: date)
+        } else {
+            let calendar = Calendar.current
+            let start = calendar.startOfDay(for: date)
+            let end = calendar.date(byAdding: .day, value: SchedulingService.lookaheadDays, to: start) ?? start
+            await calendarHub.loadEvents(from: start, to: end, selection: flow.calendarSelection)
+        }
     }
 }

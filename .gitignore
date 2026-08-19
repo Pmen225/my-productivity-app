@@ -14,12 +14,31 @@ xcuserdata/
 *.xcworkspace/xcuserdata/
 .swiftpm/
 
-# Generated task state
-.taskmaster/tasks/tasks.json
-.taskmaster/state.json
+# Private operational context (kept locally and mirrored privately)
+/.taskmaster/
+/state/
+/.superdesign/
+/Artifacts/
+/Screenshots/
+/Prototypes/
+/docs/course-setup-spec.md
+/.agents/commands/
+/.agents/skills/*
+!/.agents/skills/ship/
+!/.agents/skills/ship/**
+/.claude/commands/
+/.claude/skills/*
+!/.claude/skills/ship/
+!/.claude/skills/ship/**
+/.claude/settings.json*
+
+# Public mirrored agent rules
+!/.agents/rules/
+!/.agents/rules/**
+!/.claude/rules/
+!/.claude/rules/**
 
 # Large/generated media artefacts
-Artifacts/
 *.mp4
 *.mp3
 Screenshots/**/*.mp4

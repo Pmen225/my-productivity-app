@@ -15,6 +15,10 @@ struct SoundSettingsSection: View {
                 FlowEyebrow("Sounds")
 
                 if let flow {
+                    Text("Flowmap stays quiet by default. Turn on only the feedback that helps you focus.")
+                        .font(FlowFont.secondary)
+                        .foregroundStyle(FlowTheme.secondaryText(scheme))
+
                     Toggle("Ticking while focusing", isOn: binding(flow, \.focusTickEnabled))
 
                     VStack(alignment: .leading, spacing: FlowSpacing.xxs) {

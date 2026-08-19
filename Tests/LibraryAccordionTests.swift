@@ -1,3 +1,4 @@
+#if !os(macOS)
 import Foundation
 import SwiftData
 import Testing
@@ -49,3 +50,4 @@ struct LibraryAccordionTests {
         #expect(LibraryView.taskPageSelection(from: today, choosing: .today) == .today)
     }
 }
+#endif

@@ -31,13 +31,13 @@ public struct FlowPalette: Identifiable, Hashable, Sendable {
     public let nodeStyle: NodeStyle
 
     public static let minimal = FlowPalette(
-        id: "minimal", name: "Minimal",
-        bgLight: 0xF2F2F2, bgDark: 0x141414,
-        surfaceLight: 0xFFFFFF, surfaceDark: 0x1E1E1E,
-        sunkenLight: 0xEAEAEA, sunkenDark: 0x191919,
-        wellLight: 0xE0E0E0, wellDark: 0x2A2A2A,
-        accent: 0x4A4A4F, accentFill: 0x3C3C41, accentDeep: 0x3A3A3F,
-        accentTextLight: 0x3A3A3F, accentTextDark: 0xC9C9CE,
+        id: "minimal", name: "OpenAI",
+        bgLight: 0xFFFFFF, bgDark: 0x212121,
+        surfaceLight: 0xFFFFFF, surfaceDark: 0x2F2F2F,
+        sunkenLight: 0xF3F3F3, sunkenDark: 0x303030,
+        wellLight: 0xE8E8E8, wellDark: 0x424242,
+        accent: 0x0D0D0D, accentFill: 0x0D0D0D, accentDeep: 0x0D0D0D,
+        accentTextLight: 0x0D0D0D, accentTextDark: 0xF8F8F8,
         nodeStyle: .pastel
     )
 

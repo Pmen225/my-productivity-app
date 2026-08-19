@@ -1,6 +1,7 @@
 #if !os(macOS)
 import SwiftData
 import SwiftUI
+import UIKit
 
 /// The iPhone shell: a real, native tab bar with three destinations —
 /// Plan, Focus, Settings — restyled with `FlowTheme`.
@@ -28,13 +29,26 @@ struct PhoneRootView: View {
     // The mockup's launch screen is Focus (`00-initial.png`). The focused
     // hierarchy harness opens Plan directly so screenshot evidence does not
     // depend on iOS 26 tab-hit-test timing; production still always opens Focus.
-    @State private var tab: DeepLink = ProcessInfo.processInfo.arguments.contains("-flowmapHarnessHierarchy")
-        ? .library
-        : .focus
+    @State private var tab: DeepLink = {
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("-flowmapOpenAISettings") { return .settings }
+        if arguments.contains("-flowmapHarnessHierarchy")
+            || arguments.contains("-flowmapOpenAIHarness")
+            || arguments.contains("-flowmapOpenAIToday")
+            || arguments.contains("-flowmapOpenAIMap") {
+            return .library
+        }
+        return .focus
+    }()
     @State private var showingAssistant = false
-    @State private var showingAssistantDock = false
-    @State private var showingSearch = false
     @State private var showingCapture = false
+    @State private var showingLibraryPanel = false
+    @State private var selectedSettingsRow: SettingsHubRow?
+    @GestureState private var drawerDragTranslation: CGFloat = 0
+    @State private var planSegment: LibraryView.PlanSegment = {
+        if ProcessInfo.processInfo.arguments.contains("-flowmapOpenAIMap") { return .map }
+        return .today
+    }()
     // Today is no longer a tab (decision 1b) — it stays reachable by deep
     // link and notification, presented as a sheet, until T3 folds it into
     // the Map page as a pane.
@@ -48,78 +62,92 @@ struct PhoneRootView: View {
         SmartView.inbox.matches(allTasks).count
     }
 
-
     var body: some View {
-        ZStack(alignment: .bottom) {
-            TabView(selection: $tab) {
-                NavigationStack {
-                    LibraryView(pushStats: $pushStats, onSearchResult: navigate(to:))
-                }
-                .tabItem { Label("Plan", systemImage: "list.bullet") }
-                .tag(DeepLink.library)
-                .badge(inboxCount > 0 ? "\(inboxCount)" : nil)
+        GeometryReader { proxy in
+            let revealWidth = FlowOpenAISidebarMetrics.revealWidth(for: proxy.size.width)
+            let foregroundOffset = drawerForegroundOffset(revealWidth: revealWidth)
+            let revealProgress = revealWidth > 0 ? foregroundOffset / revealWidth : 0
 
-                NavigationStack {
-                    FocusScreen()
-                }
-                .tabItem { Label("Focus", systemImage: "timer") }
-                .tag(DeepLink.focus)
+            ZStack(alignment: .topLeading) {
+                FlowOpenAILibraryPanel(
+                    width: revealWidth,
+                    selectedDestination: selectedDrawerDestination,
+                    onSelectPlan: selectLibrarySegment,
+                    onSelectSettings: selectSettings,
+                    onSelectStats: selectStats
+                )
+                .frame(
+                    width: revealWidth,
+                    height: proxy.size.height,
+                    alignment: .topLeading
+                )
+                .accessibilityIdentifier("flowmap-drawer")
+                .allowsHitTesting(showingLibraryPanel)
+                .accessibilityHidden(!showingLibraryPanel)
 
-                NavigationStack {
-                    SettingsScreen()
+                ZStack(alignment: .topLeading) {
+                    foregroundSurface
+                        .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+                        .accessibilityIdentifier("flowmap-foreground")
+                        .accessibilitySortPriority(showingLibraryPanel ? -1 : 0)
+                        .allowsHitTesting(!showingLibraryPanel)
+                        .accessibilityHidden(showingLibraryPanel)
+
+                    if showingLibraryPanel {
+                        chromeCircleButton(
+                            systemImage: "line.3.horizontal.decrease",
+                            label: "Close library",
+                            badge: inboxCount,
+                            action: closeLibraryPanel
+                        )
+                        .position(
+                            x: (proxy.size.width - revealWidth) / 2,
+                            y: proxy.safeAreaInsets.top + FlowSpacing.s + FlowControlSize.minimumTouch / 2
+                        )
+                    }
                 }
-                // iOS substitutes a symbol's `.fill` variant in a tab item when
-                // one exists. `list.bullet` and `timer` have none, so they stay
-                // hairline while `gearshape` was swapped for `gearshape.fill`
-                // and read far heavier than its neighbours. `slider.horizontal.3`
-                // has no filled variant, so all three strokes now match.
-                .tabItem { Label("Settings", systemImage: "slider.horizontal.3") }
-                .tag(DeepLink.settings)
-            }
-            // The bar carries Flowmap only through its tint. Its background is
-            // the system's own — pinning `.ultraThinMaterial` visible fought
-            // the platform's adaptive bar material, which the HIG reserves to
-            // itself ("bars are an overlay layer, never custom chrome"), and
-            // froze the bar opaque where it should thin over scrolling
-            // content. Task 102.
-            .tint(FlowTheme.accent)
-            .background {
-                if #available(iOS 26.0, *) {
-                    // The detached capture control owns the trailing lane. Move
-                    // only UIKit's native tab-bar surface left so the bottom
-                    // reads as one horizontal group: [tabs] [capture]. The
-                    // TabView content and its safe-area layout stay untouched.
-                    NativeTabBarHorizontalShift(distance: FlowSpacing.xl)
-                        .frame(width: 0, height: 0)
+                .frame(
+                    width: proxy.size.width,
+                    height: proxy.size.height,
+                    alignment: .topLeading
+                )
+                .contentShape(Rectangle())
+                .clipShape(
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: FlowOpenAISidebarMetrics.foregroundRadius * revealProgress,
+                        bottomLeadingRadius: FlowOpenAISidebarMetrics.foregroundRadius * revealProgress
+                    )
+                )
+                .shadow(
+                    color: FlowTheme.shadow(scheme).opacity(revealProgress),
+                    radius: 36 * revealProgress,
+                    x: -14 * revealProgress
+                )
+                .offset(x: foregroundOffset)
+                .animation(reduceMotion ? nil : FlowMotion.drawerReveal, value: showingLibraryPanel)
+                .simultaneousGesture(
+                    drawerSwipeGesture(revealWidth: revealWidth),
+                    including: showingLibraryPanel ? .all : .none
+                )
+
+                if !showingLibraryPanel {
+                    Color.clear
+                        .frame(width: FlowSpacing.l)
+                        .frame(maxHeight: .infinity)
+                        .contentShape(Rectangle())
+                        .gesture(drawerSwipeGesture(revealWidth: revealWidth))
+                        .accessibilityHidden(true)
                 }
+
             }
-        }
-        // One capture control in one stable place on every destination.
-        // Focus-created tasks must use the same TaskDraft path as Plan and
-        // Map; hiding this control there made that journey impossible.
-        .overlay(alignment: .bottomTrailing) {
-            positionedCaptureAssistantOrb
+            .accessibilityElement(children: .contain)
+            .accessibilityAddTraits(showingLibraryPanel ? .isModal : [])
+            .contentShape(Rectangle())
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .overlay { FlowMomentOverlay() }
         .sheet(isPresented: $showingAssistant) {
             NavigationStack { AssistantScreen() }
-        }
-        // The mini dock (decision 26, HIG ruling 1): a nonmodal, resizable
-        // supplementary surface. The orb opens this first; `⤢` hands off to
-        // the full `showingAssistant` sheet above. Hosted here, on the
-        // shell's own body, per the `.sheet`-on-`Section` trap.
-        .sheet(isPresented: $showingAssistantDock) {
-            AssistantMiniDockView(
-                onExpand: expandAssistantDock,
-                onClose: { showingAssistantDock = false }
-            )
-            .presentationDetents([.height(360), .large])
-            .presentationDragIndicator(.visible)
-            .presentationBackgroundInteraction(.enabled)
-            .presentationCornerRadius(FlowRadius.large)
-        }
-        .sheet(isPresented: $showingSearch) {
-            GlobalSearchView { result in navigate(to: result) }
         }
         .sheet(isPresented: $showingCapture) {
             QuickCaptureView()
@@ -152,19 +180,311 @@ struct PhoneRootView: View {
             guard let request = notification.object as? DeepLinkRequest else { return }
             switch request.destination {
             case .assistant: showingAssistant = true
-            case .inbox: tab = .library
-            case .today: showingToday = true
+            case .inbox, .library:
+                tab = .library
+                planSegment = .inbox
+            case .today:
+                tab = .library
+                planSegment = .today
+            case .map:
+                tab = .library
+                planSegment = .map
+            case .calendar:
+                tab = .library
+                planSegment = .today
             case .stats:
                 tab = .library
                 pushStats = true
-            default: tab = request.destination
+            case .focus: tab = .focus
+            case .settings:
+                selectedSettingsRow = nil
+                tab = .settings
             }
         }
     }
 
-    /// The shell's single primary orb. Tapping captures work; Assistant remains
-    /// one long press or VoiceOver custom action away without competing for a
-    /// second bottom-corner control.
+    private var foregroundSurface: some View {
+        ZStack {
+            // The drawer is a stationary underlay. Its rows must never show
+            // through the closed foreground's padded chrome region.
+            FlowTheme.background(scheme).ignoresSafeArea()
+            selectedContent
+        }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Keep the app's own chrome inside the moving foreground. The
+            // system status bar remains outside this surface and therefore
+            // stays fixed while the drawer reveals beneath it.
+            .safeAreaInset(edge: .top, spacing: 0) { openAITopChrome }
+            .safeAreaInset(edge: .bottom, alignment: .trailing, spacing: 0) {
+                if tab == .library, !pushStats { positionedCaptureAssistantOrb }
+            }
+            // `safeAreaInset` adds its chrome outside the content's original
+            // background. Paint the completed surface last so the stationary
+            // drawer cannot bleed through any closed-state inset.
+            .background(FlowTheme.background(scheme).ignoresSafeArea())
+            .animation(reduceMotion ? nil : FlowMotion.selection, value: tab)
+    }
+
+    @ViewBuilder
+    private var selectedContent: some View {
+        if tab == .focus {
+            NavigationStack { FocusScreen() }
+                .toolbar(.hidden, for: .navigationBar)
+                .transition(.opacity)
+        } else if tab == .settings {
+            NavigationStack {
+                SettingsScreen(selectedRow: $selectedSettingsRow, showsTitle: false)
+            }
+                .toolbar(.hidden, for: .navigationBar)
+                .transition(.opacity)
+        } else {
+            NavigationStack {
+                LibraryView(
+                    planSegment: $planSegment,
+                    pushStats: $pushStats,
+                    onSearchResult: navigate(to:)
+                )
+            }
+            .toolbar(.hidden, for: .navigationBar)
+            .transition(.opacity)
+        }
+    }
+
+    @ViewBuilder
+    private var openAITopChrome: some View {
+        if pushStats {
+            destinationTopChrome(
+                title: "Stats",
+                leadingSystemImage: "chevron.left",
+                leadingLabel: "Back to Plan"
+            ) {
+                pushStats = false
+            }
+        } else if tab == .settings {
+            if let selectedSettingsRow {
+                destinationTopChrome(
+                    title: selectedSettingsRow.title,
+                    leadingSystemImage: "chevron.left",
+                    leadingLabel: "Back to Settings"
+                ) {
+                    self.selectedSettingsRow = nil
+                }
+            } else {
+                destinationTopChrome(
+                    title: "Settings",
+                    leadingSystemImage: "line.3.horizontal.decrease",
+                    leadingLabel: "Open library",
+                    badge: inboxCount
+                ) {
+                    withAnimation(reduceMotion ? FlowMotion.fade : FlowMotion.drawerReveal) {
+                        showingLibraryPanel.toggle()
+                    }
+                }
+            }
+        } else {
+            primaryTopChrome
+        }
+    }
+
+    private var primaryTopChrome: some View {
+        HStack(spacing: FlowSpacing.m) {
+            chromeCircleButton(
+                systemImage: "line.3.horizontal.decrease",
+                label: "Open library",
+                badge: inboxCount
+            ) {
+                withAnimation(reduceMotion ? FlowMotion.fade : FlowMotion.drawerReveal) {
+                    showingLibraryPanel.toggle()
+                }
+            }
+            .opacity(showingLibraryPanel ? 0 : 1)
+
+            Spacer(minLength: 0)
+
+            HStack(spacing: FlowSpacing.xxs) {
+                modeButton("Today", selected: tab == .library && planSegment == .today) {
+                    tab = .library
+                    planSegment = .today
+                }
+                modeButton("Focus", selected: tab == .focus) {
+                    tab = .focus
+                }
+            }
+            .padding(FlowSpacing.xxs)
+            .background(Capsule().fill(FlowTheme.surfaceSunken(scheme)))
+            .overlay(Capsule().stroke(FlowTheme.separator(scheme), lineWidth: 1))
+
+            Spacer(minLength: 0)
+
+            chromeCircleButton(systemImage: "sparkles", label: "Open assistant") {
+                showingAssistant = true
+            }
+        }
+        .padding(.horizontal, FlowSpacing.screen)
+        .padding(.vertical, FlowSpacing.s)
+        .background(FlowTheme.background(scheme).opacity(0.96))
+    }
+
+    private func destinationTopChrome(
+        title: String,
+        leadingSystemImage: String,
+        leadingLabel: String,
+        badge: Int = 0,
+        leadingAction: @escaping () -> Void
+    ) -> some View {
+        HStack(spacing: FlowSpacing.m) {
+            chromeCircleButton(
+                systemImage: leadingSystemImage,
+                label: leadingLabel,
+                badge: badge,
+                action: leadingAction
+            )
+
+            Spacer(minLength: 0)
+
+            Text(title)
+                .font(FlowFont.screenTitleCompact)
+                .foregroundStyle(FlowTheme.primaryText(scheme))
+                .accessibilityIdentifier("flowmap-destination-title")
+
+            Spacer(minLength: 0)
+
+            chromeCircleButton(systemImage: "sparkles", label: "Open assistant") {
+                showingAssistant = true
+            }
+        }
+        .padding(.horizontal, FlowSpacing.screen)
+        .padding(.vertical, FlowSpacing.s)
+        .background(FlowTheme.background(scheme).opacity(0.96))
+    }
+
+    private func modeButton(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(FlowFont.caption.weight(selected ? .semibold : .regular))
+                .foregroundStyle(FlowTheme.primaryText(scheme))
+                .frame(width: 64, height: 34)
+                .background(Capsule().fill(selected ? FlowTheme.surface(scheme) : .clear))
+                .overlay {
+                    if selected {
+                        Capsule().stroke(FlowTheme.separator(scheme), lineWidth: 1)
+                    }
+                }
+        }
+        .buttonStyle(FlowOpenAIPressStyle())
+        .accessibilityLabel(title)
+        .accessibilityValue(selected ? "Selected" : "")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private func chromeCircleButton(
+        systemImage: String,
+        label: String,
+        badge: Int = 0,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 17, weight: .regular))
+                .foregroundStyle(FlowTheme.primaryText(scheme))
+                .frame(width: FlowControlSize.secondary, height: FlowControlSize.secondary)
+                .background(Circle().fill(FlowTheme.background(scheme)))
+                .overlay(Circle().stroke(FlowTheme.separator(scheme), lineWidth: 1))
+                .overlay(alignment: .topTrailing) {
+                    if badge > 0 {
+                        Text("\(min(badge, 99))")
+                            .font(FlowFont.durationChip)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 5)
+                            .frame(minWidth: 18, minHeight: 18)
+                            .background(Capsule().fill(FlowTheme.info))
+                            .offset(x: 5, y: -5)
+                    }
+                }
+        }
+        .buttonStyle(FlowOpenAIPressStyle())
+        .flowHitTarget()
+        .accessibilityLabel(label)
+    }
+
+    private func selectLibrarySegment(_ segment: LibraryView.PlanSegment) {
+        planSegment = segment
+        tab = .library
+        withAnimation(reduceMotion ? FlowMotion.fade : FlowMotion.drawerReveal) {
+            showingLibraryPanel = false
+        }
+    }
+
+    private var selectedDrawerDestination: FlowOpenAILibraryPanel.Destination? {
+        if tab == .settings { return .settings }
+        guard tab == .library else { return nil }
+        switch planSegment {
+        case .today: return nil
+        case .inbox: return .inbox
+        case .map: return .map
+        }
+    }
+
+    private func selectSettings() {
+        selectedSettingsRow = nil
+        tab = .settings
+        closeLibraryPanel()
+    }
+
+    private func selectStats() {
+        tab = .library
+        pushStats = true
+        closeLibraryPanel()
+    }
+
+    private func closeLibraryPanel() {
+        withAnimation(reduceMotion ? FlowMotion.fade : FlowMotion.drawerReveal) {
+            showingLibraryPanel = false
+        }
+    }
+
+    private func drawerForegroundOffset(revealWidth: CGFloat) -> CGFloat {
+        let restingOffset = showingLibraryPanel ? revealWidth : 0
+        guard !reduceMotion else { return restingOffset }
+        return min(max(restingOffset + drawerDragTranslation, 0), revealWidth)
+    }
+
+    private func drawerSwipeGesture(revealWidth: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 10)
+            .updating($drawerDragTranslation) { value, translation, _ in
+                guard !reduceMotion else { return }
+                let horizontal = abs(value.translation.width)
+                guard horizontal > abs(value.translation.height) else { return }
+                guard showingLibraryPanel
+                        || (value.startLocation.x <= FlowSpacing.l && value.translation.width > 0)
+                else { return }
+                translation = value.translation.width
+            }
+            .onEnded { handleDrawerSwipe($0, revealWidth: revealWidth) }
+    }
+
+    private func handleDrawerSwipe(_ value: DragGesture.Value, revealWidth: CGFloat) {
+        let horizontal = abs(value.translation.width)
+        guard horizontal > abs(value.translation.height) else { return }
+
+        guard showingLibraryPanel
+                || (value.startLocation.x <= FlowSpacing.l && value.translation.width > 0)
+        else { return }
+
+        let restingOffset = showingLibraryPanel ? revealWidth : 0
+        let releaseTranslation = abs(value.predictedEndTranslation.width) > abs(value.translation.width)
+            ? value.predictedEndTranslation.width
+            : value.translation.width
+        let projectedOffset = min(
+            max(restingOffset + releaseTranslation, 0),
+            revealWidth
+        )
+        withAnimation(reduceMotion ? nil : FlowMotion.drawerReveal) {
+            showingLibraryPanel = projectedOffset >= revealWidth / 2
+        }
+    }
+
+    /// The shell's single capture control. Assistant belongs to top chrome.
     private var captureAssistantOrb: some View {
         FlowFloatingButton(
             systemImage: "plus",
@@ -179,7 +499,6 @@ struct PhoneRootView: View {
             faceScale: 0.70,
             iconScale: 0.32,
             accessibilityLabel: "New task, project or initiative",
-            assistantAction: { showingAssistantDock = true },
             hapticsEnabled: flow?.settings.focusHapticsEnabled ?? false
         ) {
             showingCapture = true
@@ -188,30 +507,9 @@ struct PhoneRootView: View {
 
     @ViewBuilder
     private var positionedCaptureAssistantOrb: some View {
-        if #available(iOS 26.0, *) {
-            captureAssistantOrb
-                // Match the floating bar's visual height and baseline while
-                // leaving the outer glass shell fully visible at the edge.
-                .padding(.trailing, FlowSpacing.xl)
-                .padding(.bottom, FlowSpacing.s)
-                .offset(y: FlowSpacing.bottomControlBaselineOffset)
-        } else {
-            // The legacy full-width bar has no detached trailing slot.
-            captureAssistantOrb
-                .padding(.trailing, FlowSpacing.screen)
-                .padding(.bottom, FlowSpacing.floatingControlsInset)
-        }
-    }
-
-    /// Closes the dock before presenting the full screen (HIG: close one
-    /// sheet before showing another, rather than stacking sheet-on-sheet).
-    /// Reduce Motion skips the hand-off delay instead of imposing one.
-    private func expandAssistantDock() {
-        showingAssistantDock = false
-        let delay = reduceMotion ? 0 : 0.25
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-            showingAssistant = true
-        }
+        captureAssistantOrb
+            .padding(.trailing, FlowSpacing.xl)
+            .padding(.bottom, FlowSpacing.m)
     }
 
     private func navigate(to result: SearchResult) {
@@ -229,6 +527,157 @@ struct PhoneRootView: View {
             }
         )
     }
+}
+
+private struct FlowOpenAIPressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.72 : 1)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.975 : 1)
+            .animation(reduceMotion ? nil : FlowMotion.tap, value: configuration.isPressed)
+    }
+}
+
+private enum FlowOpenAISidebarMetrics {
+    /// OpenAI Apps iOS Navigation source, node 6:64324: 325pt drawer on a
+    /// 402pt iPhone. Compact screens retain one native 44pt close strip.
+    static let sourceWidth: CGFloat = 325
+    static let minimumForegroundStrip: CGFloat = 44
+    static let contentInset: CGFloat = 14
+    static let rowHeight: CGFloat = 44
+    static let iconFrame: CGFloat = 25
+    static let foregroundRadius: CGFloat = 30
+
+    static func revealWidth(for availableWidth: CGFloat) -> CGFloat {
+        min(sourceWidth, max(0, availableWidth - minimumForegroundStrip))
+    }
+}
+
+private struct FlowOpenAILibraryPanel: View {
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.colorSchemeContrast) private var accessibilityContrast
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    enum Destination: Hashable {
+        case settings, inbox, map, stats
+    }
+
+    let width: CGFloat
+    let selectedDestination: Destination?
+    let onSelectPlan: (LibraryView.PlanSegment) -> Void
+    let onSelectSettings: () -> Void
+    let onSelectStats: () -> Void
+
+    var body: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        header
+                        navigationContent
+                        footer
+                    }
+                }
+                .safeAreaPadding(.top)
+            } else {
+                VStack(alignment: .leading, spacing: 0) {
+                    header
+                    ScrollView { navigationContent }
+                    footer
+                }
+            }
+        }
+        .foregroundStyle(FlowTheme.primaryText(scheme))
+        .frame(width: width)
+        .frame(maxHeight: .infinity, alignment: .topLeading)
+        .background(FlowTheme.background(scheme).ignoresSafeArea())
+    }
+
+    private var navigationContent: some View {
+        VStack(spacing: 0) {
+            destinationRow("Inbox", systemImage: "tray", selected: selectedDestination == .inbox) {
+                onSelectPlan(.inbox)
+            }
+            destinationRow("Map", systemImage: "point.3.connected.trianglepath.dotted", selected: selectedDestination == .map) {
+                onSelectPlan(.map)
+            }
+            destinationRow("Stats", systemImage: "chart.bar", selected: selectedDestination == .stats) {
+                onSelectStats()
+            }
+        }
+    }
+
+    private var header: some View {
+        Text("Flowmap")
+            .font(FlowFont.body.weight(.semibold))
+            .frame(maxWidth: .infinity, minHeight: FlowOpenAISidebarMetrics.rowHeight, alignment: .leading)
+            .padding(.horizontal, FlowOpenAISidebarMetrics.contentInset)
+    }
+
+    @ViewBuilder
+    private var footer: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            footerRows
+                .padding(.horizontal, FlowOpenAISidebarMetrics.contentInset)
+        } else {
+            footerRows
+                .padding(.horizontal, FlowOpenAISidebarMetrics.contentInset)
+                .frame(height: FlowOpenAISidebarMetrics.rowHeight + FlowSpacing.s)
+        }
+    }
+
+    private var footerRows: some View {
+        Button(action: onSelectSettings) {
+            HStack(spacing: 15) {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 17, weight: .regular))
+                    .frame(width: FlowOpenAISidebarMetrics.iconFrame, height: FlowOpenAISidebarMetrics.iconFrame)
+                Text("Settings")
+                    .font(FlowFont.body.weight(.medium))
+                    .lineLimit(2)
+                Spacer(minLength: FlowSpacing.s)
+            }
+            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, minHeight: FlowOpenAISidebarMetrics.rowHeight, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(FlowOpenAIPressStyle())
+        .accessibilityLabel("Settings")
+        .accessibilityIdentifier("flowmap-footer-settings")
+    }
+
+    private func destinationRow(
+        _ title: String,
+        systemImage: String,
+        selected: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 15) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 17, weight: .regular))
+                    .frame(width: FlowOpenAISidebarMetrics.iconFrame, height: FlowOpenAISidebarMetrics.iconFrame)
+                Text(title)
+                    .font(FlowFont.body.weight(.medium))
+                Spacer(minLength: FlowSpacing.s)
+            }
+            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, minHeight: FlowOpenAISidebarMetrics.rowHeight)
+            .background(
+                RoundedRectangle(cornerRadius: FlowRadius.tile, style: .continuous)
+                    .fill(selected ? FlowTheme.primaryText(scheme).opacity(accessibilityContrast == .increased ? 0.10 : 0.05) : .clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(FlowOpenAIPressStyle())
+        .accessibilityLabel(title)
+        .accessibilityIdentifier("flowmap-destination-\(title.lowercased())")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .padding(.horizontal, FlowOpenAISidebarMetrics.contentInset)
+    }
+
 }
 
 /// Applies a visual-only translation to SwiftUI's underlying native tab bar.
@@ -343,11 +792,8 @@ struct LibraryView: View {
     @State private var showingSearch = false
     /// The Plan tab's fixed top-level page (decision 40). Replaces the old
     /// task-page chips and the "Smart task views" menu.
-    @State private var planSegment: PlanSegment = .inbox
+    @Binding var planSegment: PlanSegment
     @Namespace private var planSegmentSelection
-    /// Decision 41: Calendar is a Plan nav-bar button, not a tab — pushes the
-    /// same root the old Calendar tab used, on Plan's own NavigationStack.
-    @State private var pushCalendar = false
     /// The task tapped inside an unfolded TASKS row. A sheet, not a push into
     /// Focus — decision 10 already answered this exact question for the
     /// Today pane, and one screen cannot mean two things by the same tap.
@@ -399,6 +845,16 @@ struct LibraryView: View {
             case .map: "Map"
             }
         }
+    }
+
+    init(
+        planSegment: Binding<PlanSegment>,
+        pushStats: Binding<Bool>,
+        onSearchResult: @escaping (SearchResult) -> Void
+    ) {
+        _planSegment = planSegment
+        _pushStats = pushStats
+        self.onSearchResult = onSearchResult
     }
 
     /// Ordered peers in the Plan tab's task surface. Inbox is deliberately
@@ -458,41 +914,11 @@ struct LibraryView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            planSegmentControl
-            planSurface
-        }
+        planSurface
         .background(FlowTheme.background(scheme).ignoresSafeArea())
-            // Named for the tab that reaches it (decision 1b), not for the type —
-            // a screen titled "Library" under a tab labelled "Plan" reads as two
-            // different places.
-            .flowScreenTitle("Plan")
-            #if os(iOS)
-            // Switching from the scrolling Inbox to the geometry-backed Map
-            // can inherit a collapsed/transparent navigation-bar state from
-            // SwiftUI. Plan always owns this bar, so restate its visibility
-            // at the owning screen instead of letting a child surface decide.
-            .toolbar(.visible, for: .navigationBar)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { showingSearch = true } label: { Image(systemName: "magnifyingglass") }
-                        .accessibilityLabel("Search")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { pushStats = true } label: { Image(systemName: "chart.bar") }
-                        .accessibilityLabel("Stats")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { pushCalendar = true } label: { Image(systemName: "calendar") }
-                        .accessibilityLabel("Calendar")
-                }
-            }
             .navigationDestination(isPresented: $pushStats) {
-                ProgressScreen()
-            }
-            .navigationDestination(isPresented: $pushCalendar) {
-                CalendarRootView()
+                ProgressScreen(showsTitle: false)
+                    .toolbar(.hidden, for: .navigationBar)
             }
             .navigationDestination(for: Project.self) { project in
                 ProjectDetailView(project: project)
@@ -631,7 +1057,7 @@ struct LibraryView: View {
             if planSegment == .today {
                 TodayView()
             } else if planSegment == .inbox {
-                planList(for: .inbox)
+                openAIPlanInbox
             } else {
                 AutoMapScreen(scope: .day, showsScreenTitle: false, includesBacklog: true)
             }
@@ -640,6 +1066,174 @@ struct LibraryView: View {
         // not, and without this the whole `VStack` shrank to its content and
         // centred — dragging the segment control down off the header line.
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var openAIPlanInbox: some View {
+        let now = flow?.now ?? Date()
+        let inbox = SmartView.inbox.matches(allTasks, now: now)
+        let today = SmartView.today.matches(allTasks, now: now)
+        let upNext = today.first
+
+        return ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                Text(today.isEmpty ? "Plan one clear next action" : "\(today.count) clear next action\(today.count == 1 ? "" : "s")")
+                    .font(FlowFont.screenTitle)
+                    .foregroundStyle(FlowTheme.primaryText(scheme))
+                    .padding(.top, FlowSpacing.xl)
+
+                Text("A calm view of what matters now.")
+                    .font(FlowFont.secondary)
+                    .foregroundStyle(FlowTheme.secondaryText(scheme))
+                    .padding(.top, FlowSpacing.s)
+
+                if let upNext {
+                    openAISectionLabel("Up next")
+                        .padding(.top, FlowSpacing.xxxl)
+                    openAITaskRow(upNext, time: nextTimeLabel(for: upNext), showsDivider: false)
+                }
+
+                HStack {
+                    Text("Inbox")
+                        .font(FlowFont.sectionTitle)
+                    Spacer()
+                    Text("\(inbox.count) task\(inbox.count == 1 ? "" : "s")")
+                        .font(FlowFont.caption)
+                        .foregroundStyle(FlowTheme.secondaryText(scheme))
+                }
+                .padding(.top, FlowSpacing.xxxl)
+
+                if inbox.isEmpty {
+                    Text("Nothing waiting. Add a task below when something lands.")
+                        .font(FlowFont.secondary)
+                        .foregroundStyle(FlowTheme.secondaryText(scheme))
+                        .padding(.vertical, FlowSpacing.xl)
+                } else {
+                    ForEach(Array(inbox.prefix(4).enumerated()), id: \.element.id) { index, task in
+                        openAITaskRow(task, showsDivider: index < min(inbox.count, 4) - 1)
+                    }
+                }
+
+                Button {
+                    if today.count >= 2 {
+                        showingDuel = true
+                    } else {
+                        planProposal = flow?.planToday(replanExisting: false)
+                        showingPlanPreview = true
+                    }
+                } label: {
+                    VStack(alignment: .leading, spacing: FlowSpacing.xs) {
+                        Text("Plan today")
+                            .font(FlowFont.cardTitle)
+                            .foregroundStyle(FlowTheme.info)
+                        Text("Flowmap can arrange these around your calendar.")
+                            .font(FlowFont.caption)
+                            .foregroundStyle(FlowTheme.secondaryText(scheme))
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(FlowOpenAIPressStyle())
+                .padding(.top, FlowSpacing.xl)
+                .accessibilityLabel("Plan today")
+                .accessibilityHint("Prioritises today's tasks, then arranges them around your calendar")
+
+                if !projects.isEmpty {
+                    openAISectionLabel("Projects")
+                        .padding(.top, FlowSpacing.xxxl)
+                    ForEach(projects.prefix(3)) { project in
+                        Button { selectedProject = project } label: {
+                            HStack(spacing: FlowSpacing.m) {
+                                Image(systemName: "folder")
+                                    .foregroundStyle(FlowTheme.primaryText(scheme))
+                                    .frame(width: FlowSpacing.xl)
+                                VStack(alignment: .leading, spacing: FlowSpacing.xxs) {
+                                    Text(project.title).font(FlowFont.cardTitle)
+                                    Text("\((project.tasks ?? []).count) task\((project.tasks ?? []).count == 1 ? "" : "s")")
+                                        .font(FlowFont.caption)
+                                        .foregroundStyle(FlowTheme.secondaryText(scheme))
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(FlowFont.caption.weight(.semibold))
+                                    .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                            }
+                            .frame(minHeight: FlowControlSize.create)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(FlowOpenAIPressStyle())
+                        Divider().overlay(FlowTheme.separator(scheme))
+                    }
+                }
+            }
+            .padding(.horizontal, FlowSpacing.xl)
+            .padding(.bottom, FlowSpacing.xxl)
+        }
+        .scrollIndicators(.hidden)
+    }
+
+    private func openAISectionLabel(_ title: String) -> some View {
+        Text(title.uppercased())
+            .font(FlowFont.eyebrow)
+            .foregroundStyle(FlowTheme.secondaryText(scheme))
+            .tracking(0.6)
+    }
+
+    private func openAITaskRow(
+        _ task: FlowTask,
+        time: String? = nil,
+        showsDivider: Bool = true
+    ) -> some View {
+        Button { inspectedTask = task } label: {
+            HStack(alignment: .top, spacing: FlowSpacing.m) {
+                if let time {
+                    Text(time)
+                        .font(FlowFont.caption.weight(.semibold))
+                        .foregroundStyle(FlowTheme.secondaryText(scheme))
+                        .frame(width: FlowSpacing.xxxl, alignment: .leading)
+                }
+
+                Circle()
+                    .fill(task.colour.base)
+                    .frame(width: FlowSpacing.s, height: FlowSpacing.s)
+                    .padding(.top, FlowSpacing.xs)
+
+                VStack(alignment: .leading, spacing: FlowSpacing.xs) {
+                    Text(task.title)
+                        .font(FlowFont.cardTitle)
+                        .foregroundStyle(FlowTheme.primaryText(scheme))
+                        .lineLimit(2)
+                    Text(taskMetadata(task))
+                        .font(FlowFont.caption)
+                        .foregroundStyle(FlowTheme.secondaryText(scheme))
+                        .lineLimit(1)
+                    if showsDivider {
+                        Divider()
+                            .overlay(FlowTheme.separator(scheme))
+                            .padding(.top, FlowSpacing.s)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, FlowSpacing.m)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(FlowOpenAIPressStyle())
+        .accessibilityLabel("\(task.title), \(taskMetadata(task))")
+        .accessibilityHint("Opens task details")
+    }
+
+    private func nextTimeLabel(for task: FlowTask) -> String {
+        guard let start = task.liveSegments
+            .filter({ $0.state.occupiesTimeline })
+            .sorted(by: { $0.startDate < $1.startDate })
+            .first?.startDate else { return "Next" }
+        return DurationFormatter.time(start)
+    }
+
+    private func taskMetadata(_ task: FlowTask) -> String {
+        let duration = DurationFormatter.spoken(minutes: task.estimatedMinutes)
+        guard let project = task.project else { return duration }
+        return "\(project.title) · \(duration)"
     }
 
     private func planList(for page: TaskPage) -> some View {

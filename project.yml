@@ -132,6 +132,7 @@ targets:
       # deliberately absent from the watch build.
       - path: Flowmap/Services/WatchSyncPayloads.swift
       - path: Flowmap/Services/WatchSyncService.swift
+      - path: Flowmap/DesignSystem/FlowPalette.swift
       - path: Flowmap/DesignSystem/FlowTheme.swift
       - path: Flowmap/DesignSystem/Typography.swift
       - path: Flowmap/DesignSystem/Spacing.swift
@@ -177,6 +178,7 @@ targets:
         excludes:
           - "**/.DS_Store"
       - path: Flowmap/Services/WatchSyncPayloads.swift
+      - path: Flowmap/DesignSystem/FlowPalette.swift
       - path: Flowmap/DesignSystem/FlowTheme.swift
       - path: Flowmap/DesignSystem/Typography.swift
       - path: Flowmap/DesignSystem/Spacing.swift

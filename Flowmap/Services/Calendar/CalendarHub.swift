@@ -150,6 +150,11 @@ public final class CalendarHub {
     }
 
     @discardableResult
+    public func moveEvent(kind: CalendarAccountKind, identifier: String, start: Date, end: Date) async -> Bool {
+        await providers[kind]?.moveEvent(identifier: identifier, start: start, end: end) ?? false
+    }
+
+    @discardableResult
     public func deleteEvent(kind: CalendarAccountKind, identifier: String) async -> Bool {
         await providers[kind]?.deleteEvent(identifier: identifier) ?? false
     }

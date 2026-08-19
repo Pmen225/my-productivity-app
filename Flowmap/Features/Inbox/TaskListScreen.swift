@@ -284,7 +284,7 @@ public struct TaskListScreen: View {
     }
 
     /// The prioritise duel operates on today's set, not the inbox — planning
-    /// must not require the game (state/specs/cognitive-profile.md, "product
+    /// must not require the game (product-planning guidance, "product
     /// thesis"); it only orders what's already lined up for today. Upcoming,
     /// Anytime and user lists already have an order the duel would fight, and
     /// it only has something to say once there are at least two tasks.

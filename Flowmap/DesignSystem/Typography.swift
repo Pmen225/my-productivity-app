@@ -37,7 +37,7 @@ public enum FlowFont {
     /// so the two faces sit at identical sizes and only the face changes.
     private static func scaled(_ style: Font.TextStyle, _ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
         switch choice {
-        case .system: .system(style, design: .rounded, weight: weight)
+        case .system: .system(style, design: .default, weight: weight)
         case .quattro: .custom(face(weight), size: size, relativeTo: style)
         }
     }
@@ -46,23 +46,23 @@ public enum FlowFont {
     /// segments) or chrome that stays constant.
     private static func fixed(_ size: CGFloat, _ weight: Font.Weight) -> Font {
         switch choice {
-        case .system: .system(size: size, weight: weight, design: .rounded)
+        case .system: .system(size: size, weight: weight, design: .default)
         case .quattro: .custom(face(weight), fixedSize: size)
         }
     }
 
-    public static var screenTitle: Font { scaled(.largeTitle, 34, .bold) }
+    public static var screenTitle: Font { scaled(.largeTitle, 32, .semibold) }
 
     /// The quiet centred title the phone screens wear when the content, not the
     /// heading, is meant to hold the eye.
-    public static var screenTitleCompact: Font { scaled(.subheadline, 15, .bold) }
+    public static var screenTitleCompact: Font { scaled(.subheadline, 15, .semibold) }
 
     /// Tab bar and other chrome labels.
-    public static var chromeLabel: Font { fixed(10, .semibold) }
-    public static var sectionTitle: Font { scaled(.headline, 17, .semibold) }
-    public static var cardTitle: Font { scaled(.body, 17, .semibold) }
-    public static var body: Font { scaled(.body, 17) }
-    public static var secondary: Font { scaled(.subheadline, 15) }
+    public static var chromeLabel: Font { fixed(12, .medium) }
+    public static var sectionTitle: Font { scaled(.headline, 18, .semibold) }
+    public static var cardTitle: Font { scaled(.body, 16, .semibold) }
+    public static var body: Font { scaled(.body, 16) }
+    public static var secondary: Font { scaled(.subheadline, 14) }
     public static var caption: Font { scaled(.caption, 12) }
 
     /// Compact duration chips such as `30M`. Monospaced digits stop the label
@@ -70,14 +70,14 @@ public enum FlowFont {
     public static var durationChip: Font { scaled(.caption2, 11, .bold).monospacedDigit() }
 
     /// The large focus countdown.
-    public static var countdown: Font { fixed(44, .semibold).monospacedDigit() }
+    public static var countdown: Font { fixed(42, .medium).monospacedDigit() }
 
     /// The countdown when it sits inside the wheel rather than above a card.
-    public static var countdownCompact: Font { fixed(30, .bold).monospacedDigit() }
+    public static var countdownCompact: Font { fixed(30, .semibold).monospacedDigit() }
 
     /// Small uppercase label above a section or a live value — `NOW`, `TODAY'S
     /// QUEUE`. Always paired with `FlowTheme.tertiaryText` and 1.5pt tracking.
-    public static var eyebrow: Font { fixed(11, .heavy) }
+    public static var eyebrow: Font { fixed(11, .semibold) }
 
     /// The single figure on a statistic tile.
     public static var statNumber: Font { fixed(20, .bold).monospacedDigit() }

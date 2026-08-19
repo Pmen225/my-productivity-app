@@ -126,7 +126,6 @@ struct WheelItem: Identifiable {
 /// the dial into a partial arc.
 struct FocusWheelView: View {
     @Environment(\.colorScheme) private var scheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The ruler's numerals follow the reader's text size like the rest of the
     /// app, from the same footnote-scale base the design draws them at.
     @ScaledMetric(relativeTo: .caption2) private var rulerNumeralSize: CGFloat = 10
@@ -144,9 +143,6 @@ struct FocusWheelView: View {
     /// integer while settled on one of the four views, fractional while a pinch
     /// is still in progress.
     let zoom: Double
-    /// True while the fingers are still down. The dial has to track them with
-    /// no animation at all — only a settle or a chip tap earns one.
-    let isZooming: Bool
     /// Degrees of time-travel preview, already clamped to the queue by
     /// `FocusWheelGeometry.clampDragPreview`. It is added to every span and to
     /// nothing else, so peeking ahead cannot alter what the consumption and the
@@ -164,15 +160,6 @@ struct FocusWheelView: View {
     /// applied as a `scaleEffect` and no geometry reads it, so a hit target or
     /// an angle can never disagree with what is drawn.
     var reformScale: Double = 1
-
-    /// No animation while the fingers are down: the dial is being dragged, not
-    /// transitioned, and easing it would put it behind the hand. A settle (or a
-    /// chip tap) gets a gentle spring, or a short easeOut with no overshoot
-    /// when Reduce Motion is on.
-    private var zoomAnimation: Animation? {
-        if isZooming { return nil }
-        return reduceMotion ? FlowMotion.fade : FlowMotion.travel
-    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -268,17 +255,21 @@ struct FocusWheelView: View {
             outerRadius - thickness / 2,
             factor: magnification
         )
+        // The neutral base is only an edge separator. A broad stroke here
+        // reads as a second ring behind the coloured wedges and makes the
+        // wheel look heavy, so keep it aligned with every wedge outline.
+        let rimStroke: CGFloat = 0.5
 
         return ZStack {
             zoomed(in: size) {
                 ZStack {
                     Circle()
-                        .stroke(FlowTheme.surfaceSunken(scheme), lineWidth: thickness)
+                        .stroke(FlowTheme.surfaceSunken(scheme), lineWidth: rimStroke)
                         .frame(width: diameter, height: diameter)
                         .position(centre)
                         .overlay {
                             Circle()
-                                .stroke(FlowTheme.separator(scheme), lineWidth: 1)
+                                .stroke(FlowTheme.separator(scheme), lineWidth: 0.5)
                                 .frame(width: diameter, height: diameter)
                                 .position(centre)
                         }
@@ -293,7 +284,7 @@ struct FocusWheelView: View {
                         )
                         free
                             .fill(FlowTheme.surfaceSunken(scheme))
-                            .overlay(free.stroke(FlowTheme.separator(scheme), lineWidth: 1))
+                            .overlay(free.stroke(FlowTheme.separator(scheme), lineWidth: 0.5))
                             .accessibilityHidden(true)
                     }
 
@@ -314,7 +305,7 @@ struct FocusWheelView: View {
                                 // task's colour — colour stays alive only as the icon tint
                                 // and on the still-soft neighbours (Task 56: "still ugly").
                                 .fill(item.isActive ? FlowTheme.surface(scheme) : item.colour.soft)
-                                .overlay(wedge.stroke(FlowTheme.separatorStrong(scheme), lineWidth: 1))
+                                .overlay(wedge.stroke(FlowTheme.separator(scheme), lineWidth: 0.5))
                         }
                     }
                 }
@@ -410,8 +401,6 @@ struct FocusWheelView: View {
             }
         }
         .frame(width: size.width, height: size.height)
-        .animation(zoomAnimation, value: zoom)
-        .animation(zoomAnimation, value: magnification)
         .animation(.linear(duration: 1), value: progress)
         .animation(.easeInOut(duration: 0.35), value: activeID)
         .animation(FlowMotion.fade, value: reducedMotionPreviewIndex)

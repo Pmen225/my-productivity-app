@@ -194,9 +194,21 @@ public final class AppEnvironment {
     }
 
     public func refreshCalendarWindow(around date: Date) {
-        let calendar = Calendar.current
-        let start = calendar.startOfDay(for: date)
-        let end = calendar.date(byAdding: .day, value: SchedulingService.lookaheadDays, to: start) ?? start
+        refreshLocalCalendarWindow(around: date)
+        let hub = calendarHub
+        let selection = calendarSelection
+        let (start, end) = calendarWindow(around: date)
+        Task { await hub.loadEvents(from: start, to: end, selection: selection) }
+    }
+
+    public func refreshCalendarWindowAwaitingRemote(around date: Date) async {
+        refreshLocalCalendarWindow(around: date)
+        let (start, end) = calendarWindow(around: date)
+        await calendarHub.loadEvents(from: start, to: end, selection: calendarSelection)
+    }
+
+    private func refreshLocalCalendarWindow(around date: Date) {
+        let (start, end) = calendarWindow(around: date)
 
         // Apple stays synchronous: reconciliation plans on the very next line and
         // must not plan over a meeting that has not arrived yet.
@@ -219,11 +231,13 @@ public final class AppEnvironment {
         )
         #endif
 
-        // Remote accounts are a network round trip, so they refresh behind the
-        // scenes and are served from cache until they land.
-        let hub = calendarHub
-        let selection = calendarSelection
-        Task { await hub.loadEvents(from: start, to: end, selection: selection) }
+    }
+
+    private func calendarWindow(around date: Date) -> (Date, Date) {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: date)
+        let end = calendar.date(byAdding: .day, value: SchedulingService.lookaheadDays, to: start) ?? start
+        return (start, end)
     }
 
     /// Which calendars each account is allowed to read, from settings.

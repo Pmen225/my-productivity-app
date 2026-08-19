@@ -25,38 +25,54 @@ public struct FlowColourPicker: View {
         if scrollable {
             ScrollView(.horizontal, showsIndicators: false) {
                 swatches
+                    .padding(.horizontal, FlowSpacing.xs)
                     .padding(.vertical, FlowSpacing.xs)
             }
         } else {
-            swatches
+            ViewThatFits(in: .horizontal) {
+                swatches
+                wrappedSwatches
+            }
         }
     }
 
     private var swatches: some View {
-        // Eight 44pt hit targets still fit on a phone when the visible dots use
-        // the tight swatch rhythm. The old 12pt gap clipped the final colour,
-        // making a complete palette look accidentally cut off.
         HStack(spacing: scrollable ? FlowSpacing.xxs : FlowSpacing.s) {
             ForEach(tokens, id: \.self) { token in
-                Button {
-                    selection = token
-                } label: {
-                    Circle()
-                        .fill(token.base)
-                        .frame(width: diameter, height: diameter)
-                        .overlay(
-                            Circle().strokeBorder(.primary, lineWidth: selection == token ? 2 : 0)
-                        )
-                }
-                .buttonStyle(FlowNavigationRowPressStyle())
-                // Keep the visible swatch quiet while meeting the iOS 44pt
-                // touch target. The previous 22pt AX frame was half Apple's
-                // minimum and made colour selection unnecessarily fiddly.
-                .flowHitTarget()
-                .accessibilityLabel(token.displayName)
-                .accessibilityValue(selection == token ? "Selected" : "")
-                .accessibilityAddTraits(selection == token ? .isSelected : [])
+                swatch(token)
             }
         }
+    }
+
+    /// A balanced fallback for compact editor rows. Eight 44pt targets cannot
+    /// fit in one iPhone Form row, so wrapping keeps every colour visible
+    /// instead of presenting a deliberately clipped horizontal strip.
+    private var wrappedSwatches: some View {
+        LazyVGrid(
+            columns: Array(repeating: GridItem(.flexible(minimum: 44), spacing: FlowSpacing.s), count: 4),
+            spacing: FlowSpacing.xs
+        ) {
+            ForEach(tokens, id: \.self) { token in
+                swatch(token)
+            }
+        }
+    }
+
+    private func swatch(_ token: ColourToken) -> some View {
+        Button {
+            selection = token
+        } label: {
+            Circle()
+                .fill(token.base)
+                .frame(width: diameter, height: diameter)
+                .overlay(
+                    Circle().strokeBorder(.primary, lineWidth: selection == token ? 2 : 0)
+                )
+        }
+        .buttonStyle(FlowNavigationRowPressStyle())
+        .flowHitTarget()
+        .accessibilityLabel(token.displayName)
+        .accessibilityValue(selection == token ? "Selected" : "")
+        .accessibilityAddTraits(selection == token ? .isSelected : [])
     }
 }

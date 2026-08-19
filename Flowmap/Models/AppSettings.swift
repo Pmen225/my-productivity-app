@@ -33,14 +33,17 @@ public final class AppSettings {
     /// How far the close-up style is magnified about the pointer, 1…8. Settles
     /// where the pinch left it so the wheel is where you left it next session.
     public var wheelMagnifyFactor: Double = 1
-    public var focusSoundEnabled: Bool = true
-    public var focusTickEnabled: Bool = true
+    /// The OpenAI reference is silent during ordinary interaction. New
+    /// installs therefore start quiet; people can opt into completion chimes
+    /// or a metronome independently in Settings.
+    public var focusSoundEnabled: Bool = false
+    public var focusTickEnabled: Bool = false
     public var focusHapticsEnabled: Bool = true
     public var autoStartNextTask: Bool = true
 
     // Focus voice coach
     /// Speaks task-start, time-left and wind-down announcements during focus.
-    public var focusVoiceEnabled: Bool = true
+    public var focusVoiceEnabled: Bool = false
     /// The chosen `AVSpeechSynthesisVoice.identifier`. Nil uses the system
     /// default for the current language.
     public var focusVoiceIdentifier: String?

@@ -151,9 +151,8 @@ public enum ColourToken: String, CaseIterable, Codable, Sendable {
     }
 }
 
-/// Surfaces, separators and accents. Warm cream in light, warm near-black in dark —
-/// the palette is built from browns rather than greys so nothing in the app reads
-/// cold next to the clay accent.
+/// Surfaces, separators and accents extracted from the supplied OpenAI mobile
+/// reference. Colour is reserved for status and task identity; chrome is neutral.
 public enum FlowTheme {
     /// The palette the user picked. Set once on change from `AppSettings.themeRaw`;
     /// the root view re-identifies on the raw value so the change repaints
@@ -182,40 +181,40 @@ public enum FlowTheme {
     /// Translucent layer for controls that float over content — the tab bar,
     /// the wheel's view chips, the map's control strip.
     public static func glass(_ scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color(hex: 0x2E2721).opacity(0.62) : Color.white.opacity(0.62)
+        scheme == .dark ? Color(hex: 0x2F2F2F).opacity(0.82) : Color.white.opacity(0.88)
     }
 
     /// The one-pixel highlight that makes a glass surface read as glass.
     public static func glassBorder(_ scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color.white.opacity(0.12) : Color.white.opacity(0.70)
+        scheme == .dark ? Color.white.opacity(0.12) : Color(hex: 0xDADADD)
     }
 
     /// Floating popovers such as the list ellipsis menu, dark in both schemes.
-    public static let popoverSurface = Color(hex: 0x2E2620)
+    public static let popoverSurface = Color(hex: 0x2F2F2F)
 
     /// Text and icons sitting on a saturated task colour. Fixed in both schemes,
     /// because the fill it sits on is the same colour in both — a scheme-aware
     /// ink would flip to white on a light fill and fail contrast.
-    public static let inkOnColour = Color(hex: 0x2E2418)
+    public static let inkOnColour = Color(hex: 0x0D0D0D)
 
     public static func separator(_ scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color(hex: 0x3A322A) : Color(hex: 0xECE8E1)
+        scheme == .dark ? Color(hex: 0x424242) : Color(hex: 0xE8E8E8)
     }
 
     /// Load-bearing lines: control borders, dividers that must be seen.
     public static func separatorStrong(_ scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color(hex: 0x4E4438) : Color(hex: 0xD9D2C8)
+        scheme == .dark ? Color(hex: 0x5D5D5D) : Color(hex: 0xDADADD)
     }
 
     public static func primaryText(_ scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color(hex: 0xF3EEE6) : Color(hex: 0x2E2418)
+        scheme == .dark ? Color(hex: 0xF8F8F8) : Color(hex: 0x0D0D0D)
     }
 
     /// Deepened from the design's `#8A7A66`, which measures 4.15:1 on white and
     /// 3.75:1 on the cream background — under the 4.5:1 the HIG asks for. This
     /// value reads as the same warm grey-brown at 6.38:1 and 5.76:1.
     public static func secondaryText(_ scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color(hex: 0xC6BAA9) : Color(hex: 0x625340)
+        scheme == .dark ? Color(hex: 0xB4B4B4) : Color(hex: 0x5D5D5D)
     }
 
     /// Eyebrow labels and other text that must recede without disappearing.
@@ -225,7 +224,7 @@ public enum FlowTheme {
     /// Deepened to 5.38:1 on white, 4.86:1 on cream; dark side lifted from
     /// 4.13:1 to 4.85:1 on a card.
     public static func tertiaryText(_ scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color(hex: 0x9C8F7C) : Color(hex: 0x6A5B45)
+        Color(hex: 0x8F8F8F)
     }
 
     /// Clay. The single accent for fills, live timers, progress and graphics.
@@ -244,7 +243,10 @@ public enum FlowTheme {
 
     /// Delete. A deeper, redder clay so a destructive action reads as its own
     /// thing beside the accent rather than as more of the same.
-    public static let destructive = Color(hex: 0xC03A22)
+    public static let destructive = Color(hex: 0xE02E2A)
+
+    /// Informational state from the supplied OpenAI mobile palette.
+    public static let info = Color(hex: 0x0285FF)
 
     /// The accent pressed into a smaller space — eyebrows over a tinted card,
     /// where the full-strength clay would vibrate.
@@ -252,12 +254,12 @@ public enum FlowTheme {
 
     /// Externally-owned calendar events: present, but never competing for attention.
     public static func externalEvent(_ scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color(hex: 0x584D40) : Color(hex: 0xA79B89)
+        scheme == .dark ? Color(hex: 0x737373) : Color(hex: 0x8F8F8F)
     }
 
     /// Warm-brown rather than neutral black, so shadows sit in the palette.
     public static func shadow(_ scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color.black.opacity(0.45) : Color(hex: 0x3C2D19).opacity(0.13)
+        scheme == .dark ? Color.black.opacity(0.42) : Color.black.opacity(0.10)
     }
 
     /// The light edge a neumorphic control catches above it — paired with
@@ -284,13 +286,13 @@ public enum FlowTheme {
     /// mode, lighter than paper in dark — so the tree's anchor reads as a
     /// fixed point no pastel branch or leaf pill can be mistaken for.
     public static func mapRootFill(_ scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color(hex: 0xF3EEE6) : Color(hex: 0x2E2620)
+        scheme == .dark ? Color(hex: 0xF8F8F8) : Color(hex: 0x0D0D0D)
     }
 
     /// Text sitting on `mapRootFill` — always the opposite of body text,
     /// since the fill itself is always the opposite of the page.
     public static func mapRootText(_ scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color(hex: 0x171310) : Color(hex: 0xF8F4EE)
+        scheme == .dark ? Color(hex: 0x0D0D0D) : Color(hex: 0xF8F8F8)
     }
 
     /// The focus wheel ruler's major ticks — bronze/tan, fixed across both
@@ -331,6 +333,8 @@ public enum FlowRadius {
 /// Circular control diameters. Four sizes, each with a job: utility, secondary
 /// action, creation, and the one control a screen is built around.
 public enum FlowControlSize {
+    /// Apple's minimum comfortable touch region. Artwork may remain smaller.
+    public static let minimumTouch: CGFloat = 44
     /// Menus, toggles, small utilities.
     public static let utility: CGFloat = 38
     /// Skip and complete beside a primary control.

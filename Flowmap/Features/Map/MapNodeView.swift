@@ -65,10 +65,10 @@ struct MapNodeView: View {
         Button(action: onSelect) {
             HStack(spacing: FlowSpacing.s) {
                 if !isCompact, !node.iconName.isEmpty {
-                    Image(systemName: node.iconName)
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(textColour)
-                        .symbolRenderingMode(.hierarchical)
+                    Circle()
+                        .fill(node.isRoot ? Color.white.opacity(0.9) : node.colour.base)
+                        .frame(width: FlowSpacing.s, height: FlowSpacing.s)
+                        .accessibilityHidden(true)
                 }
 
                 titleField
@@ -116,11 +116,11 @@ struct MapNodeView: View {
                         .font(FlowFont.mapBadge)
                 }
             }
-            .foregroundStyle(textColour.opacity(0.82))
+            .foregroundStyle(FlowTheme.primaryText(scheme))
             .frame(minWidth: 24, minHeight: 24)
             .padding(.horizontal, node.isCollapsed ? FlowSpacing.xs : 0)
-            .background(.regularMaterial, in: Capsule(style: .continuous))
-            .overlay(Capsule(style: .continuous).stroke(node.colour.base.opacity(0.28), lineWidth: 1))
+            .background(FlowTheme.background(scheme), in: Capsule(style: .continuous))
+            .overlay(Capsule(style: .continuous).stroke(FlowTheme.separatorStrong(scheme), lineWidth: 1))
             .frame(width: metrics.accessoryAllowance, height: metrics.accessoryAllowance)
             .contentShape(Circle())
         }
@@ -142,7 +142,7 @@ struct MapNodeView: View {
     /// engine's active one right now.
     private var activeDot: some View {
         Circle()
-            .fill(FlowTheme.accent)
+            .fill(FlowTheme.info)
             .frame(width: 7, height: 7)
             .accessibilityHidden(true)
     }
@@ -158,15 +158,15 @@ struct MapNodeView: View {
 
     // MARK: - Styling
 
-    /// Root remains a quiet neutral anchor. Every project, task and subtask
-    /// uses the same semantic colour token it carries in Plan, Focus and the
-    /// wheel, so changing a task colour changes the entire visual thread.
+    /// Colour is a dot, never a flood. The root and the active selection are
+    /// black anchors; every other node is a quiet white row floating in the
+    /// same neutral workspace as the Plan and Today surfaces.
     private var fillColour: Color {
-        node.isRoot ? MapPalette.rootFill(scheme) : node.colour.soft
+        node.isRoot || isSelected ? FlowTheme.accentFill : FlowTheme.surface(scheme)
     }
 
     private var textColour: Color {
-        node.isRoot ? MapPalette.rootText(scheme) : node.colour.onSoft
+        node.isRoot || isSelected ? .white : FlowTheme.primaryText(scheme)
     }
 
     /// The shared fixed map tokens keep a dense spatial hierarchy while the
@@ -177,14 +177,13 @@ struct MapNodeView: View {
     }
 
     private var borderColour: Color {
-        if isSelected { return node.isRoot ? FlowTheme.accent : node.colour.base }
-        if isSearchMatch { return FlowTheme.accent }
-        return FlowTheme.glassBorder(scheme)
+        if node.isRoot || isSelected { return FlowTheme.accentFill }
+        if isSearchMatch { return FlowTheme.info }
+        return FlowTheme.separatorStrong(scheme)
     }
 
     private var nodeShadowColour: Color {
-        if isSelected { return (node.isRoot ? FlowTheme.accent : node.colour.base).opacity(0.28) }
-        return FlowTheme.shadow(scheme)
+        node.isRoot || isSelected ? Color.black.opacity(0.12) : .clear
     }
 
     private var branchAnchorAlignment: Alignment {
@@ -204,11 +203,11 @@ struct MapNodeView: View {
                 Image(systemName: "plus")
                     .font(.system(size: 15, weight: .semibold))
                     .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(node.colour.onSoft)
+                    .foregroundStyle(FlowTheme.primaryText(scheme))
                     .frame(width: 26, height: 26)
-                    .background(.regularMaterial, in: Circle())
-                    .overlay(Circle().stroke(node.colour.base.opacity(0.45), lineWidth: 1))
-                    .shadow(color: node.colour.base.opacity(0.24), radius: 6, y: 2)
+                    .background(FlowTheme.background(scheme), in: Circle())
+                    .overlay(Circle().stroke(FlowTheme.separatorStrong(scheme), lineWidth: 1))
+                    .shadow(color: Color.black.opacity(0.10), radius: 4, y: 1)
                     .frame(width: 44, height: 44)
                     .contentShape(Circle())
             }
@@ -217,7 +216,7 @@ struct MapNodeView: View {
             .accessibilityLabel("Add child task to \(task.title)")
         } else {
             Circle()
-                .fill(node.isRoot ? FlowTheme.accent : node.colour.base)
+                .fill(node.isRoot ? FlowTheme.info : node.colour.base)
                 .frame(width: 8, height: 8)
                 .overlay(Circle().stroke(Color.white.opacity(0.9), lineWidth: 1.5))
                 .accessibilityHidden(true)

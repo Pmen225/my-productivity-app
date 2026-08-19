@@ -1132,13 +1132,77 @@ final class ScreenshotTests: XCTestCase {
     /// without waiting for the rest of the screenshot catalogue.
     func testCaptureFocusDialLight() {
         let app = launch()
-        guard tapTab(app, "Focus") else { return }
+
+        // The current shell uses top Plan/Focus mode buttons, not a TabView.
+        let focusMode = app.buttons["Focus"].firstMatch
+        XCTAssertTrue(focusMode.waitForExistence(timeout: 10), "Focus mode button not found")
+        XCTAssertTrue(focusMode.isHittable, "Focus mode button is not hittable")
+        focusMode.tap()
+        let selectedMode = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "Selected"),
+            object: focusMode
+        )
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [selectedMode], timeout: 5),
+            .completed,
+            "Focus mode did not become selected"
+        )
+
         assertFocusWheelReady(app, "focus-original-dial-light")
-        if app.buttons["Show timer"].firstMatch.waitForExistence(timeout: 2) {
-            app.buttons["Show timer"].firstMatch.tap()
-            Thread.sleep(forTimeInterval: 0.5)
-        }
         capture(app, named: "iphone-focus-original-dial-light")
+
+        let showTimer = app.buttons["Show timer"].firstMatch
+        if showTimer.waitForExistence(timeout: 1) {
+            showTimer.tap()
+            XCTAssertFalse(showTimer.waitForExistence(timeout: 3), "Show timer did not restore the timer")
+            capture(app, named: "iphone-focus-original-dial-timer-restored")
+        }
+
+        let queueBar = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Today's queue")
+        ).firstMatch
+        if queueBar.waitForExistence(timeout: 2) {
+            queueBar.tap()
+            let queueHeading = app.staticTexts["Today's queue"].firstMatch
+            XCTAssertTrue(queueHeading.waitForExistence(timeout: 5), "Queue sheet did not open")
+            capture(app, named: "iphone-focus-original-dial-queue")
+            let window = app.windows.firstMatch
+            window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.49))
+                .press(
+                    forDuration: 0.1,
+                    thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95))
+                )
+            XCTAssertTrue(queueBar.waitForExistence(timeout: 5), "Queue sheet did not close")
+        }
+
+        let start = app.buttons["Start focus"].firstMatch
+        XCTAssertTrue(start.waitForExistence(timeout: 5), "Start focus control not found")
+        start.tap()
+
+        let pause = app.buttons["Pause"].firstMatch
+        let gate = app.staticTexts.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Break it down")
+        ).firstMatch
+        let durationPicker = app.staticTexts["Choose a duration"].firstMatch
+        if durationPicker.waitForExistence(timeout: 2) {
+            let confirmStart = app.buttons["Start focus"].firstMatch
+            XCTAssertTrue(confirmStart.isHittable, "Duration picker Start focus is not hittable")
+            confirmStart.tap()
+        }
+        XCTAssertTrue(
+            pause.waitForExistence(timeout: 5) || gate.waitForExistence(timeout: 2),
+            "Start focus produced no observable running or planning-gate state"
+        )
+        capture(app, named: pause.exists
+            ? "iphone-focus-original-dial-running"
+            : "iphone-focus-original-dial-start-gate")
+
+        if pause.exists {
+            pause.tap()
+            let resume = app.buttons["Resume"].firstMatch
+            XCTAssertTrue(resume.waitForExistence(timeout: 5), "Pause did not expose Resume")
+            capture(app, named: "iphone-focus-original-dial-paused")
+        }
     }
 
     func testCaptureFocusDialOverviewLight() {
@@ -1146,5 +1210,602 @@ final class ScreenshotTests: XCTestCase {
         guard tapTab(app, "Focus") else { return }
         assertFocusWheelReady(app, "focus-overview-ring-light")
         capture(app, named: "iphone-focus-overview-ring-light")
+    }
+
+    /// The shell capture route must expose one understandable task editor:
+    /// creation type in the header, the complete colour palette, a compact
+    /// 30-minute duration, one Project assignment, and no Workspace field.
+    func testTaskCreationHierarchyIsVisibleAndUnclipped() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-flowmapSeedDemo", "-flowmapOpenAIHarness", "-ApplePersistenceIgnoreState", "YES"]
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30))
+
+        let captureButton = app.buttons["New task, project or initiative"].firstMatch
+        XCTAssertTrue(captureButton.waitForExistence(timeout: 8))
+        captureButton.tap()
+
+        // The title focuses on presentation. Submit through the focused
+        // field so third-party keyboards use the same native Done path.
+        let titleField = app.textFields["Task title"].firstMatch
+        XCTAssertTrue(titleField.waitForExistence(timeout: 5), "Task title field is missing")
+        titleField.typeText("\n")
+        let kind = app.buttons["Kind"].firstMatch
+        XCTAssertTrue(kind.waitForExistence(timeout: 5), "Creation type control is missing")
+        kind.tap()
+        XCTAssertTrue(app.buttons["Task"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Project"].exists)
+        XCTAssertTrue(app.buttons["Initiative"].exists)
+        app.buttons["Task"].tap()
+
+        let colourControl = app.buttons["Colour"].firstMatch
+        XCTAssertTrue(colourControl.waitForExistence(timeout: 5), "Compact Colour control is missing")
+        capture(app, named: "iphone-task-editor-compact")
+        colourControl.tap()
+
+        // Measure every palette target against the visible phone bounds.
+        let window = app.windows.firstMatch
+        for colour in ["Violet", "Green", "Peach", "Blue", "Yellow", "Pink", "Teal", "Lavender"] {
+            let swatch = app.buttons[colour].firstMatch
+            XCTAssertTrue(swatch.waitForExistence(timeout: 3), "Missing colour: \(colour)")
+            XCTAssertGreaterThanOrEqual(swatch.frame.width, 43.5, "\(colour) target is too narrow")
+            XCTAssertGreaterThanOrEqual(swatch.frame.height, 43.5, "\(colour) target is too short")
+            XCTAssertGreaterThanOrEqual(swatch.frame.minX, window.frame.minX, "\(colour) is clipped on the left")
+            XCTAssertLessThanOrEqual(swatch.frame.maxX, window.frame.maxX, "\(colour) is clipped on the right")
+        }
+        capture(app, named: "iphone-task-editor-colours")
+
+        let duration = app.buttons["Duration"].firstMatch
+        XCTAssertTrue(duration.waitForExistence(timeout: 5), "Duration control is missing")
+        XCTAssertTrue(String(describing: duration.value).contains("30"), "Default duration is not 30 minutes")
+
+        // Collapse the optional palette, then reproduce a person's upward
+        // scroll to the lower assignment and priority controls.
+        colourControl.tap()
+        let priority = app.segmentedControls["Priority"].firstMatch
+        for _ in 0..<4 where !priority.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(priority.waitForExistence(timeout: 5), "Priority control is missing")
+        XCTAssertTrue(priority.isHittable, "Priority control is not interactive")
+        XCTAssertTrue(app.staticTexts["Project"].firstMatch.waitForExistence(timeout: 5), "Project assignment is missing")
+        XCTAssertFalse(app.staticTexts["Workspace"].exists, "Task editor must not expose a Workspace field")
+        capture(app, named: "iphone-task-editor-hierarchy")
+    }
+
+    /// Physical-user proof for the complete capture journey: open the single
+    /// Plan-owned action, enter a real task, save it, and observe the new row.
+    func testCreateSampleTaskFromFloatingCapture() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-flowmapSeedDemo", "-flowmapOpenAIHarness", "-ApplePersistenceIgnoreState", "YES"]
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30))
+
+        let title = "Sample iPhone task \(Int(Date().timeIntervalSince1970) % 100_000)"
+        addQuickTask(app, title: title)
+
+        let created = app.staticTexts[title].firstMatch
+        XCTAssertTrue(created.exists, "Saved sample task is not visible in Plan")
+        XCTAssertTrue(created.isHittable, "Saved sample task cannot be opened by a person")
+        capture(app, named: "iphone-sample-task-created")
+    }
+
+    /// Focused physical-device evidence for the Map list and its native-node canvas.
+    func testCaptureMapCanvas() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-flowmapSeedDemo", "-flowmapOpenAIMap"]
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30))
+
+        XCTAssertTrue(app.buttons["Today"].waitForExistence(timeout: 8), "Today mode control is missing")
+        XCTAssertFalse(app.buttons["Plan"].exists, "The retired abstract Plan label returned")
+        XCTAssertFalse(app.buttons["Today"].isSelected, "Map must remain distinct from the concrete Today surface")
+        XCTAssertTrue(app.buttons["Search map"].waitForExistence(timeout: 8), "Map canvas controls did not appear")
+        XCTAssertGreaterThan(
+            app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "map-node-")).count,
+            0,
+            "Map canvas exposes no native task nodes"
+        )
+        capture(app, named: "iphone-map-canvas-physical")
+    }
+
+    /// The daily-check summary belongs above drill-down project rows.
+    func testStatsShowsTopMetricsBeforeProjects() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-flowmapSeedDemo", "-flowmapOpenAIHarness"]
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30))
+
+        app.buttons["Open library"].tap()
+        let statsRow = app.buttons["flowmap-destination-stats"].firstMatch
+        XCTAssertTrue(statsRow.waitForExistence(timeout: 5), "Stats drawer row is missing")
+        statsRow.tap()
+
+        let statsTitles = app.staticTexts
+            .matching(NSPredicate(format: "label == %@", "Stats"))
+            .allElementsBoundByIndex
+            .filter { $0.frame.minY < 130 }
+        XCTAssertEqual(statsTitles.count, 1, "Stats needs one visible compact destination title")
+        let completed = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label BEGINSWITH %@", "Completed:"))
+            .firstMatch
+        XCTAssertTrue(completed.waitForExistence(timeout: 5), "Completed summary tile is missing")
+        XCTAssertLessThan(
+            completed.frame.minY,
+            app.windows.firstMatch.frame.midY,
+            "Top metrics must be visible in the upper half without scrolling"
+        )
+        XCTAssertFalse(
+            app.buttons["New task, project or initiative"].exists,
+            "Stats must not inherit Plan's floating capture control"
+        )
+        capture(app, named: "iphone-stats-top-metrics-physical")
+    }
+
+    /// Settings has one drawer owner and each preference responds independently.
+    func testSettingsOwnerAndSoundToggleJourney() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-flowmapSeedDemo", "-flowmapOpenAIHarness"]
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30))
+
+        app.buttons["Open library"].tap()
+        let settings = app.buttons["Settings"].firstMatch
+        XCTAssertTrue(settings.waitForExistence(timeout: 5), "Drawer Settings control is missing")
+        settings.tap()
+
+        let settingsTitles = app.staticTexts
+            .matching(NSPredicate(format: "label == %@", "Settings"))
+            .allElementsBoundByIndex
+            .filter { $0.frame.minY < 130 }
+        XCTAssertEqual(settingsTitles.count, 1, "Settings needs one visible compact destination title")
+        XCTAssertFalse(app.staticTexts["Make Flowmap work the way you do."].exists)
+        XCTAssertFalse(app.buttons["New task, project or initiative"].exists)
+        capture(app, named: "iphone-settings-hub-physical")
+
+        app.buttons["Sounds"].tap()
+        let soundTitles = app.staticTexts
+            .matching(NSPredicate(format: "label == %@", "Sounds"))
+            .allElementsBoundByIndex
+            .filter { $0.frame.minY < 130 }
+        XCTAssertEqual(soundTitles.count, 1, "Sounds needs one compact destination title")
+        XCTAssertTrue(app.buttons["Back to Settings"].exists, "Sounds needs a visible compact back action")
+        let ticking = app.switches["Ticking while focusing"].firstMatch
+        XCTAssertTrue(ticking.waitForExistence(timeout: 8), "Ticking preference is missing")
+        let initialValue = String(describing: ticking.value)
+        ticking.tap()
+        XCTAssertNotEqual(String(describing: ticking.value), initialValue, "Ticking preference did not change immediately")
+        ticking.tap()
+        XCTAssertEqual(String(describing: ticking.value), initialValue, "Ticking preference did not restore independently")
+        capture(app, named: "iphone-settings-sounds-physical")
+    }
+
+    /// Public ownership seam for the approved Flowmap shell blueprint.
+    func testShellHasOneOwnerPerPrimaryAction() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-flowmapSeedDemo", "-flowmapOpenAIHarness"]
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30))
+
+        XCTAssertTrue(app.buttons["Today"].waitForExistence(timeout: 8), "Top-level Today mode is missing")
+        XCTAssertTrue(app.buttons["Today"].isSelected, "Today must own the selected daily-planning surface")
+        XCTAssertFalse(app.buttons["Plan"].exists, "Plan must not compete with the concrete Today destination")
+        XCTAssertEqual(
+            app.buttons.matching(NSPredicate(format: "label == %@", "Open assistant")).count,
+            1,
+            "Assistant must have one top-right owner"
+        )
+        let captureButton = app.buttons["New task, project or initiative"].firstMatch
+        XCTAssertTrue(captureButton.exists, "Approved planning surfaces need one floating capture control")
+        XCTAssertLessThanOrEqual(
+            captureButton.frame.maxY,
+            app.windows.firstMatch.frame.maxY - 8,
+            "Floating capture must remain fully above the bottom edge"
+        )
+        XCTAssertFalse(app.buttons["Open quick capture"].exists, "The ChatGPT-style composer must be removed")
+        XCTAssertFalse(app.buttons["Add task"].exists, "Capture must not be duplicated inside a composer")
+        capture(app, named: "iphone-shell-single-action-ownership-closed")
+
+        app.buttons["Open library"].tap()
+        let settings = app.buttons["Settings"].firstMatch
+        XCTAssertTrue(settings.waitForExistence(timeout: 5), "Drawer Settings control is missing")
+        XCTAssertEqual(
+            app.buttons.matching(NSPredicate(format: "label == %@", "Settings")).count,
+            1,
+            "Settings must have one drawer-only owner"
+        )
+        XCTAssertFalse(app.buttons["flowmap-footer-assistant"].exists, "Assistant must not be duplicated in the drawer")
+        let closeLibrary = app.buttons["Close library"].firstMatch
+        XCTAssertTrue(closeLibrary.exists)
+        XCTAssertLessThan(closeLibrary.frame.minY, 150, "Drawer close control must stay in the top chrome lane")
+        capture(app, named: "iphone-shell-single-action-ownership")
+    }
+
+    /// Tiimo-inspired behaviour with Flowmap ownership: Today carries date
+    /// navigation in place, so Calendar is not duplicated in the drawer.
+    func testTodayOwnsWeekAndMonthDateNavigation() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-flowmapSeedDemo", "-flowmapOpenAIToday", "-ApplePersistenceIgnoreState", "YES"]
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30))
+
+        let today = app.buttons["Today"].firstMatch
+        XCTAssertTrue(today.waitForExistence(timeout: 8), "Today mode is missing")
+        XCTAssertTrue(today.isSelected, "Today mode did not open its owned surface")
+        let selectedDateTitle = app.staticTexts["today-selected-date-title"].firstMatch
+        XCTAssertTrue(selectedDateTitle.waitForExistence(timeout: 5), "Today heading is missing")
+        XCTAssertGreaterThanOrEqual(
+            selectedDateTitle.frame.minY,
+            today.frame.maxY,
+            "Today content is trapped underneath the fixed top controls"
+        )
+
+        let weekStrip = app.descendants(matching: .any)
+            .matching(identifier: "today-week-strip")
+            .firstMatch
+        XCTAssertTrue(weekStrip.waitForExistence(timeout: 5), "Today has no seven-day navigator")
+
+        let dayButtons = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "today-day-")
+        )
+        XCTAssertEqual(dayButtons.count, 7, "Today must expose exactly seven tappable dates")
+        for day in dayButtons.allElementsBoundByIndex {
+            XCTAssertGreaterThanOrEqual(day.frame.height, 43.5, "A date target is below 44pt")
+        }
+
+        let monthToggle = app.buttons["Show month calendar"].firstMatch
+        XCTAssertTrue(monthToggle.waitForExistence(timeout: 5), "Inline month disclosure is missing")
+        monthToggle.tap()
+        XCTAssertTrue(
+            app.buttons["Hide month calendar"].waitForExistence(timeout: 5),
+            "Month disclosure did not visibly change state"
+        )
+
+        let month = app.descendants(matching: .any)
+            .matching(identifier: "today-month-calendar")
+            .firstMatch
+        XCTAssertTrue(month.waitForExistence(timeout: 5), "Month calendar did not expand inside Today")
+        capture(app, named: "iphone-today-inline-calendar")
+
+        app.buttons["Open library"].tap()
+        XCTAssertTrue(app.buttons["flowmap-destination-inbox"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["flowmap-destination-calendar"].exists, "Calendar is duplicated in the drawer")
+        capture(app, named: "iphone-drawer-without-calendar")
+    }
+
+    /// Human gesture seam: the drawer opens from the leading edge and closes
+    /// with the matching leftward swipe, without requiring the menu button.
+    func testSidebarEdgeSwipeOpenAndSwipeLeftClose() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-flowmapSeedDemo", "-flowmapOpenAIHarness", "-ApplePersistenceIgnoreState", "YES"]
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30))
+
+        let window = app.windows.firstMatch
+        let drawer = app.descendants(matching: .any)
+            .matching(identifier: "flowmap-drawer")
+            .firstMatch
+
+        window.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5))
+            .press(
+                forDuration: 0.1,
+                thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.5))
+            )
+        XCTAssertTrue(drawer.waitForExistence(timeout: 5), "Leading-edge swipe did not open the drawer")
+        XCTAssertTrue(app.buttons["Close library"].isHittable, "Edge swipe did not expose a visible close path")
+        XCTAssertTrue(app.buttons["flowmap-destination-inbox"].isHittable, "Drawer rows are not interactive after edge swipe")
+        capture(app, named: "iphone-sidebar-edge-swipe-open")
+
+        window.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5))
+            .press(
+                forDuration: 0.1,
+                thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.5))
+            )
+        Thread.sleep(forTimeInterval: 1)
+        let menu = app.buttons["Open library"].firstMatch
+        XCTAssertTrue(menu.waitForExistence(timeout: 5), "Left swipe did not restore the foreground menu")
+        XCTAssertTrue(menu.isHittable, "Restored foreground is not interactive")
+        XCTAssertFalse(app.buttons["flowmap-destination-inbox"].isHittable)
+        capture(app, named: "iphone-sidebar-swipe-closed")
+    }
+
+    /// The wheel remains the dominant Focus surface. Its compact task control
+    /// belongs at the bottom and opens a three-row, sub-one-third queue sheet.
+    func testFocusTaskControlAndQueueStayAtBottom() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-flowmapSeedDemo", "-flowmapOpenAIHarness"]
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30))
+
+        XCTAssertTrue(app.buttons["Focus"].waitForExistence(timeout: 8))
+        app.buttons["Focus"].tap()
+        let taskControl = app.descendants(matching: .any)
+            .matching(identifier: "focus-now-bar")
+            .firstMatch
+        XCTAssertTrue(taskControl.waitForExistence(timeout: 8), "Focus task control is missing")
+        let window = app.windows.firstMatch
+        XCTAssertGreaterThan(
+            taskControl.frame.minY,
+            window.frame.height * 0.66,
+            "Focus task control must sit below the dominant wheel"
+        )
+        XCTAssertLessThanOrEqual(taskControl.frame.maxY, window.frame.maxY - 12)
+
+        taskControl.tap()
+        let sheet = app.descendants(matching: .any)
+            .matching(identifier: "focus-queue-sheet")
+            .firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 5), "Today's queue sheet did not open")
+        XCTAssertLessThan(
+            sheet.frame.height,
+            window.frame.height / 3,
+            "Queue sheet must begin below one third of the screen"
+        )
+        XCTAssertTrue(app.staticTexts["Today's queue"].waitForExistence(timeout: 3))
+        capture(app, named: "iphone-focus-bottom-queue")
+    }
+
+    /// The Focus bottom card pages between the active task's next steps and
+    /// Today's queue without moving or growing over the wheel.
+    func testFocusBottomCardPagerShowsCurrentStepsAndTodayQueue() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-flowmapSeedDemo", "-flowmapOpenAIHarness", "-ApplePersistenceIgnoreState", "YES"]
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30))
+
+        let focusMode = app.buttons["Focus"].firstMatch
+        XCTAssertTrue(focusMode.waitForExistence(timeout: 8), "Focus mode is missing")
+        focusMode.tap()
+
+        let taskControl = app.descendants(matching: .any)
+            .matching(identifier: "focus-now-bar")
+            .firstMatch
+        XCTAssertTrue(taskControl.waitForExistence(timeout: 8), "Focus bottom card is missing")
+        taskControl.tap()
+
+        let sheet = app.descendants(matching: .any)
+            .matching(identifier: "focus-queue-sheet")
+            .firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 5), "Focus bottom-card sheet did not open")
+        let window = app.windows.firstMatch
+        XCTAssertLessThan(
+            sheet.frame.height,
+            window.frame.height / 3,
+            "Focus bottom card must preserve its sub-one-third height"
+        )
+        XCTAssertGreaterThan(
+            sheet.frame.maxY,
+            window.frame.height * 0.85,
+            "Focus bottom card must remain anchored near the bottom of the screen"
+        )
+        let cardBottom = sheet.frame.maxY
+
+        let pager = sheet.descendants(matching: .any)
+            .matching(identifier: "focus-bottom-card-pager")
+            .firstMatch
+        XCTAssertTrue(pager.waitForExistence(timeout: 3), "Focus bottom-card pager is missing")
+
+        let currentPage = sheet.descendants(matching: .any)
+            .matching(identifier: "focus-current-steps-page")
+            .firstMatch
+        XCTAssertTrue(currentPage.waitForExistence(timeout: 3), "Current steps must be the default page")
+        XCTAssertTrue(app.staticTexts["Current steps"].isHittable)
+        XCTAssertTrue(app.staticTexts["Swipe left for Today's queue"].isHittable)
+        let currentSteps = currentPage.descendants(matching: .any)
+            .matching(identifier: "focus-current-step")
+        XCTAssertGreaterThan(currentSteps.count, 0, "The demo active task must expose current steps")
+        XCTAssertLessThanOrEqual(currentSteps.count, 3, "Current steps must show at most three subtasks")
+
+        let pageIndicator = sheet.descendants(matching: .any)
+            .matching(identifier: "focus-card-page-indicator")
+            .firstMatch
+        XCTAssertTrue(pageIndicator.waitForExistence(timeout: 3), "Two-page indicator is missing")
+        XCTAssertEqual(pageIndicator.value as? String, "1 of 2")
+
+        pager.swipeLeft()
+        let queuePage = sheet.descendants(matching: .any)
+            .matching(identifier: "focus-today-queue-page")
+            .firstMatch
+        XCTAssertTrue(queuePage.waitForExistence(timeout: 3), "Swipe left did not reveal Today's queue")
+        XCTAssertTrue(app.staticTexts["Today's queue"].isHittable)
+        XCTAssertTrue(app.staticTexts["Swipe right for Current steps"].isHittable)
+        let queueItems = queuePage.descendants(matching: .any)
+            .matching(identifier: "focus-today-queue-item")
+        XCTAssertGreaterThan(queueItems.count, 0, "The demo day must expose queued work")
+        XCTAssertLessThanOrEqual(queueItems.count, 3, "Today's queue must show at most three entries")
+        XCTAssertEqual(pageIndicator.value as? String, "2 of 2")
+        XCTAssertEqual(sheet.frame.maxY, cardBottom, accuracy: 1, "Paging must not move the card bottom")
+
+        pager.swipeRight()
+        XCTAssertTrue(app.staticTexts["Current steps"].isHittable, "Swipe right did not return to Current steps")
+        XCTAssertEqual(pageIndicator.value as? String, "1 of 2")
+        XCTAssertEqual(sheet.frame.maxY, cardBottom, accuracy: 1, "Returning must preserve the card bottom")
+    }
+
+    /// Public seam for the OpenAI Apps iOS reveal-under library drawer.
+    /// The direct source component is 325pt wide on a 402pt iPhone and every
+    /// list item is 297x44pt inside 14pt horizontal margins.
+    func testExactHtmlSidebarRevealAndRouting() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-flowmapSeedDemo", "-flowmapOpenAIHarness"]
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30))
+        Thread.sleep(forTimeInterval: 3)
+
+        let openLibrary = app.buttons["Open library"].firstMatch
+        XCTAssertTrue(openLibrary.waitForExistence(timeout: 8), "Open library control is missing")
+        XCTAssertTrue(openLibrary.isHittable, "Open library control is not hittable")
+        openLibrary.tap()
+        Thread.sleep(forTimeInterval: 1)
+
+        let drawer = app.descendants(matching: .any)
+            .matching(identifier: "flowmap-drawer")
+            .firstMatch
+        XCTAssertTrue(drawer.waitForExistence(timeout: 5), "HTML-matched drawer did not open")
+        XCTAssertTrue(app.staticTexts["Flowmap"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Capture → plan → focus"].exists)
+        for removedCopy in [
+            "Capture → plan → focus", "Today plan", "One task at a time", "Appearance and feedback",
+            "Captured tasks", "Projects and branches", "Availability and plan",
+            "Focused time", "Ask about your plan"
+        ] {
+            let copy = app.descendants(matching: .any)
+                .matching(NSPredicate(format: "label == %@", removedCopy))
+                .firstMatch
+            XCTAssertFalse(copy.exists, "Unexpected drawer copy: \(removedCopy)")
+        }
+
+        let windowWidth = app.windows.firstMatch.frame.width
+        let expectedReveal = min(325.0, windowWidth - 44.0)
+        XCTAssertFalse(app.staticTexts["Recent"].exists, "Drawer must not duplicate Assistant history")
+        XCTAssertFalse(app.textFields["Search recent conversations"].exists, "Drawer search is orphaned without Recent")
+        XCTAssertFalse(app.staticTexts["No recent conversations"].exists)
+        XCTAssertFalse(app.staticTexts["No matching conversations"].exists)
+        XCTAssertFalse(app.staticTexts["New conversation"].exists)
+        XCTAssertFalse(
+            app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "flowmap-recent-")).firstMatch.exists,
+            "Drawer must not expose recent conversation rows"
+        )
+        let drawerContentWidth = inboxWidth(app)
+        XCTAssertEqual(drawerContentWidth, 297, accuracy: 1.0)
+        XCTAssertEqual(
+            drawerContentWidth + 28,
+            expectedReveal,
+            accuracy: 1.0,
+            "Drawer content plus its two 14pt insets must match the 325pt reveal"
+        )
+        capture(app, named: "iphone-sidebar-open")
+
+        let closeLibrary = app.buttons["Close library"].firstMatch
+        XCTAssertTrue(closeLibrary.waitForExistence(timeout: 5))
+        XCTAssertTrue(closeLibrary.isHittable, "Close library control is not hittable")
+        XCTAssertGreaterThanOrEqual(closeLibrary.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(closeLibrary.frame.height, 44)
+        XCTAssertGreaterThanOrEqual(
+            closeLibrary.frame.minX,
+            expectedReveal,
+            "Close library must live in the exposed foreground strip"
+        )
+        XCTAssertLessThanOrEqual(
+            closeLibrary.frame.maxX,
+            app.windows.firstMatch.frame.maxX,
+            "Close library must remain fully visible on compact phones"
+        )
+        XCTAssertGreaterThan(
+            closeLibrary.frame.minY,
+            44,
+            "Close library must sit below the fixed system status area"
+        )
+        closeLibrary.tap()
+        Thread.sleep(forTimeInterval: 1)
+        XCTAssertTrue(openLibrary.waitForExistence(timeout: 5), "Close library did not restore the foreground menu")
+        XCTAssertTrue(openLibrary.isHittable, "Restored foreground menu is not interactive")
+        XCTAssertFalse(app.buttons["flowmap-destination-inbox"].isHittable)
+
+        XCTAssertTrue(openLibrary.waitForExistence(timeout: 5))
+        XCTAssertTrue(openLibrary.isHittable)
+        openLibrary.tap()
+        Thread.sleep(forTimeInterval: 1)
+        let inbox = app.buttons["flowmap-destination-inbox"].firstMatch
+        XCTAssertTrue(inbox.waitForExistence(timeout: 5))
+        XCTAssertTrue(inbox.isHittable, "Inbox row is not hittable")
+        XCTAssertGreaterThanOrEqual(inbox.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(inbox.frame.height, 44)
+        inbox.tap()
+        Thread.sleep(forTimeInterval: 1)
+        XCTAssertTrue(openLibrary.waitForExistence(timeout: 5), "Selecting Inbox did not restore the foreground menu")
+        XCTAssertTrue(openLibrary.isHittable, "Foreground did not become interactive after selecting Inbox")
+        XCTAssertFalse(inbox.isHittable)
+
+        openLibrary.tap()
+        Thread.sleep(forTimeInterval: 1)
+        XCTAssertTrue(app.buttons["flowmap-destination-inbox"].isSelected, "Selecting Inbox did not persist its selected state")
+    }
+
+    /// Human-style coverage for every visible drawer control. Each route is
+    /// launched from a known state so one modal cannot make a later tap look
+    /// green while actually landing on the wrong surface.
+    func testOpenAIAppsSidebarEveryControlHarness() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-flowmapSeedDemo", "-flowmapOpenAIHarness"]
+
+        func relaunchAndOpen() {
+            if app.state != .notRunning { app.terminate() }
+            app.launch()
+            XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30))
+            let menu = app.buttons["Open library"].firstMatch
+            XCTAssertTrue(menu.waitForExistence(timeout: 8))
+            menu.tap()
+            XCTAssertTrue(app.buttons["flowmap-destination-inbox"].waitForExistence(timeout: 5))
+        }
+
+        func proveSelectedRoute(_ identifier: String, screenshot: String) {
+            relaunchAndOpen()
+            let row = app.buttons[identifier].firstMatch
+            XCTAssertTrue(row.waitForExistence(timeout: 5), "\(identifier) is missing")
+            XCTAssertTrue(row.isHittable, "\(identifier) is not hittable")
+            row.tap()
+            XCTAssertFalse(row.waitForExistence(timeout: 3), "\(identifier) did not close the drawer")
+            app.buttons["Open library"].firstMatch.tap()
+            let selected = app.buttons[identifier].firstMatch
+            XCTAssertTrue(selected.waitForExistence(timeout: 5))
+            XCTAssertTrue(selected.isSelected, "\(identifier) did not persist selected state")
+            capture(app, named: screenshot)
+        }
+
+        relaunchAndOpen()
+        XCTAssertFalse(app.staticTexts["Recent"].exists, "Drawer must not duplicate Assistant history")
+        XCTAssertFalse(app.textFields["Search recent conversations"].exists)
+        XCTAssertFalse(app.staticTexts["New conversation"].exists)
+        XCTAssertFalse(
+            app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "flowmap-recent-")).firstMatch.exists,
+            "Drawer must not expose recent conversation rows"
+        )
+        XCTAssertFalse(app.buttons["flowmap-footer-assistant"].exists, "Assistant belongs to top chrome only")
+        capture(app, named: "iphone-sidebar-without-recent")
+
+        proveSelectedRoute("flowmap-destination-inbox", screenshot: "iphone-sidebar-route-inbox")
+        proveSelectedRoute("flowmap-destination-map", screenshot: "iphone-sidebar-route-map")
+
+        relaunchAndOpen()
+        app.buttons["flowmap-destination-calendar"].tap()
+        XCTAssertTrue(app.staticTexts["Calendar"].firstMatch.waitForExistence(timeout: 8))
+        capture(app, named: "iphone-sidebar-route-calendar")
+
+        relaunchAndOpen()
+        app.buttons["flowmap-destination-stats"].tap()
+        XCTAssertTrue(app.staticTexts["Stats"].firstMatch.waitForExistence(timeout: 8))
+        capture(app, named: "iphone-sidebar-route-stats")
+
+        relaunchAndOpen()
+        app.buttons["flowmap-footer-settings"].tap()
+        XCTAssertTrue(app.staticTexts["Make Flowmap work the way you do."].waitForExistence(timeout: 8))
+        capture(app, named: "iphone-sidebar-route-settings")
+    }
+
+    func testCaptureOpenAIAppsSidebarLargeText() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-flowmapSeedDemo", "-flowmapOpenAIHarness"]
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30))
+        let menu = app.buttons["Open library"].firstMatch
+        XCTAssertTrue(menu.waitForExistence(timeout: 8))
+        menu.tap()
+        XCTAssertTrue(app.staticTexts["Flowmap"].waitForExistence(timeout: 5))
+        capture(app, named: "iphone-sidebar-large-text-top")
+        app.swipeUp()
+        let settings = app.buttons["flowmap-footer-settings"].firstMatch
+        XCTAssertTrue(settings.waitForExistence(timeout: 5))
+        XCTAssertTrue(settings.isHittable, "Large-text drawer does not scroll to its footer")
+        capture(app, named: "iphone-sidebar-large-text-footer")
+    }
+
+    private func inboxWidth(_ app: XCUIApplication) -> CGFloat {
+        app.buttons["flowmap-destination-inbox"].firstMatch.frame.width
     }
 }

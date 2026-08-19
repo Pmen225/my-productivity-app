@@ -1,3 +1,4 @@
+#if !os(macOS)
 import Foundation
 import SwiftData
 import Testing
@@ -102,3 +103,4 @@ struct NotesAttachTests {
         #expect(visible.map(\.id) == [active.id])
     }
 }
+#endif

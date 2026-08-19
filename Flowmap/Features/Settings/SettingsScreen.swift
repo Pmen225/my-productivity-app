@@ -6,30 +6,96 @@ import SwiftUI
 /// screen. Each section still persists straight to the shared `AppSettings`
 /// record — there is no separate settings view model.
 struct SettingsScreen: View {
+    @Environment(\.colorScheme) private var scheme
+    @Binding private var selectedRow: SettingsHubRow?
+    var showsTitle = true
+
+    init(
+        selectedRow: Binding<SettingsHubRow?> = .constant(nil),
+        showsTitle: Bool = true
+    ) {
+        _selectedRow = selectedRow
+        self.showsTitle = showsTitle
+    }
+
     var body: some View {
-        List {
-            ForEach(SettingsHub.groups) { group in
-                Section {
-                    ForEach(group.rows) { row in
-                        NavigationLink {
-                            destination(for: row)
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                if showsTitle {
+                    Text("Settings")
+                        .font(FlowFont.screenTitle)
+                        .foregroundStyle(FlowTheme.primaryText(scheme))
+                        .padding(.top, FlowSpacing.xl)
+                }
+
+                if showsTitle {
+                    Text("Make Flowmap work the way you do.")
+                        .font(FlowFont.secondary)
+                        .foregroundStyle(FlowTheme.secondaryText(scheme))
+                        .padding(.top, FlowSpacing.s)
+                }
+
+                ForEach(SettingsHub.groups) { group in
+                    Text(group.title.uppercased())
+                        .font(FlowFont.eyebrow)
+                        .tracking(0.6)
+                        .foregroundStyle(FlowTheme.secondaryText(scheme))
+                        .padding(.top, FlowSpacing.xxxl)
+
+                    ForEach(Array(group.rows.enumerated()), id: \.element.id) { index, row in
+                        Button {
+                            selectedRow = row
                         } label: {
-                            Label(row.title, systemImage: row.symbolName)
+                            HStack(spacing: FlowSpacing.m) {
+                                Image(systemName: row.symbolName)
+                                    .font(FlowFont.cardTitle)
+                                    .foregroundStyle(FlowTheme.primaryText(scheme))
+                                    .frame(width: FlowControlSize.utility, height: FlowControlSize.utility)
+                                    .background(Circle().fill(FlowTheme.surfaceSunken(scheme)))
+
+                                Text(row.title)
+                                    .font(FlowFont.body)
+                                    .foregroundStyle(FlowTheme.primaryText(scheme))
+
+                                Spacer(minLength: FlowSpacing.s)
+
+                                Image(systemName: "chevron.right")
+                                    .font(FlowFont.caption.weight(.semibold))
+                                    .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                            }
+                            .frame(minHeight: FlowControlSize.create)
+                            .contentShape(Rectangle())
                         }
                         .accessibilityLabel(row.title)
                         .accessibilityHint("Opens this Settings section")
                         .buttonStyle(FlowNavigationRowPressStyle())
+
+                        if index < group.rows.count - 1 {
+                            Divider()
+                                .overlay(FlowTheme.separator(scheme))
+                                .padding(.leading, FlowControlSize.utility + FlowSpacing.m)
+                        }
                     }
-                } header: {
-                    FlowEyebrow(group.title)
                 }
             }
+            .padding(.horizontal, FlowSpacing.xl)
+            .padding(.bottom, FlowSpacing.xxxl)
         }
+        .scrollIndicators(.hidden)
+        .background(FlowTheme.background(scheme).ignoresSafeArea())
         #if os(iOS)
-        .safeAreaPadding(.bottom, FlowSpacing.floatingControlsInset)
+        .safeAreaPadding(.top, showsTitle ? 0 : FlowControlSize.secondary)
         #endif
-        .navigationTitle("Settings")
-        .flowScreenTitle("Settings")
+        .navigationDestination(
+            isPresented: Binding(
+                get: { selectedRow != nil },
+                set: { if !$0 { selectedRow = nil } }
+            )
+        ) {
+            if let selectedRow {
+                destination(for: selectedRow)
+            }
+        }
     }
 
     @ViewBuilder
@@ -63,10 +129,14 @@ private struct SettingsSectionScreen<Content: View>: View {
             .padding(FlowSpacing.screen)
         }
         #if os(iOS)
+        .safeAreaPadding(.top, FlowControlSize.secondary)
         .safeAreaPadding(.bottom, FlowSpacing.floatingControlsInset)
+        .toolbar(.hidden, for: .navigationBar)
         #endif
         .background(FlowTheme.background(scheme).ignoresSafeArea())
+        #if os(macOS)
         .navigationTitle(title)
         .flowScreenTitle(title)
+        #endif
     }
 }

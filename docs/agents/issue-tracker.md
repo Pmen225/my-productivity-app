@@ -2,7 +2,7 @@
 
 Issues for this repo live in the **taskmaster-ai MCP server**, on the **`flowmap-pages` tag** — never the `master` tag. Pass `tag: "flowmap-pages"` explicitly on every taskmaster-ai call, or lookups silently miss.
 
-A GitHub remote exists (`Pmen225/my-productivity-app`) but GitHub Issues are NOT used for tracking work.
+A GitHub remote exists, but GitHub Issues are NOT used for tracking work.
 
 ## When a skill says "publish to the issue tracker"
 

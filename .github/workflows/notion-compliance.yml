@@ -1,0 +1,20 @@
+name: Notion lesson compliance report
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  private-monitor-boundary:
+    name: private-monitor-boundary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/check-public-policy.sh
+      - run: ./scripts/generate-compliance-report.sh build/compliance-report.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flowmap-compliance-report
+          path: build/compliance-report.json

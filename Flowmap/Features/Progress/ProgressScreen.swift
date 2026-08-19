@@ -19,6 +19,7 @@ struct ProgressScreen: View {
 
     @State private var period: ProgressPeriod = .today
     @State private var showsXPExplainer = false
+    var showsTitle = true
     /// The XP-into-level figure actually on screen. Separate from
     /// `currentLevel.xpIntoLevel` so a level-up can roll the old value into
     /// the new one over the design's timing instead of jumping instantly.
@@ -52,18 +53,21 @@ struct ProgressScreen: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: FlowSpacing.l) {
-                title
+                if showsTitle { title }
                 periodPicker
+                statTilesSection
                 if let initiative {
                     initiativeCard(initiative)
                     xpDisclosure
                 }
                 projectsSection
-                statTilesSection
             }
             .padding(FlowSpacing.screen)
         }
         .background(FlowTheme.background(scheme).ignoresSafeArea())
+        #if os(iOS)
+        .safeAreaPadding(.top, showsTitle ? 0 : FlowControlSize.secondary)
+        #endif
         .onAppear {
             if displayedXPIntoLevel == nil { displayedXPIntoLevel = currentLevel.xpIntoLevel }
         }

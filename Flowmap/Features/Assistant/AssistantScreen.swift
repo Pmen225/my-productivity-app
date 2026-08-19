@@ -12,8 +12,11 @@ public struct AssistantScreen: View {
     @State private var activeThread: AssistantThread?
     @State private var showHistory = false
     @State private var showingSetup = false
+    private let initialThreadID: UUID?
 
-    public init() {}
+    public init(initialThreadID: UUID? = nil) {
+        self.initialThreadID = initialThreadID
+    }
 
     public var body: some View {
         NavigationStack {
@@ -25,6 +28,7 @@ public struct AssistantScreen: View {
                         onConnectTapped: { showingSetup = true }
                     )
                     .id(activeThread.id)
+                    .accessibilityIdentifier("assistant-thread-\(activeThread.id.uuidString)")
                 } else {
                     ProgressView()
                 }
@@ -85,7 +89,10 @@ public struct AssistantScreen: View {
         }
         .onAppear {
             guard activeThread == nil else { return }
-            activeThread = threads.first(where: { !$0.isArchived }) ?? makeThread()
+            activeThread = initialThreadID
+                .flatMap { id in threads.first(where: { $0.id == id && !$0.isArchived }) }
+                ?? threads.first(where: { !$0.isArchived })
+                ?? makeThread()
         }
     }
 

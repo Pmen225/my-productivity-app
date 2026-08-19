@@ -16,12 +16,17 @@ struct FocusNowBar: View {
     let activeSegmentID: UUID?
     let onTap: () -> Void
 
-    /// The bar's own fixed footprint: content padding plus the 44pt hit
-    /// target, the same accounting the old card's hidden strip used.
-    static let height: CGFloat = 44 + FlowSpacing.m * 2
+    /// Reserve the two-line active-task/subtask card before the wheel is sized;
+    /// the expanded context must not collide with the dial or home indicator.
+    static let height: CGFloat = FlowControlSize.hero + FlowSpacing.l * 2
 
     private var model: FocusQueueModel {
         FocusQueueModel(queue: queue, activeTask: activeTask, activeSegmentID: activeSegmentID)
+    }
+
+    private var showsSubtaskContext: Bool {
+        guard let activeTask else { return false }
+        return model.barTitle != activeTask.title
     }
 
     var body: some View {
@@ -33,21 +38,30 @@ struct FocusNowBar: View {
                         .frame(width: 10, height: 10)
                         .accessibilityHidden(true)
 
-                    Text(model.barTitle)
-                        .font(FlowFont.body.weight(.semibold))
-                        .foregroundStyle(FlowTheme.primaryText(scheme))
-                        .lineLimit(1)
+                    VStack(alignment: .leading, spacing: FlowSpacing.xxs) {
+                        if showsSubtaskContext, let activeTask {
+                            Text(activeTask.title)
+                                .font(FlowFont.caption)
+                                .foregroundStyle(FlowTheme.secondaryText(scheme))
+                                .lineLimit(1)
+                        }
+                        Text(model.barTitle)
+                            .font(FlowFont.body.weight(.semibold))
+                            .foregroundStyle(FlowTheme.primaryText(scheme))
+                            .lineLimit(1)
+                    }
 
                     Spacer(minLength: FlowSpacing.s)
 
-                    Text(model.barCaption)
-                        .font(FlowFont.caption)
-                        .foregroundStyle(FlowTheme.secondaryText(scheme))
-                        .lineLimit(1)
-
-                    Image(systemName: "chevron.up")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                    VStack(alignment: .trailing, spacing: FlowSpacing.xxs) {
+                        Text(model.barCaption)
+                            .font(FlowFont.caption)
+                            .foregroundStyle(FlowTheme.secondaryText(scheme))
+                            .lineLimit(1)
+                        Image(systemName: "chevron.up")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(FlowTheme.tertiaryText(scheme))
+                    }
                 }
                 .padding(.horizontal, FlowSpacing.l)
                 .padding(.vertical, FlowSpacing.m)
@@ -55,8 +69,16 @@ struct FocusNowBar: View {
                 .contentShape(Capsule())
             }
             .buttonStyle(.plain)
-            .flowGlass(radius: FlowRadius.pill)
+            .background(
+                RoundedRectangle(cornerRadius: FlowRadius.medium, style: .continuous)
+                    .fill(FlowTheme.surface(scheme))
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: FlowRadius.medium, style: .continuous)
+                    .stroke(FlowTheme.separator(scheme), lineWidth: 0.5)
+            }
             .accessibilityElement(children: .ignore)
+            .accessibilityIdentifier("focus-now-bar")
             .accessibilityLabel("\(model.barTitle), \(model.barCaption)")
             .accessibilityHint("Opens today's queue")
         }
@@ -252,8 +274,14 @@ struct FocusQueueListView: View {
                     subtaskRow(subtask, isFirst: index == 0, isLast: index == subtasks.count - 1)
                 }
             }
-            .padding(.horizontal, FlowSpacing.xl)
-            .padding(.bottom, FlowSpacing.xs)
+            .padding(.horizontal, FlowSpacing.l)
+            .padding(.vertical, FlowSpacing.s)
+            .background(
+                RoundedRectangle(cornerRadius: FlowRadius.small, style: .continuous)
+                    .fill(FlowTheme.surfaceSunken(scheme))
+            )
+            .padding(.horizontal, FlowSpacing.m)
+            .padding(.bottom, FlowSpacing.s)
         } else {
             VStack(alignment: .leading, spacing: FlowSpacing.xs) {
                 ForEach(subtasks) { subtask in
@@ -352,13 +380,176 @@ struct FocusQueueSheet: View {
     let activeSegmentID: UUID?
 
     var body: some View {
-        FocusQueueListView(
+        FocusQueuePager(
             queue: queue,
             activeTask: activeTask,
             activeSegmentID: activeSegmentID
         )
-        .presentationDetents([.medium, .large])
+        .accessibilityIdentifier("focus-queue-sheet")
+        .presentationDetents([.fraction(0.28)])
         .presentationDragIndicator(.visible)
         .presentationBackground(FlowTheme.surface(scheme))
+    }
+}
+
+/// Two calm peer pages inside the existing bottom card. The active task's
+/// steps come first; today's queue stays one horizontal swipe away instead of
+/// competing in the same vertical list.
+private struct FocusQueuePager: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.flow) private var flow
+
+    let queue: [TaskSegment]
+    let activeTask: FlowTask?
+    let activeSegmentID: UUID?
+
+    @State private var page = 0
+
+    var body: some View {
+        VStack(spacing: 0) {
+            TabView(selection: $page) {
+                currentStepsPage.tag(0)
+                todayQueuePage.tag(1)
+            }
+            #if os(iOS)
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            #endif
+            .accessibilityIdentifier("focus-bottom-card-pager")
+
+            Button {
+                withAnimation(reduceMotion ? nil : FlowMotion.selection) {
+                    page = page == 0 ? 1 : 0
+                }
+            } label: {
+                VStack(spacing: FlowSpacing.xxs) {
+                    HStack(spacing: FlowSpacing.xs) {
+                        pageDot(isSelected: page == 0)
+                        pageDot(isSelected: page == 1)
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Focus card page")
+                    .accessibilityValue("\(page + 1) of 2")
+                    .accessibilityIdentifier("focus-card-page-indicator")
+
+                    Text(page == 0 ? "Swipe left for Today's queue" : "Swipe right for Current steps")
+                        .font(FlowFont.caption)
+                        .foregroundStyle(FlowTheme.secondaryText(scheme))
+                }
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(page == 0 ? "Shows today's queue" : "Shows the current task's steps")
+        }
+        .padding(.top, FlowSpacing.s)
+    }
+
+    private var currentStepsPage: some View {
+        VStack(alignment: .leading, spacing: FlowSpacing.xs) {
+            pageTitle("Current steps", detail: activeTask?.title)
+
+            if let activeTask {
+                let steps = Array(activeTask.orderedSubtasks.prefix(3))
+                if steps.isEmpty {
+                    emptyMessage("No steps added")
+                } else {
+                    ForEach(steps) { subtask in
+                        Button {
+                            flow?.gamification.toggleSubtask(subtask)
+                        } label: {
+                            HStack(spacing: FlowSpacing.m) {
+                                Image(systemName: subtask.isCompleted ? "checkmark.circle.fill" : "circle")
+                                    .font(.system(size: 17))
+                                    .foregroundStyle(
+                                        subtask.isCompleted ? FlowTheme.accent : FlowTheme.separatorStrong(scheme)
+                                    )
+                                Text(subtask.title)
+                                    .font(FlowFont.body)
+                                    .strikethrough(subtask.isCompleted)
+                                    .foregroundStyle(FlowTheme.primaryText(scheme))
+                                    .lineLimit(1)
+                                Spacer(minLength: 0)
+                            }
+                            .flowHitTarget(44)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("focus-current-step")
+                        .accessibilityValue(subtask.isCompleted ? "Completed" : "Not completed")
+                    }
+                }
+            } else {
+                emptyMessage("Choose a task to begin")
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, FlowSpacing.screen)
+        .accessibilityIdentifier("focus-current-steps-page")
+    }
+
+    private var todayQueuePage: some View {
+        VStack(alignment: .leading, spacing: FlowSpacing.xs) {
+            pageTitle("Today's queue", detail: nil)
+
+            if queue.isEmpty {
+                emptyMessage("Nothing else planned today")
+            } else {
+                ForEach(Array(queue.prefix(3))) { segment in
+                    HStack(spacing: FlowSpacing.m) {
+                        Circle()
+                            .fill((segment.task?.colour ?? .violet).onSoft)
+                            .frame(width: 8, height: 8)
+                            .accessibilityHidden(true)
+                        Text(segment.task?.title ?? "Task")
+                            .font(FlowFont.body)
+                            .foregroundStyle(FlowTheme.primaryText(scheme))
+                            .lineLimit(1)
+                        Spacer(minLength: FlowSpacing.s)
+                        Text("\(DurationFormatter.time(segment.startDate)) · \(DurationFormatter.compact(minutes: segment.durationMinutes))")
+                            .font(FlowFont.caption.monospacedDigit())
+                            .foregroundStyle(FlowTheme.secondaryText(scheme))
+                    }
+                    .flowHitTarget(44)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("focus-today-queue-item")
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, FlowSpacing.screen)
+        .accessibilityIdentifier("focus-today-queue-page")
+    }
+
+    private func pageTitle(_ title: String, detail: String?) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: FlowSpacing.s) {
+            Text(title)
+                .font(FlowFont.sectionTitle)
+                .foregroundStyle(FlowTheme.primaryText(scheme))
+                .accessibilityAddTraits(.isHeader)
+            if let detail {
+                Text(detail)
+                    .font(FlowFont.caption)
+                    .foregroundStyle(FlowTheme.secondaryText(scheme))
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.top, FlowSpacing.s)
+    }
+
+    private func emptyMessage(_ message: String) -> some View {
+        Text(message)
+            .font(FlowFont.body)
+            .foregroundStyle(FlowTheme.secondaryText(scheme))
+            .frame(maxWidth: .infinity, minHeight: 88, alignment: .center)
+    }
+
+    private func pageDot(isSelected: Bool) -> some View {
+        Capsule()
+            .fill(isSelected ? FlowTheme.primaryText(scheme) : FlowTheme.separatorStrong(scheme))
+            .frame(width: isSelected ? 16 : 6, height: 6)
     }
 }

@@ -8,7 +8,7 @@ import UIKit
 /// tasks, then a medal-ranked reveal with two exits. See `state/specs/
 /// design-inventory.md` §"Prioritise duel mini-game" for the design source.
 /// Deliberately optional — feedback tasks 18/19 (state/specs/
-/// cognitive-profile.md, "product thesis"): planning must not require the
+/// product-planning guidance: planning must not require the
 /// game, so it is offered as a way to order today, never a gate in front
 /// of it.
 ///
@@ -144,12 +144,14 @@ struct PrioritiseDuelView: View {
 
     private var duelStage: some View {
         let pair = pairs[currentPairIndex]
-        return VStack(spacing: FlowSpacing.xl) {
-            VStack(spacing: FlowSpacing.s) {
-                FlowEyebrow("Prioritise", tint: FlowTheme.accent)
-                Text("Which comes first?")
-                    .font(FlowFont.sectionTitle)
+        return VStack(alignment: .leading, spacing: FlowSpacing.xl) {
+            VStack(alignment: .leading, spacing: FlowSpacing.s) {
+                Text("Pick the next thing")
+                    .font(FlowFont.screenTitle)
                     .foregroundStyle(FlowTheme.primaryText(scheme))
+                Text("Choose by instinct. Flowmap will do the ordering.")
+                    .font(FlowFont.secondary)
+                    .foregroundStyle(FlowTheme.secondaryText(scheme))
                 ProgressView(
                     value: Double(min(currentPairIndex + 1, pairs.count)),
                     total: Double(pairs.count)
@@ -174,18 +176,12 @@ struct PrioritiseDuelView: View {
         .padding(FlowSpacing.screen)
     }
 
-    /// Two task cards share one stage, with a quiet VS marker in the space
-    /// between them. The marker makes the comparison relationship visible
-    /// without adding explanatory copy to either card.
+    /// Two flat, equal rows share one stage. There is no decorative "or"
+    /// badge or pastel card flood: the relationship is already explicit in
+    /// the prompt, and the selected row turns black for one clear beat.
     private func duelArena(first: FlowTask, second: FlowTask) -> some View {
         VStack(spacing: FlowSpacing.m) {
             choiceButton(for: first, against: second)
-
-            Text("or")
-                .font(FlowFont.caption)
-                .foregroundStyle(FlowTheme.tertiaryText(scheme))
-                .accessibilityHidden(true)
-
             choiceButton(for: second, against: first)
         }
     }
@@ -197,38 +193,44 @@ struct PrioritiseDuelView: View {
             pick(task)
         } label: {
             HStack(spacing: FlowSpacing.m) {
+                Circle()
+                    .fill(task.colour.base)
+                    .frame(width: FlowSpacing.s, height: FlowSpacing.s)
+
                 VStack(alignment: .leading, spacing: FlowSpacing.xs) {
-                    Image(systemName: task.iconName)
-                        .symbolEffect(.wiggle.byLayer, options: .nonRepeating, value: isWinner)
-                        .symbolEffectsRemoved(reduceMotion)
                     Text(task.title)
                         .font(FlowFont.cardTitle)
-                        .foregroundStyle(task.colour.onSoft)
+                        .foregroundStyle(isWinner ? Color.white : FlowTheme.primaryText(scheme))
                         .lineLimit(2)
+                    Text(DurationFormatter.spoken(minutes: task.estimatedMinutes))
+                        .font(FlowFont.caption)
+                        .foregroundStyle(isWinner ? Color.white.opacity(0.64) : FlowTheme.secondaryText(scheme))
                 }
                 .opacity(isLoser ? 0.48 : 1)
                 Spacer(minLength: FlowSpacing.s)
-                DurationChip(minutes: task.estimatedMinutes, tint: task.colour)
+                Image(systemName: isWinner ? "checkmark" : "arrow.right")
+                    .font(FlowFont.caption.weight(.semibold))
+                    .foregroundStyle(isWinner ? Color.white : FlowTheme.tertiaryText(scheme))
             }
             .padding(FlowSpacing.l)
-            .frame(maxWidth: .infinity, minHeight: 112)
+            .frame(maxWidth: .infinity, minHeight: FlowControlSize.hero)
             .background(
                 RoundedRectangle(cornerRadius: FlowRadius.large, style: .continuous)
-                    .fill(task.colour.soft)
+                    .fill(isWinner ? FlowTheme.accentFill : FlowTheme.surface(scheme))
             )
             .overlay {
                 RoundedRectangle(cornerRadius: FlowRadius.large, style: .continuous)
-                    .strokeBorder(FlowTheme.raisedHighlight(scheme), lineWidth: 1)
+                    .strokeBorder(isWinner ? FlowTheme.accentFill : FlowTheme.separatorStrong(scheme), lineWidth: 1)
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(DuelOpenAIPressStyle())
         .flowHitTarget()
         .allowsHitTesting(!isResolving)
         .offset(
-            x: isExitingPair && isWinner ? -520 : 0,
-            y: isExitingPair && isLoser ? 620 : 0
+            x: isExitingPair ? (isWinner ? -FlowSpacing.xxxl : FlowSpacing.xxxl) : 0,
+            y: 0
         )
-        .rotationEffect(.degrees(isExitingPair && isLoser ? 8 : 0))
+        .opacity(isExitingPair ? 0 : 1)
         .accessibilityLabel("Put \(task.title) ahead of \(other.title)")
     }
 
@@ -246,15 +248,12 @@ struct PrioritiseDuelView: View {
             advancePair()
             return
         }
-        // Hold the selected state for one beat before the cards leave. This
-        // gives the symbol and colour response time to register, then keeps
-        // the directional exit short enough that the next decision is ready.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.30) {
-            withAnimation(.easeIn(duration: 0.34)) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            withAnimation(FlowMotion.insert) {
                 isExitingPair = true
             }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.66) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.40) {
             advancePair()
         }
     }
@@ -266,12 +265,12 @@ struct PrioritiseDuelView: View {
             currentPairIndex += 1
             selectedWinnerID = nil
             isExitingPair = false
-            pairEntranceX = reduceMotion || currentPairIndex >= pairs.count ? 0 : 520
+            pairEntranceX = reduceMotion || currentPairIndex >= pairs.count ? 0 : FlowSpacing.xxxl
             isResolving = false
         }
         guard !reduceMotion, currentPairIndex < pairs.count else { return }
         DispatchQueue.main.async {
-            withAnimation(.easeOut(duration: 0.34)) {
+            withAnimation(FlowMotion.insert) {
                 pairEntranceX = 0
             }
         }
@@ -281,12 +280,16 @@ struct PrioritiseDuelView: View {
 
     private var revealStage: some View {
         VStack(spacing: FlowSpacing.l) {
-            VStack(spacing: FlowSpacing.s) {
-                FlowEyebrow("Your order", tint: FlowTheme.accent)
-                completionTitle
-                    .font(FlowFont.sectionTitle)
+            VStack(alignment: .leading, spacing: FlowSpacing.s) {
+                Text("Your order")
+                    .font(FlowFont.screenTitle)
                     .foregroundStyle(FlowTheme.primaryText(scheme))
+                completionTitle
+                    .font(FlowFont.secondary)
+                    .foregroundStyle(FlowTheme.secondaryText(scheme))
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, FlowSpacing.screen)
             .padding(.top, FlowSpacing.xxxl)
 
             ScrollView {
@@ -309,15 +312,11 @@ struct PrioritiseDuelView: View {
 
     @ViewBuilder
     private var completionTitle: some View {
-        if #available(iOS 26.0, macOS 26.0, *) {
-            HStack(spacing: FlowSpacing.s) {
-                Image(systemName: "checkmark.seal.fill")
-                    .symbolEffect(.bounce, options: .nonRepeating, value: feedbackEvent)
-                    .symbolEffectsRemoved(reduceMotion)
-                Text("Decision made.")
-            }
-        } else {
-            Label("Decision made.", systemImage: "checkmark.seal.fill")
+        HStack(spacing: FlowSpacing.s) {
+            Image(systemName: "checkmark.circle.fill")
+                .symbolEffect(.bounce, options: .nonRepeating, value: feedbackEvent)
+                .symbolEffectsRemoved(reduceMotion)
+            Text("Decision made. Review it, then plan or keep it.")
         }
     }
 
@@ -327,37 +326,16 @@ struct PrioritiseDuelView: View {
     /// their hierarchy or shortening their labels.
     @ViewBuilder
     private var resultActions: some View {
-        if #available(iOS 26.0, macOS 26.0, *) {
-            GlassEffectContainer(spacing: FlowSpacing.s) {
-                if dynamicTypeSize.isAccessibilitySize {
-                    VStack(spacing: FlowSpacing.s) {
-                        planTodayButton.buttonStyle(.glassProminent)
-                        keepOrderButton.buttonStyle(.glass)
-                    }
-                } else {
-                    HStack(spacing: FlowSpacing.s) {
-                        planTodayButton.buttonStyle(.glassProminent)
-                        keepOrderButton.buttonStyle(.glass)
-                    }
-                }
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(spacing: FlowSpacing.s) {
+                planTodayButton
+                keepOrderButton
             }
-            .tint(FlowTheme.accentFill)
         } else {
-            Group {
-                if dynamicTypeSize.isAccessibilitySize {
-                    VStack(spacing: FlowSpacing.s) {
-                        planTodayButton.buttonStyle(.borderedProminent)
-                        keepOrderButton.buttonStyle(.bordered)
-                    }
-                } else {
-                    HStack(spacing: FlowSpacing.s) {
-                        planTodayButton.buttonStyle(.borderedProminent)
-                        keepOrderButton.buttonStyle(.bordered)
-                    }
-                }
+            HStack(spacing: FlowSpacing.s) {
+                planTodayButton
+                keepOrderButton
             }
-            .buttonBorderShape(.capsule)
-            .tint(FlowTheme.accentFill)
         }
     }
 
@@ -366,7 +344,11 @@ struct PrioritiseDuelView: View {
             applyOrder(andPlan: true)
         } label: {
             resultActionLabel("Plan today", systemImage: "calendar.badge.checkmark")
+                .foregroundStyle(.white)
+                .frame(minHeight: FlowControlSize.secondary)
+                .background(Capsule().fill(FlowTheme.accentFill))
         }
+        .buttonStyle(DuelOpenAIPressStyle())
         .accessibilityHint("Reorders these tasks and plans today, moving anything already scheduled")
     }
 
@@ -375,7 +357,12 @@ struct PrioritiseDuelView: View {
             applyOrder(andPlan: false)
         } label: {
             resultActionLabel("Keep order", systemImage: "list.number")
+                .foregroundStyle(FlowTheme.primaryText(scheme))
+                .frame(minHeight: FlowControlSize.secondary)
+                .background(Capsule().fill(FlowTheme.surface(scheme)))
+                .overlay(Capsule().stroke(FlowTheme.separatorStrong(scheme), lineWidth: 1))
         }
+        .buttonStyle(DuelOpenAIPressStyle())
         .accessibilityHint("Reorders these tasks without scheduling anything")
     }
 
@@ -387,39 +374,32 @@ struct PrioritiseDuelView: View {
     }
 
     private func rankedRow(_ task: FlowTask, rank: Int) -> some View {
-        let medal = medalColour(for: rank)
         return HStack(spacing: FlowSpacing.m) {
             Text("\(rank + 1)")
                 .font(FlowFont.cardTitle)
-                .foregroundStyle(medal ?? FlowTheme.secondaryText(scheme))
+                .foregroundStyle(FlowTheme.secondaryText(scheme))
                 .frame(width: 28)
+            Circle()
+                .fill(task.colour.base)
+                .frame(width: FlowSpacing.s, height: FlowSpacing.s)
             Text(task.title)
                 .font(FlowFont.body)
                 .foregroundStyle(FlowTheme.primaryText(scheme))
                 .lineLimit(2)
             Spacer(minLength: FlowSpacing.s)
-            DurationChip(minutes: task.estimatedMinutes, tint: task.colour)
+            Text(DurationFormatter.compact(minutes: task.estimatedMinutes))
+                .font(FlowFont.durationChip)
+                .foregroundStyle(FlowTheme.secondaryText(scheme))
+            Image(systemName: "line.3.horizontal")
+                .font(FlowFont.caption)
+                .foregroundStyle(FlowTheme.tertiaryText(scheme))
         }
         .padding(FlowSpacing.m)
-        .background(
-            RoundedRectangle(cornerRadius: FlowRadius.medium, style: .continuous)
-                .fill(FlowTheme.surface(scheme))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: FlowRadius.medium, style: .continuous)
-                .strokeBorder(medal ?? FlowTheme.separator(scheme), lineWidth: medal != nil ? 2 : 1)
-        )
+        .overlay(alignment: .bottom) {
+            Divider().overlay(FlowTheme.separator(scheme))
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Rank \(rank + 1): \(task.title)")
-    }
-
-    private func medalColour(for rank: Int) -> Color? {
-        switch rank {
-        case 0: FlowTheme.medalGold
-        case 1: FlowTheme.medalSilver
-        case 2: FlowTheme.medalBronze
-        default: nil
-        }
     }
 
     /// Reveals ranked rows one at a time, 0.13s apart, per the design's own
@@ -474,5 +454,16 @@ struct PrioritiseDuelView: View {
             flow.applyPlan(flow.planToday(replanExisting: true))
         }
         dismiss()
+    }
+}
+
+private struct DuelOpenAIPressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.74 : 1)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.98 : 1)
+            .animation(reduceMotion ? nil : FlowMotion.tap, value: configuration.isPressed)
     }
 }

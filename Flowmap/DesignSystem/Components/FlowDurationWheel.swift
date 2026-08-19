@@ -40,7 +40,7 @@ public struct FlowDurationWheel: View {
     public var body: some View {
         Picker(accessibilityLabel, selection: $minutes) {
             ForEach(options, id: \.self) { value in
-                Text(DurationFormatter.compact(minutes: value))
+                Text(Self.label(for: value))
                     .font(FlowFont.durationChip)
                     .foregroundStyle(FlowTheme.accent)
                     .tag(value)
@@ -79,5 +79,9 @@ public struct FlowDurationWheel: View {
             ?? options.indices.min(by: { abs(options[$0] - minutes) < abs(options[$1] - minutes) })
             ?? 0
         return options[min(options.count - 1, max(0, current + delta))]
+    }
+
+    public static func label(for minutes: Int) -> String {
+        "\(minutes) min"
     }
 }

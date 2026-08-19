@@ -9,7 +9,9 @@ public enum AssistantToolName: String, CaseIterable, Sendable {
     case updateTask
     case completeTask
     case cancelTask
+    case deleteTask
     case scheduleTask
+    case rescheduleTask
     case rescheduleDay
     case createProject
     case createNote
@@ -34,7 +36,7 @@ public enum AssistantToolName: String, CaseIterable, Sendable {
     /// the user must confirm before anything happens.
     public var requiresConfirmation: Bool {
         switch self {
-        case .rescheduleDay, .disconnectCalendarAccount, .createCalendarEvent, .moveCalendarEvent, .deleteCalendarEvent:
+        case .deleteTask, .rescheduleDay, .disconnectCalendarAccount, .createCalendarEvent, .moveCalendarEvent, .deleteCalendarEvent:
             return true
         default:
             return false
@@ -52,6 +54,7 @@ public struct AssistantToolResult: Codable, Sendable {
         case deleteNote(UUID)
         case deleteNoteBlock(UUID)
         case unscheduleSegment(UUID)
+        case moveSegment(UUID, Date)
         case reopenTask(UUID)
         case revertTask(UUID, TaskFieldSnapshot)
         case stopFocusSession
@@ -127,11 +130,16 @@ public struct AssistantToolRouter {
     }
 
     /// Runs a previously-shown proposal after the user confirms it.
-    public func confirm(_ proposal: AssistantToolProposal) -> AssistantToolResult {
+    public func confirm(_ proposal: AssistantToolProposal) async -> AssistantToolResult {
         guard let tool = AssistantToolName(rawValue: proposal.toolName) else {
             return AssistantToolResult(toolName: proposal.toolName, success: false, message: "That proposal is no longer recognised.")
         }
-        return execute(tool, argumentsJSON: proposal.argumentsJSON)
+        switch tool {
+        case .createCalendarEvent: return await calendarAPI.createEvent(proposal.argumentsJSON)
+        case .moveCalendarEvent: return await calendarAPI.moveEvent(proposal.argumentsJSON)
+        case .deleteCalendarEvent: return await calendarAPI.deleteEvent(proposal.argumentsJSON)
+        default: return execute(tool, argumentsJSON: proposal.argumentsJSON)
+        }
     }
 
     public func undo(_ action: AssistantToolResult.UndoAction) -> AssistantToolResult {
@@ -160,6 +168,9 @@ public struct AssistantToolRouter {
             guard let segment = fetchSegment(id) else { return undoFailed() }
             flow.scheduling().unschedule(segment: segment)
             return AssistantToolResult(toolName: "undo", success: true, message: "Unscheduled the task again.")
+        case .moveSegment(let id, let start):
+            guard let segment = fetchSegment(id), flow.scheduling().move(segment: segment, to: start) else { return undoFailed() }
+            return AssistantToolResult(toolName: "undo", success: true, message: "Moved the task back to its previous time.")
         case .reopenTask(let id):
             guard let task = fetchTask(id) else { return undoFailed() }
             task.reopen()
@@ -191,7 +202,9 @@ public struct AssistantToolRouter {
         case .updateTask: return updateTask(argumentsJSON)
         case .completeTask: return completeTask(argumentsJSON)
         case .cancelTask: return cancelTask(argumentsJSON)
+        case .deleteTask: return deleteTask(argumentsJSON)
         case .scheduleTask: return scheduleTask(argumentsJSON)
+        case .rescheduleTask: return rescheduleTask(argumentsJSON)
         case .rescheduleDay: return rescheduleDay(argumentsJSON)
         case .createProject: return createProject(argumentsJSON)
         case .createNote: return createNote(argumentsJSON)
@@ -205,9 +218,8 @@ public struct AssistantToolRouter {
         case .setCalendarSelection: return calendarAPI.setSelection(argumentsJSON)
         case .setCalendarConfiguration: return calendarAPI.setConfiguration(argumentsJSON)
         case .listCalendarEvents: return calendarAPI.listEvents(argumentsJSON)
-        case .createCalendarEvent: return calendarAPI.createEvent(argumentsJSON)
-        case .moveCalendarEvent: return calendarAPI.moveEvent(argumentsJSON)
-        case .deleteCalendarEvent: return calendarAPI.deleteEvent(argumentsJSON)
+        case .createCalendarEvent, .moveCalendarEvent, .deleteCalendarEvent:
+            return AssistantToolResult(toolName: tool.rawValue, success: false, message: "Confirm this calendar change first.")
         }
     }
 
@@ -225,6 +237,14 @@ public struct AssistantToolRouter {
                 title: replanExisting ? "Replan the whole day" : "Plan today",
                 summary: summarise(proposal),
                 argumentsJSON: encode(RescheduleDayArgs(dayISO8601: ISO8601DateFormatter().string(from: day), replanExisting: replanExisting))
+            )
+        case .deleteTask:
+            let title = decode(TaskQueryArgs.self, argumentsJSON)?.taskQuery ?? "this task"
+            return AssistantToolProposal(
+                toolName: tool.rawValue,
+                title: "Delete \"\(title)\"",
+                summary: "Permanently removes the task. This can't be undone.",
+                argumentsJSON: argumentsJSON
             )
         case .disconnectCalendarAccount:
             let account = decode(CalendarControlAPI.AccountArgs.self, argumentsJSON)
@@ -369,6 +389,19 @@ public struct AssistantToolRouter {
         )
     }
 
+    private func deleteTask(_ json: String) -> AssistantToolResult {
+        guard let args = decode(TaskQueryArgs.self, json) else {
+            return AssistantToolResult(toolName: AssistantToolName.deleteTask.rawValue, success: false, message: "I need to know which task to delete.")
+        }
+        guard let task = findTask(matching: args.taskQuery) else {
+            return AssistantToolResult(toolName: AssistantToolName.deleteTask.rawValue, success: false, message: "I couldn't find a single task matching \"\(args.taskQuery)\".")
+        }
+        let title = task.title
+        context.delete(task)
+        save()
+        return AssistantToolResult(toolName: AssistantToolName.deleteTask.rawValue, success: true, message: "Deleted \"\(title)\".")
+    }
+
     private struct ScheduleTaskArgs: Codable {
         let taskQuery: String
         let dateISO8601: String
@@ -389,6 +422,29 @@ public struct AssistantToolRouter {
             success: true,
             message: "Scheduled \"\(task.title)\" for \(DurationFormatter.time(when)).",
             undo: .unscheduleSegment(segment.id)
+        )
+    }
+
+    private func rescheduleTask(_ json: String) -> AssistantToolResult {
+        guard let args = decode(ScheduleTaskArgs.self, json), let when = date(from: args.dateISO8601) else {
+            return AssistantToolResult(toolName: AssistantToolName.rescheduleTask.rawValue, success: false, message: "I need a task and a specific time to move it to.")
+        }
+        guard let task = findTask(matching: args.taskQuery) else {
+            return AssistantToolResult(toolName: AssistantToolName.rescheduleTask.rawValue, success: false, message: "I couldn't find a single task matching \"\(args.taskQuery)\".")
+        }
+        let segments = task.liveSegments
+        guard segments.count == 1, let segment = segments.first else {
+            return AssistantToolResult(toolName: AssistantToolName.rescheduleTask.rawValue, success: false, message: "I need that task to have exactly one scheduled block before I can move it.")
+        }
+        let previousStart = segment.startDate
+        guard flow.scheduling().move(segment: segment, to: when) else {
+            return AssistantToolResult(toolName: AssistantToolName.rescheduleTask.rawValue, success: false, message: "That block is locked or the new time is busy, so I didn't move \"\(task.title)\".")
+        }
+        return AssistantToolResult(
+            toolName: AssistantToolName.rescheduleTask.rawValue,
+            success: true,
+            message: "Moved \"\(task.title)\" to \(DurationFormatter.time(when)).",
+            undo: .moveSegment(segment.id, previousStart)
         )
     }
 
@@ -725,12 +781,29 @@ public struct AssistantToolRouter {
             """
         ),
         AssistantToolDefinition(
+            name: AssistantToolName.deleteTask.rawValue,
+            description: "Permanently delete a task. Destructive — always confirmed first.",
+            parametersSchemaJSON: """
+            {"type":"object","properties":{"taskQuery":{"type":"string","description":"Text to find the task by title."}},"required":["taskQuery"]}
+            """
+        ),
+        AssistantToolDefinition(
             name: AssistantToolName.scheduleTask.rawValue,
             description: "Place a task on the timeline at a specific date and time.",
             parametersSchemaJSON: """
             {"type":"object","properties":{
               "taskQuery":{"type":"string","description":"Text to find the task by title."},
               "dateISO8601":{"type":"string","description":"ISO 8601 date/time to schedule it at."}
+            },"required":["taskQuery","dateISO8601"]}
+            """
+        ),
+        AssistantToolDefinition(
+            name: AssistantToolName.rescheduleTask.rawValue,
+            description: "Move a task's existing scheduled block to a specific date and time.",
+            parametersSchemaJSON: """
+            {"type":"object","properties":{
+              "taskQuery":{"type":"string","description":"Text to find the task by title."},
+              "dateISO8601":{"type":"string","description":"ISO 8601 date/time to move its scheduled block to."}
             },"required":["taskQuery","dateISO8601"]}
             """
         ),
