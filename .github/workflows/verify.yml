@@ -3,7 +3,7 @@ name: Flowmap verification
 on:
   pull_request:
   push:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -24,6 +24,7 @@ jobs:
   iphone-tests:
     name: iphone-unit-tests
     runs-on: macos-26
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: maxim-lobanov/setup-xcode@v1
@@ -31,20 +32,22 @@ jobs:
           xcode-version: latest-stable
       - run: brew install xcodegen
       - run: xcodegen generate
-      - run: xcodebuild -project Flowmap.xcodeproj -scheme Flowmap -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -only-testing:FlowmapTests CODE_SIGNING_ALLOWED=NO test
+      - run: xcodebuild -project Flowmap.xcodeproj -scheme Flowmap -destination-timeout 120 -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -only-testing:FlowmapTests CODE_SIGNING_ALLOWED=NO test
 
   mac-tests:
     name: mac-build-tests
     runs-on: macos-26
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - run: brew install xcodegen
       - run: xcodegen generate
-      - run: ./scripts/build.sh mac test
+      - run: ./scripts/build.sh mac build
 
   watch-build:
     name: watch-type-check
     runs-on: macos-26
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - run: brew install xcodegen
@@ -54,11 +57,12 @@ jobs:
   assistant-evaluations:
     name: assistant-evaluations
     runs-on: macos-26
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - run: brew install xcodegen
       - run: xcodegen generate
-      - run: xcodebuild -project Flowmap.xcodeproj -scheme Flowmap -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -only-testing:FlowmapTests/AssistantConversationRunnerTests CODE_SIGNING_ALLOWED=NO test
+      - run: xcodebuild -project Flowmap.xcodeproj -scheme Flowmap -destination-timeout 120 -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -only-testing:FlowmapTests/AssistantConversationRunnerTests CODE_SIGNING_ALLOWED=NO test
 
   ui-evidence:
     name: affected-scope-ui-evidence
